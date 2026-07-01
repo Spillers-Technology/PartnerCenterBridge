@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link active" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Getting started</h1>
+
+<h2>Run it locally (docker-compose)</h2>
+<p>The fastest way to see the product. Auth is disabled in compose, so the UI works without
+an identity provider - you just can't reach real tenants yet.</p>
+<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
+cd PartnerCenterBridge
+docker compose up --build
+# SPA:  http://localhost:8081
+# API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
+
+<p>Or run the pieces directly:</p>
+<pre><code># API (needs a Postgres; connection string in appsettings.json)
+dotnet run --project src/PartnerCenterBridge.Api
+
+# SPA (proxies /api to http://localhost:5080)
+cd web &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
+
+<p>Tests need no tenant at all - orchestration is covered against WireMock:</p>
+<pre><code>dotnet test</code></pre>
+
+<h2>Prerequisites for real tenants</h2>
+<p>To act in customer tenants the bridge needs the standard CSP plumbing you likely
+already have as an MSP:</p>
+<table>
+  <tr><th>Requirement</th><th>Why</th></tr>
+  <tr>
+    <td>A <strong>multi-tenant Entra app registration</strong> in your partner tenant
+        (client id + secret in the <code>Partner</code> config section)</td>
+    <td>This is the Secure Application Model app that acts on your behalf.</td>
+  </tr>
+  <tr>
+    <td><strong>GDAP relationship</strong> per customer, with roles covering what you use
+        (Intune administration, user management, Exchange recipient management)</td>
+    <td>Scopes what the bridge can touch in each tenant. No GDAP, no access - the tenant
+        shows as <span class="badge err">NoDelegation</span>.</td>
+  </tr>
+  <tr>
+    <td><strong>Per-customer admin consent</strong> for the app</td>
+    <td>Standard multi-tenant app consent in each customer tenant.</td>
+  </tr>
+  <tr>
+    <td>A one-time <strong><a href="sam-bootstrap.html">SAM bootstrap</a></strong> by an
+        MFA'd admin agent</td>
+    <td>Seeds the encrypted, auto-rotating refresh token the bridge exchanges for
+        per-tenant Graph tokens.</td>
+  </tr>
+  <tr>
+    <td>(Exchange workflows only) an <strong>app-only certificate</strong> for Exchange
+        Online PowerShell (<code>Exchange</code> config section)</td>
+    <td>Mailbox configuration is not fully exposed by Graph; the bridge shells out to the
+        EXO V3 module with certificate auth.</td>
+  </tr>
+</table>
+
+<h2>First session</h2>
+<ol>
+  <li><strong>Sync tenants:</strong> the Tenants tab pulls your customer list from Partner Center.</li>
+  <li><strong>Create a contract:</strong> a named group of tenants sharing a desired state.</li>
+  <li><strong>Assign tenants</strong> to the contract.</li>
+  <li><strong>Add an app template</strong> (upload an <code>.intunewin</code> produced by the
+      Microsoft Win32 Content Prep Tool) or a <strong>provisioning template</strong>
+      (licenses, groups, UPN domain).</li>
+  <li><strong>Deploy / provision / run workflows.</strong> Everything shows its plan or its
+      diagnosis before it acts, and its steps after.</li>
+</ol>
+
+<div class="callout">
+  <strong>Operator auth:</strong> in production the SPA and API sit behind your OIDC provider
+  (tested with Authentik). Set the <code>Auth</code> section (authority, audience) and matching
+  <code>VITE_OIDC_*</code> variables for the SPA. <code>Auth:Enabled=false</code> is for local
+  development only.
+</div>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

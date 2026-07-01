@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAM bootstrap - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link active" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Bootstrapping the Secure Application Model</h1>
+
+<p>
+  The bridge acts in customer tenants by exchanging a stored <strong>SAM refresh token</strong>
+  for per-tenant Graph tokens. That token must be seeded once by an interactive, MFA'd admin
+  agent - MFA on App+User Partner Center calls has been enforced by Microsoft since April 2026,
+  so there is no way around the one-time human step.
+</p>
+
+<h2>Three ways to seed it</h2>
+<p>In order of preference:</p>
+
+<h3>1. Interactive device-code bootstrap (recommended)</h3>
+<pre><code>dotnet run --project src/PartnerCenterBridge.Api -- bootstrap-sam</code></pre>
+<p>Prints a URL + code. Sign in with an MFA'd admin-agent account from your partner tenant;
+the bridge captures the refresh token and stores it encrypted.</p>
+
+<h3>2. Paste a refresh token captured out-of-band</h3>
+<pre><code>curl -X POST /api/admin/sam/seed \
+  -H 'content-type: application/json' \
+  -d '{"refreshToken":"..."}'</code></pre>
+
+<h3>3. Config seed</h3>
+<p>Set <code>Partner:SeedRefreshToken</code> in configuration; the bridge persists and rotates
+it on first use. Useful for infrastructure-as-code bootstraps where the token is injected as a
+SOPS-encrypted secret.</p>
+
+<h2>After seeding</h2>
+<ul>
+  <li>Check status any time: <code>GET /api/admin/sam/status</code> &rarr;
+      <code>{ "bootstrapped": true|false }</code>.</li>
+  <li>The token is <strong>rotated automatically on every use</strong> - comfortably inside the
+      90-day refresh-token window, so a healthy bridge never needs re-seeding.</li>
+  <li>It is stored encrypted via ASP.NET Data Protection. The key ring
+      (<code>DataProtection:KeyRingPath</code>) must persist across restarts, or the stored
+      token becomes undecryptable and you re-bootstrap.</li>
+</ul>
+
+<div class="callout warn">
+  <strong>Treat the SAM token like a domain-admin credential for every customer.</strong>
+  It can act across all your GDAP relationships. If it ever leaks: revoke the app's sessions
+  in your partner tenant, rotate the app secret, and re-seed. See
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md">SECURITY.md</a>.
+</div>
+
+<h2>Still required per customer</h2>
+<p>The token alone grants nothing in a customer tenant. Each customer additionally needs
+admin consent for the app and an active GDAP relationship whose roles cover the operations
+you use. Tenants without one show as <span class="badge err">NoDelegation</span> in the
+Tenants tab.</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

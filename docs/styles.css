@@ -1,0 +1,93 @@
+/* Matches the product's palette (web/src/styles.css) so site and app feel like one thing. */
+:root {
+  --bg: #0f172a; --panel: #1e293b; --line: #334155; --text: #e2e8f0; --muted: #94a3b8;
+  --accent: #38bdf8; --accent-dark: #04283a; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.6;
+}
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 0.9em;
+}
+code { background: #0b1220; border: 1px solid var(--line); border-radius: 4px; padding: 0.1em 0.35em; }
+pre {
+  background: #0b1220; border: 1px solid var(--line); border-radius: 8px;
+  padding: 1rem; overflow-x: auto;
+}
+pre code { background: none; border: none; padding: 0; }
+
+/* Top navigation */
+.topnav {
+  display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+  padding: 0.75rem 1.5rem; background: var(--panel);
+  border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 10;
+}
+.topnav .brand { font-weight: 700; color: var(--text); font-size: 1.05rem; }
+.topnav .brand span { color: var(--accent); }
+.topnav a.nav-link { color: var(--muted); font-size: 0.95rem; }
+.topnav a.nav-link:hover, .topnav a.nav-link.active { color: var(--text); text-decoration: none; }
+.topnav .gh { margin-left: auto; }
+
+main { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem 4rem; }
+main.wide { max-width: 1100px; }
+
+h1 { font-size: 2rem; line-height: 1.2; margin: 1rem 0; }
+h2 { margin-top: 2.5rem; border-bottom: 1px solid var(--line); padding-bottom: 0.4rem; }
+h3 { margin-top: 1.75rem; }
+.muted { color: var(--muted); }
+
+table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+
+.badge {
+  display: inline-block; padding: 0.1rem 0.55rem; border-radius: 999px;
+  font-size: 0.75rem; border: 1px solid var(--line); color: var(--muted); white-space: nowrap;
+}
+.badge.ok { color: var(--ok); border-color: var(--ok); }
+.badge.warn { color: var(--warn); border-color: var(--warn); }
+.badge.err { color: var(--err); border-color: var(--err); }
+.badge.accent { color: var(--accent); border-color: var(--accent); }
+
+/* Landing hero */
+.hero { text-align: center; padding: 4rem 1rem 2.5rem; }
+.hero h1 { font-size: 2.6rem; margin: 0 0 1rem; }
+.hero h1 span { color: var(--accent); }
+.hero p.tagline { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 0 auto 2rem; }
+.hero .actions { display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; }
+.btn {
+  display: inline-block; padding: 0.6rem 1.3rem; border-radius: 8px;
+  border: 1px solid var(--line); color: var(--text); font-weight: 600;
+}
+.btn:hover { text-decoration: none; border-color: var(--accent); }
+.btn.primary { background: var(--accent); color: var(--accent-dark); border-color: var(--accent); }
+
+/* Feature cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.25rem;
+}
+.card h3 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+/* Callouts */
+.callout {
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: 8px; padding: 0.9rem 1.1rem; margin: 1.25rem 0;
+}
+.callout.warn { border-left-color: var(--warn); }
+
+/* Diagnose/fix walkthrough on the landing page */
+.flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin: 2rem 0; }
+.flow .step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1.1rem; }
+.flow .step .num { color: var(--accent); font-weight: 700; font-size: 0.85rem; }
+
+footer {
+  border-top: 1px solid var(--line); color: var(--muted);
+  text-align: center; padding: 1.5rem; font-size: 0.9rem;
+}
