@@ -35,6 +35,10 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 1rem 0; }
 .password { background: #0b1220; border: 1px solid var(--warn); border-radius: 6px; padding: 0.5rem 0.75rem; }
 .issues { list-style: none; padding: 0; display: grid; gap: 0.4rem; }
 .issues li { display: flex; gap: 0.5rem; align-items: center; }
+.wf-layout { display: grid; grid-template-columns: 220px 1fr; gap: 1.5rem; }
+.wf-list h4 { color: var(--muted); margin: 0.75rem 0 0.25rem; font-size: 0.8rem; text-transform: uppercase; }
+.wf-list button { display: block; width: 100%; text-align: left; margin-bottom: 0.25rem; }
+.wf-list button.active { background: var(--accent); color: #04283a; border-color: var(--accent); }
 .badge { padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--line); }
 .badge.active, .badge.succeeded, .badge.uptodate { color: var(--ok); border-color: var(--ok); }
 .badge.pending, .badge.uploading, .badge.committing, .badge.assigning, .badge.updateavailable, .badge.update, .badge.deploy { color: var(--warn); border-color: var(--warn); }

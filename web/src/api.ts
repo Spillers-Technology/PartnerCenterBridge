@@ -1,8 +1,8 @@
 import { getAccessToken } from "./auth";
 import type {
   AppTemplate, ArchiveRemediationOptions, ArchiveRemediationResult, ArchiveState,
-  Contract, Deployment, DirectoryObject, ProvisioningResult,
-  ProvisioningTemplate, Sku, Tenant
+  Contract, Deployment, DiagnosisResult, DirectoryObject, ProvisioningResult,
+  ProvisioningTemplate, Sku, Tenant, WorkflowRunResult, WorkflowSummary
 } from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
@@ -95,5 +95,17 @@ export const api = {
       request<ArchiveRemediationResult>(
         `/api/exchange/${tenantId}/archive/nudge?identity=${encodeURIComponent(identity)}`,
         { method: "POST", body: JSON.stringify({}) })
+  },
+
+  workflows: {
+    list: () => request<WorkflowSummary[]>("/api/workflows"),
+    diagnose: (id: string, tenantId: string, inputs: Record<string, string>) =>
+      request<DiagnosisResult>(`/api/workflows/${id}/diagnose`, {
+        method: "POST", body: JSON.stringify({ tenantId, inputs })
+      }),
+    remediate: (id: string, tenantId: string, inputs: Record<string, string>) =>
+      request<WorkflowRunResult>(`/api/workflows/${id}/remediate`, {
+        method: "POST", body: JSON.stringify({ tenantId, inputs })
+      })
   }
 };

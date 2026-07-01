@@ -9,6 +9,7 @@ using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 using PartnerCenterBridge.Exchange;
 using PartnerCenterBridge.Graph;
+using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,6 +42,10 @@ builder.Services.AddSingleton<IPwshRunner>(sp =>
     return new PwshRunner(o.PwshPath, o.TimeoutSeconds);
 });
 builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
+
+// Known-fix workflow library (catalog + Graph-backed workflows).
+builder.Services.AddScoped<PartnerCenterBridge.Core.Workflows.WorkflowCatalog>();
+builder.Services.AddGraphWorkflows();
 builder.Services.AddScoped<IIntuneWin32Service, IntuneWin32Service>();
 builder.Services.AddScoped<DeploymentOrchestrator>();
 builder.Services.AddSingleton<IPackageStore, FilePackageStore>();
