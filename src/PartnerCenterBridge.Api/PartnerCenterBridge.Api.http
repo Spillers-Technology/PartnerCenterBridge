@@ -1,0 +1,6 @@
+@PartnerCenterBridge.Api_HostAddress = http://localhost:5068
+
+GET {{PartnerCenterBridge.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -1,3 +1,15 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+*.user
+.vs/
+
+# Vite build output
+web/dist/
+
+# Local secrets — never commit plaintext
+appsettings.*.Local.json
+
 # Logs
 logs
 *.log

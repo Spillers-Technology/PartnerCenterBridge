@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pcbridge-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pcbridge-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pcbridge-api
+    spec:
+      containers:
+        - name: api
+          image: partnercenterbridge-api
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: Auth__Enabled
+              value: "true"
+          # Non-secret config (Authority, Audience, PartnerTenantId, CORS) comes from a ConfigMap;
+          # secrets (Postgres connection, Entra client secret, seed refresh token) from a SOPS Secret.
+          envFrom:
+            - configMapRef:
+                name: pcbridge-config
+            - secretRef:
+                name: pcbridge-secrets
+          volumeMounts:
+            - name: keys
+              mountPath: /keys
+            - name: packages
+              mountPath: /packages
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: keys
+          persistentVolumeClaim:
+            claimName: pcbridge-keys
+        - name: packages
+          persistentVolumeClaim:
+            claimName: pcbridge-packages

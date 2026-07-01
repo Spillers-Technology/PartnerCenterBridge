@@ -1,0 +1,46 @@
+# Local dev stack: Postgres + API + SPA. Auth is disabled so you can click through the UI
+# without an Authentik/OIDC provider. Do NOT use these settings in a deployed environment.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pcbridge
+      POSTGRES_USER: pcbridge
+      POSTGRES_PASSWORD: pcbridge
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcbridge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/PartnerCenterBridge.Api/Dockerfile
+    environment:
+      ConnectionStrings__Postgres: "Host=db;Port=5432;Database=pcbridge;Username=pcbridge;Password=pcbridge"
+      Auth__Enabled: "false"
+      Cors__AllowedOrigins__0: "http://localhost:8082"
+      # Fill these to exercise the Microsoft plane against real tenants:
+      Partner__ClientId: ""
+      Partner__ClientSecret: ""
+      Partner__PartnerTenantId: ""
+      Partner__SeedRefreshToken: ""
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["5080:8080"]
+    volumes: ["keys:/keys", "packages:/packages"]
+
+  web:
+    build:
+      context: ./web
+    depends_on: ["api"]
+    ports: ["8082:80"]
+
+volumes:
+  pgdata:
+  keys:
+  packages:

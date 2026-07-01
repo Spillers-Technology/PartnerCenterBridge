@@ -1,0 +1,21 @@
+# Data Protection key ring (must survive restarts or the encrypted SAM token becomes unreadable)
+# and staged .intunewin packages awaiting deploy.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pcbridge-keys
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 128Mi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pcbridge-packages
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 10Gi
