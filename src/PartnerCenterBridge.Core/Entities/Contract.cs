@@ -22,5 +22,8 @@ public class Contract
     /// </summary>
     public ICollection<AppTemplate> DesiredApps { get; set; } = new List<AppTemplate>();
 
+    /// <summary>Per-contract new-hire provisioning defaults. Null until configured.</summary>
+    public ProvisioningTemplate? ProvisioningTemplate { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

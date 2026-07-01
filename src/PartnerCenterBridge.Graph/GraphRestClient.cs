@@ -41,6 +41,11 @@ internal sealed class GraphRestClient
     public Task<JsonDocument> PostAsync(string url, object body, CancellationToken ct) => SendAsync(New(HttpMethod.Post, url, body), ct);
     public Task<JsonDocument> GetAsync(string url, CancellationToken ct) => SendAsync(New(HttpMethod.Get, url, null), ct);
     public Task<JsonDocument> PatchAsync(string url, object body, CancellationToken ct) => SendAsync(New(HttpMethod.Patch, url, body), ct);
+    public Task<JsonDocument> PutAsync(string url, object body, CancellationToken ct) => SendAsync(New(HttpMethod.Put, url, body), ct);
+    public Task<JsonDocument> DeleteAsync(string url, CancellationToken ct) => SendAsync(New(HttpMethod.Delete, url, null), ct);
+
+    /// <summary>Absolute base URL (e.g. <c>https://graph.microsoft.com/beta</c>) for building $ref bodies.</summary>
+    public string BaseUrl => _baseUrl;
 
     private async Task<JsonDocument> SendAsync(HttpRequestMessage req, CancellationToken ct)
     {

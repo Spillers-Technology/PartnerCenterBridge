@@ -29,6 +29,7 @@ builder.Services.AddScoped<ISamTokenStore, ProtectedSamTokenStore>();
 builder.Services.AddScoped<ITokenProvider, SamTokenService>();
 builder.Services.AddScoped<SamBootstrapService>();
 builder.Services.AddScoped<IGraphTenantClientFactory, GraphTenantClientFactory>();
+builder.Services.AddScoped<IGraphUserService, GraphUserService>();
 builder.Services.AddSingleton<IIntuneWinPackageReader, IntuneWinPackageReader>();
 builder.Services.AddScoped<IIntuneWin32Service, IntuneWin32Service>();
 builder.Services.AddScoped<DeploymentOrchestrator>();
