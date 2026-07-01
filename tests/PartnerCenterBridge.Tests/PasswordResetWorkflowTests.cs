@@ -71,10 +71,13 @@ public class PasswordResetWorkflowTests : IDisposable
         Assert.Equal(16, password.Length);
 
         // The password must reach Graph but never appear in the recorded steps.
+        // Parse the body rather than substring-match: the JSON encoder escapes chars like '+'.
         var patchBody = _server.LogEntries
             .Single(e => e.RequestMessage.Method == "PATCH").RequestMessage.Body!;
-        Assert.Contains(password, patchBody);
-        Assert.Contains("\"forceChangePasswordNextSignIn\":true", patchBody.Replace(" ", ""));
+        using var doc = System.Text.Json.JsonDocument.Parse(patchBody);
+        var profile = doc.RootElement.GetProperty("passwordProfile");
+        Assert.Equal(password, profile.GetProperty("password").GetString());
+        Assert.True(profile.GetProperty("forceChangePasswordNextSignIn").GetBoolean());
         Assert.All(run.Steps, s => Assert.DoesNotContain(password, s.Detail ?? ""));
     }
 
