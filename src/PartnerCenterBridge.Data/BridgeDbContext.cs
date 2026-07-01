@@ -19,12 +19,27 @@ public class BridgeDbContext : DbContext
         v => v.Aggregate(0, (acc, s) => HashCode.Combine(acc, s.GetHashCode())),
         v => v.ToList());
 
+    // Generic JSON column mapping for the workflow-run payloads (findings, steps, inputs).
+    // Rows are insert-only audit records, so serialised-form equality is plenty.
+    private static ValueConverter<T, string> JsonConverter<T>() where T : class, new() => new(
+        v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+        v => System.Text.Json.JsonSerializer.Deserialize<T>(v, (System.Text.Json.JsonSerializerOptions?)null) ?? new T());
+
+    private static ValueComparer<T> JsonComparer<T>() where T : class, new() => new(
+        (a, b) => System.Text.Json.JsonSerializer.Serialize(a, (System.Text.Json.JsonSerializerOptions?)null)
+               == System.Text.Json.JsonSerializer.Serialize(b, (System.Text.Json.JsonSerializerOptions?)null),
+        v => System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null).GetHashCode(),
+        v => System.Text.Json.JsonSerializer.Deserialize<T>(
+            System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
+            (System.Text.Json.JsonSerializerOptions?)null)!);
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<AppTemplate> AppTemplates => Set<AppTemplate>();
     public DbSet<Deployment> Deployments => Set<Deployment>();
     public DbSet<ProvisioningTemplate> ProvisioningTemplates => Set<ProvisioningTemplate>();
     public DbSet<SecretRecord> Secrets => Set<SecretRecord>();
+    public DbSet<WorkflowRun> WorkflowRuns => Set<WorkflowRun>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -77,6 +92,21 @@ public class BridgeDbContext : DbContext
         b.Entity<SecretRecord>(e =>
         {
             e.HasKey(s => s.Name);
+        });
+
+        b.Entity<WorkflowRun>(e =>
+        {
+            e.Property(r => r.WorkflowId).IsRequired();
+            e.HasIndex(r => r.StartedAt);
+            e.HasIndex(r => new { r.TenantId, r.StartedAt });
+            e.Property(r => r.Inputs).HasColumnType("jsonb")
+                .HasConversion(JsonConverter<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
+            e.Property(r => r.Findings).HasColumnType("jsonb")
+                .HasConversion(JsonConverter<List<Core.Workflows.Finding>>(), JsonComparer<List<Core.Workflows.Finding>>());
+            e.Property(r => r.Steps).HasColumnType("jsonb")
+                .HasConversion(JsonConverter<List<Core.Abstractions.ProvisioningStep>>(), JsonComparer<List<Core.Abstractions.ProvisioningStep>>());
+            e.HasOne(r => r.Tenant).WithMany()
+                .HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

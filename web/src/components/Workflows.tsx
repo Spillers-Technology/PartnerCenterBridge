@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
-import type { DiagnosisResult, Finding, Tenant, WorkflowRunResult, WorkflowSummary } from "../types";
+import type { DiagnosisResult, Finding, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary } from "../types";
 import { StepList } from "./StepList";
 
 const badgeClass: Record<Finding["status"], string> = {
@@ -37,11 +37,15 @@ export function Workflows() {
   const [run, setRun] = useState<WorkflowRunResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [runs, setRuns] = useState<WorkflowRunRecord[]>([]);
+
+  const loadRuns = () => api.workflows.runs({ take: 25 }).then(setRuns).catch(() => {});
 
   useEffect(() => {
     Promise.all([api.workflows.list(), api.tenants.list()])
       .then(([w, t]) => { setCatalog(w); setTenants(t); })
       .catch((e) => setError(String(e)));
+    loadRuns();
   }, []);
 
   const selected = useMemo(() => catalog.find((w) => w.id === selectedId), [catalog, selectedId]);
@@ -64,10 +68,12 @@ export function Workflows() {
   const diagnose = call("diagnose", async () => {
     setRun(null);
     setDiagnosis(await api.workflows.diagnose(selected!.id, tenantId, inputs));
+    loadRuns();
   });
   const fix = call("fix", async () => {
     const r = await api.workflows.remediate(selected!.id, tenantId, inputs);
     setRun(r); if (r.postState) setDiagnosis(r.postState);
+    loadRuns();
   });
 
   const grouped = catalog.reduce<Record<string, WorkflowSummary[]>>((acc, w) => {
@@ -121,6 +127,39 @@ export function Workflows() {
             </>
           )}
         </div>
+      </div>
+
+      <div className="plan">
+        <h3>Recent runs</h3>
+        {runs.length === 0 && <p className="muted">No runs recorded yet.</p>}
+        {runs.length > 0 && (
+          <table>
+            <thead>
+              <tr><th>When</th><th>Workflow</th><th>Tenant</th><th>Kind</th><th>Operator</th><th>Result</th></tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id} title={r.error ?? undefined}>
+                  <td>{new Date(r.startedAt).toLocaleString()}</td>
+                  <td>{r.workflowName}</td>
+                  <td>{r.tenantName}</td>
+                  <td>{r.kind}</td>
+                  <td>{r.operator}</td>
+                  <td>
+                    <span className={`badge ${r.succeeded ? "succeeded" : "failed"}`}>
+                      {r.succeeded ? "ok" : "failed"}
+                    </span>{" "}
+                    {r.healthy !== null && r.healthy !== undefined && (
+                      <span className={`badge ${r.healthy ? "succeeded" : "pending"}`}>
+                        {r.healthy ? "healthy" : "needs fixing"}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </section>
   );

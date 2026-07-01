@@ -2,7 +2,7 @@ import { getAccessToken } from "./auth";
 import type {
   AppTemplate, ArchiveRemediationOptions, ArchiveRemediationResult, ArchiveState,
   Contract, Deployment, DiagnosisResult, DirectoryObject, ProvisioningResult,
-  ProvisioningTemplate, Sku, Tenant, WorkflowRunResult, WorkflowSummary
+  ProvisioningTemplate, Sku, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
 } from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
@@ -99,6 +99,14 @@ export const api = {
 
   workflows: {
     list: () => request<WorkflowSummary[]>("/api/workflows"),
+    runs: (opts?: { tenantId?: string; workflowId?: string; take?: number }) => {
+      const q = new URLSearchParams();
+      if (opts?.tenantId) q.set("tenantId", opts.tenantId);
+      if (opts?.workflowId) q.set("workflowId", opts.workflowId);
+      if (opts?.take) q.set("take", String(opts.take));
+      const qs = q.toString();
+      return request<WorkflowRunRecord[]>(`/api/workflows/runs${qs ? `?${qs}` : ""}`);
+    },
     diagnose: (id: string, tenantId: string, inputs: Record<string, string>) =>
       request<DiagnosisResult>(`/api/workflows/${id}/diagnose`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })

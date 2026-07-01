@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using PartnerCenterBridge.Api.Auth;
+using PartnerCenterBridge.Api.Notifications;
 using PartnerCenterBridge.Api.Orchestration;
+using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 using PartnerCenterBridge.Exchange;
@@ -43,9 +45,13 @@ builder.Services.AddSingleton<IPwshRunner>(sp =>
 });
 builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
 
-// Known-fix workflow library (catalog + Graph-backed workflows).
+// Known-fix workflow library (catalog + Graph-backed workflows). Runs are persisted and
+// failures pushed to the configured webhook (Notifications section; empty URL disables).
 builder.Services.AddScoped<PartnerCenterBridge.Core.Workflows.WorkflowCatalog>();
 builder.Services.AddGraphWorkflows();
+builder.Services.Configure<NotificationOptions>(cfg.GetSection(NotificationOptions.SectionName));
+builder.Services.AddScoped<IRunNotifier, WebhookRunNotifier>();
+builder.Services.AddHttpClient("notifications");
 builder.Services.AddScoped<IIntuneWin32Service, IntuneWin32Service>();
 builder.Services.AddScoped<DeploymentOrchestrator>();
 builder.Services.AddSingleton<IPackageStore, FilePackageStore>();
@@ -80,7 +86,9 @@ var origins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Emp
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
-builder.Services.AddControllers();
+// Enums cross the wire as their names ("Active", "Ok"), matching the SPA's string unions.
+builder.Services.AddControllers().AddJsonOptions(o =>
+    o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 

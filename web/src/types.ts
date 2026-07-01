@@ -115,6 +115,25 @@ export interface Finding { name: string; status: FindingStatus; detail?: string 
 export interface DiagnosisResult { findings: Finding[]; healthy: boolean }
 export interface WorkflowRunResult { steps: ProvisioningStep[]; postState?: DiagnosisResult; succeeded: boolean }
 
+export type WorkflowRunKind = "Diagnose" | "Remediate";
+export interface WorkflowRunRecord {
+  id: string;
+  workflowId: string;
+  workflowName: string;
+  tenantId: string;
+  tenantName: string;
+  kind: WorkflowRunKind;
+  operator: string;
+  inputs: Record<string, string>;
+  findings: Finding[];
+  steps: ProvisioningStep[];
+  succeeded: boolean;
+  healthy?: boolean;
+  error?: string;
+  startedAt: string;
+  durationMs: number;
+}
+
 export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string }
 export interface WorkflowSummary {
   id: string;
