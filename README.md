@@ -7,8 +7,14 @@ reconciles every tenant on the contract to it.
 
 > **Status:** Phase 1 (templated Win32 `.intunewin` deploy across tenants, with updates),
 > Phase 2 (new-hire provisioning + offboarding via Graph, contract-driven), and Phase 3
-> (Exchange Online mailbox ops — convert-to-shared + forwarding — via EXO PowerShell V3) are in.
-> Phase 4 (two-way LDAP) is scaffolded for but not implemented.
+> (Exchange Online mailbox ops via EXO PowerShell V3) are in. Phase 4 (two-way LDAP) is
+> scaffolded for but not implemented.
+>
+> **Mailbox archive workflow** ("full / not archiving"): one **Diagnose → Fix → Nudge** flow
+> that enables the archive + auto-expand, ensures a retention policy, clears the hidden blockers
+> (retention hold, `ElcProcessingDisabled`), and triggers the Managed Folder Assistant — with the
+> full mailbox state surfaced to the operator, since the move runs asynchronously and often needs
+> re-nudging. Replaces the ~10-cmdlet dance.
 
 ## Architecture
 

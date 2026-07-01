@@ -7,8 +7,9 @@ import { DeployWizard } from "./components/DeployWizard";
 import { Deployments } from "./components/Deployments";
 import { NewHire } from "./components/NewHire";
 import { Offboard } from "./components/Offboard";
+import { MailboxArchive } from "./components/MailboxArchive";
 
-type Tab = "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard";
+type Tab = "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "archive";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "tenants", label: "Tenants" },
@@ -17,7 +18,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "deploy", label: "Deploy" },
   { key: "history", label: "History" },
   { key: "newhire", label: "New Hire" },
-  { key: "offboard", label: "Offboard" }
+  { key: "offboard", label: "Offboard" },
+  { key: "archive", label: "Mailbox Archive" }
 ];
 
 export function App() {
@@ -66,6 +68,7 @@ export function App() {
         {tab === "history" && <Deployments />}
         {tab === "newhire" && <NewHire />}
         {tab === "offboard" && <Offboard />}
+        {tab === "archive" && <MailboxArchive />}
       </main>
     </div>
   );

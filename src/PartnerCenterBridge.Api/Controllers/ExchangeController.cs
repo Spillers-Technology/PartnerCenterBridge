@@ -41,4 +41,42 @@ public class ExchangeController : ControllerBase
         try { return Ok(await _exchange.ListSharedMailboxesAsync(tenant, ct)); }
         catch (Exception ex) { return StatusCode(502, ex.Message); }
     }
+
+    /// <summary>Diagnose why a mailbox is full / not archiving (sizes, quotas, and processing blockers).</summary>
+    [HttpGet("archive")]
+    public async Task<ActionResult<ArchiveState>> ArchiveState(Guid tenantId, [FromQuery] string identity, CancellationToken ct)
+    {
+        var tenant = await _db.Tenants.FindAsync([tenantId], ct);
+        if (tenant is null) return NotFound("Tenant not found.");
+        if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");
+        try
+        {
+            var state = await _exchange.GetArchiveStateAsync(tenant, identity, ct);
+            return state is null ? NotFound("Mailbox not found.") : Ok(state);
+        }
+        catch (Exception ex) { return StatusCode(502, ex.Message); }
+    }
+
+    /// <summary>Apply the archive fix (enable archive/auto-expand, retention policy, clear blocks, trigger MFA).</summary>
+    [HttpPost("archive/remediate")]
+    public async Task<ActionResult<ArchiveRemediationResult>> RemediateArchive(
+        Guid tenantId, [FromQuery] string identity, [FromBody] ArchiveRemediationOptions? options, CancellationToken ct)
+    {
+        var tenant = await _db.Tenants.FindAsync([tenantId], ct);
+        if (tenant is null) return NotFound("Tenant not found.");
+        if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");
+        try { return Ok(await _exchange.RemediateArchiveAsync(tenant, identity, options ?? new(), ct)); }
+        catch (Exception ex) { return StatusCode(502, ex.Message); }
+    }
+
+    /// <summary>Re-trigger the Managed Folder Assistant and return refreshed state (the async "nudge").</summary>
+    [HttpPost("archive/nudge")]
+    public async Task<ActionResult<ArchiveRemediationResult>> NudgeArchive(Guid tenantId, [FromQuery] string identity, CancellationToken ct)
+    {
+        var tenant = await _db.Tenants.FindAsync([tenantId], ct);
+        if (tenant is null) return NotFound("Tenant not found.");
+        if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");
+        try { return Ok(await _exchange.NudgeArchiveAsync(tenant, identity, ct)); }
+        catch (Exception ex) { return StatusCode(502, ex.Message); }
+    }
 }

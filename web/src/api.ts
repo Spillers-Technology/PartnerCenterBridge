@@ -1,6 +1,7 @@
 import { getAccessToken } from "./auth";
 import type {
-  AppTemplate, Contract, Deployment, DirectoryObject, ProvisioningResult,
+  AppTemplate, ArchiveRemediationOptions, ArchiveRemediationResult, ArchiveState,
+  Contract, Deployment, DirectoryObject, ProvisioningResult,
   ProvisioningTemplate, Sku, Tenant
 } from "./types";
 
@@ -81,5 +82,18 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body)
       })
+  },
+
+  exchange: {
+    archiveState: (tenantId: string, identity: string) =>
+      request<ArchiveState>(`/api/exchange/${tenantId}/archive?identity=${encodeURIComponent(identity)}`),
+    remediateArchive: (tenantId: string, identity: string, options: ArchiveRemediationOptions) =>
+      request<ArchiveRemediationResult>(
+        `/api/exchange/${tenantId}/archive/remediate?identity=${encodeURIComponent(identity)}`,
+        { method: "POST", body: JSON.stringify(options) }),
+    nudgeArchive: (tenantId: string, identity: string) =>
+      request<ArchiveRemediationResult>(
+        `/api/exchange/${tenantId}/archive/nudge?identity=${encodeURIComponent(identity)}`,
+        { method: "POST", body: JSON.stringify({}) })
   }
 };
