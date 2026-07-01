@@ -35,6 +35,11 @@ public class TerminationRequest
     public bool RevokeSessions { get; set; } = true;
     public bool RemoveLicenses { get; set; } = true;
     public bool RemoveFromGroups { get; set; } = true;
+
+    /// <summary>Convert the user's mailbox to shared via Exchange Online (Phase 3).</summary>
+    public bool ConvertMailboxToShared { get; set; }
+    /// <summary>Optional SMTP address to forward the mailbox to during offboarding.</summary>
+    public string? ForwardingSmtpAddress { get; set; }
 }
 
 /// <summary>One step in a multi-step provisioning/offboarding run, recorded for the UI.</summary>

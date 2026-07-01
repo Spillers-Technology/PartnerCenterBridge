@@ -5,9 +5,10 @@ and the Partner Center REST API to make cross-tenant Intune + identity work repe
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Phase 1 status:** walking skeleton + the first real feature — templated Win32 `.intunewin`
-> deploy across many tenants, with updates. See [the plan](.) for the full roadmap
-> (identity provisioning, Exchange Online, two-way LDAP come later).
+> **Status:** Phase 1 (templated Win32 `.intunewin` deploy across tenants, with updates),
+> Phase 2 (new-hire provisioning + offboarding via Graph, contract-driven), and Phase 3
+> (Exchange Online mailbox ops — convert-to-shared + forwarding — via EXO PowerShell V3) are in.
+> Phase 4 (two-way LDAP) is scaffolded for but not implemented.
 
 ## Architecture
 
@@ -30,8 +31,9 @@ web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (c
 | `PartnerCenterBridge.Core` | Domain entities, reconcile engine, cross-project abstractions. No external SDK deps. |
 | `PartnerCenterBridge.Data` | EF Core `BridgeDbContext`, migrations, `ProtectedSamTokenStore`. |
 | `PartnerCenterBridge.PartnerCenter` | `SamTokenService` (MSAL SAM flow), `PartnerCenterClient` (REST v3). |
-| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `.intunewin` reader, tenant client factory. |
-| `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy orchestration. |
+| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory. |
+| `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`. |
+| `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration. |
 | `web/` | React SPA: Tenants, Contracts, App Templates, Deploy wizard, History. |
 
 ## Run locally (docker-compose)

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\PartnerCenterBridge.Data\PartnerCenterBridge.Data.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.PartnerCenter\PartnerCenterBridge.PartnerCenter.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.Graph\PartnerCenterBridge.Graph.csproj" />
+    <ProjectReference Include="..\PartnerCenterBridge.Exchange\PartnerCenterBridge.Exchange.csproj" />
   </ItemGroup>
 
 </Project>

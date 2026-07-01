@@ -13,11 +13,13 @@ public class ProvisioningController : ControllerBase
 {
     private readonly BridgeDbContext _db;
     private readonly IGraphUserService _users;
+    private readonly IExchangeOnlineService _exchange;
 
-    public ProvisioningController(BridgeDbContext db, IGraphUserService users)
+    public ProvisioningController(BridgeDbContext db, IGraphUserService users, IExchangeOnlineService exchange)
     {
         _db = db;
         _users = users;
+        _exchange = exchange;
     }
 
     /// <summary>Create a new-hire user in the selected tenant, applying licenses/groups/manager.</summary>
@@ -35,6 +37,20 @@ public class ProvisioningController : ControllerBase
     {
         var tenant = await _db.Tenants.FindAsync([req.TenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
-        return Ok(await _users.TerminateUserAsync(tenant, req.Termination, ct));
+
+        var result = await _users.TerminateUserAsync(tenant, req.Termination, ct);
+
+        // Mailbox conversion/forwarding is Exchange Online only (no Graph equivalent) — append its
+        // steps to the same result so the operator sees the whole offboard in one place.
+        if (req.Termination.ConvertMailboxToShared)
+        {
+            var exo = await _exchange.ConvertToSharedAsync(
+                tenant, req.Termination.UserId,
+                req.Termination.ForwardingSmtpAddress,
+                deliverToMailboxAndForward: false, ct);
+            result.Steps.AddRange(exo.Steps);
+        }
+
+        return Ok(result);
     }
 }
