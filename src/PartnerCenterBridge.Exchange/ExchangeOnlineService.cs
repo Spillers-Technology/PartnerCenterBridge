@@ -57,6 +57,63 @@ public class ExchangeOnlineService : IExchangeOnlineService
         return arr.EnumerateArray().Select(ToMailbox).ToList();
     }
 
+    public async Task<ArchiveState?> GetArchiveStateAsync(Tenant tenant, string identity, CancellationToken ct = default)
+    {
+        var script = await RunAsync(tenant, "getArchiveState", new { identity }, ct);
+        return script.Data is { ValueKind: JsonValueKind.Object } d ? ToArchiveState(d) : null;
+    }
+
+    public async Task<ArchiveRemediationResult> RemediateArchiveAsync(
+        Tenant tenant, string identity, ArchiveRemediationOptions options, CancellationToken ct = default)
+    {
+        var script = await RunAsync(tenant, "remediateArchive", new
+        {
+            identity,
+            enableAutoExpandingArchive = options.EnableAutoExpandingArchive,
+            retentionPolicyName = options.RetentionPolicyName,
+            clearProcessingBlocks = options.ClearProcessingBlocks,
+            triggerProcessing = options.TriggerProcessing
+        }, ct);
+        return new ArchiveRemediationResult
+        {
+            Steps = script.Steps,
+            State = script.Data is { ValueKind: JsonValueKind.Object } d ? ToArchiveState(d) : null
+        };
+    }
+
+    public async Task<ArchiveRemediationResult> NudgeArchiveAsync(Tenant tenant, string identity, CancellationToken ct = default)
+    {
+        var script = await RunAsync(tenant, "nudgeArchive", new { identity }, ct);
+        return new ArchiveRemediationResult
+        {
+            Steps = script.Steps,
+            State = script.Data is { ValueKind: JsonValueKind.Object } d ? ToArchiveState(d) : null
+        };
+    }
+
+    private static ArchiveState ToArchiveState(JsonElement e)
+    {
+        string? Str(string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+        bool Bool(string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+        long Long(string name) => e.TryGetProperty(name, out var v) && v.TryGetInt64(out var n) ? n : 0;
+
+        return new ArchiveState(
+            Str("userPrincipalName") ?? "",
+            Str("primarySize") ?? "",
+            Long("primaryItemCount"),
+            Str("prohibitSendReceiveQuota") ?? "",
+            Bool("archiveEnabled"),
+            Str("archiveStatus") ?? "",
+            Bool("autoExpandingArchiveEnabled"),
+            Str("archiveQuota"),
+            Str("archiveWarningQuota"),
+            Str("archiveSize"),
+            Long("archiveItemCount"),
+            Str("retentionPolicy"),
+            Bool("retentionHoldEnabled"),
+            Bool("elcProcessingDisabled"));
+    }
+
     private async Task<ExoScriptResult> RunAsync(Tenant tenant, string operation, object parameters, CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new

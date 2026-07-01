@@ -79,3 +79,33 @@ export interface ProvisioningTemplate {
   licenseSkuIds: string[];
   groupIds: string[];
 }
+
+export interface ArchiveState {
+  userPrincipalName: string;
+  primarySize: string;
+  primaryItemCount: number;
+  prohibitSendReceiveQuota: string;
+  archiveEnabled: boolean;
+  archiveStatus: string;
+  autoExpandingArchiveEnabled: boolean;
+  archiveQuota?: string;
+  archiveWarningQuota?: string;
+  archiveSize?: string;
+  archiveItemCount: number;
+  retentionPolicy?: string;
+  retentionHoldEnabled: boolean;
+  elcProcessingDisabled: boolean;
+}
+
+export interface ArchiveRemediationResult {
+  steps: ProvisioningStep[];
+  state?: ArchiveState;
+  succeeded: boolean;
+}
+
+export interface ArchiveRemediationOptions {
+  enableAutoExpandingArchive: boolean;
+  retentionPolicyName?: string;
+  clearProcessingBlocks: boolean;
+  triggerProcessing: boolean;
+}
