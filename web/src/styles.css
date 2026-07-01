@@ -1,0 +1,38 @@
+:root {
+  --bg: #0f172a; --panel: #1e293b; --line: #334155; --text: #e2e8f0; --muted: #94a3b8;
+  --accent: #38bdf8; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); }
+.center { display: grid; place-items: center; gap: 1rem; height: 100vh; }
+.app > header {
+  display: flex; align-items: center; gap: 1.5rem; padding: 0.75rem 1.5rem;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 1.1rem; margin: 0; }
+nav { display: flex; gap: 0.25rem; flex: 1; }
+nav button, .toolbar button, form button, .plan button, td button {
+  background: transparent; color: var(--text); border: 1px solid var(--line);
+  padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer;
+}
+nav button.active { background: var(--accent); color: #04283a; border-color: var(--accent); }
+.user { display: flex; gap: 0.75rem; align-items: center; color: var(--muted); }
+main { padding: 1.5rem; max-width: 1100px; margin: 0 auto; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; }
+table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+input, select { background: #0b1220; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 0.4rem 0.5rem; }
+.row, .grid { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 1rem 0; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); }
+.grid button, .row button { grid-column: 1 / -1; justify-self: start; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 1rem 0; }
+.check { display: inline-flex; gap: 0.4rem; align-items: center; margin: 0.25rem 1rem 0.25rem 0; }
+.field { display: grid; gap: 0.3rem; max-width: 420px; }
+.muted { color: var(--muted); }
+.mono { font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.error { color: var(--err); white-space: pre-wrap; }
+.badge { padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--line); }
+.badge.active, .badge.succeeded, .badge.uptodate { color: var(--ok); border-color: var(--ok); }
+.badge.pending, .badge.uploading, .badge.committing, .badge.assigning, .badge.updateavailable, .badge.update, .badge.deploy { color: var(--warn); border-color: var(--warn); }
+.badge.failed, .badge.nodelegation, .badge.retry { color: var(--err); border-color: var(--err); }

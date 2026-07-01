@@ -1,0 +1,21 @@
+# The web pod's nginx already proxies /api and /health to the API service, so the ingress only
+# needs to route to the web service. Host + TLS are patched per-environment in the overlay.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pcbridge
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "2g"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: pcbridge.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pcbridge-web
+                port:
+                  number: 80
