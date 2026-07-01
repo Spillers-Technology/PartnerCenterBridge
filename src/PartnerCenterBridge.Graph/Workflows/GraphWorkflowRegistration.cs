@@ -11,6 +11,8 @@ public static class GraphWorkflowRegistration
         services.AddScoped<TenantGraphRest>();
         services.AddScoped<IWorkflow, LicenseRepairWorkflow>();
         services.AddScoped<IWorkflow, MfaResetWorkflow>();
+        services.AddScoped<IWorkflow, CompromisedAccountLockdownWorkflow>();
+        services.AddScoped<IWorkflow, PasswordResetWorkflow>();
         return services;
     }
 }

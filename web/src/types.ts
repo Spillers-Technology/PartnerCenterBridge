@@ -80,40 +80,16 @@ export interface ProvisioningTemplate {
   groupIds: string[];
 }
 
-export interface ArchiveState {
-  userPrincipalName: string;
-  primarySize: string;
-  primaryItemCount: number;
-  prohibitSendReceiveQuota: string;
-  archiveEnabled: boolean;
-  archiveStatus: string;
-  autoExpandingArchiveEnabled: boolean;
-  archiveQuota?: string;
-  archiveWarningQuota?: string;
-  archiveSize?: string;
-  archiveItemCount: number;
-  retentionPolicy?: string;
-  retentionHoldEnabled: boolean;
-  elcProcessingDisabled: boolean;
-}
-
-export interface ArchiveRemediationResult {
-  steps: ProvisioningStep[];
-  state?: ArchiveState;
-  succeeded: boolean;
-}
-
-export interface ArchiveRemediationOptions {
-  enableAutoExpandingArchive: boolean;
-  retentionPolicyName?: string;
-  clearProcessingBlocks: boolean;
-  triggerProcessing: boolean;
-}
-
 export type FindingStatus = "Ok" | "Info" | "Warning" | "Blocker";
 export interface Finding { name: string; status: FindingStatus; detail?: string }
 export interface DiagnosisResult { findings: Finding[]; healthy: boolean }
-export interface WorkflowRunResult { steps: ProvisioningStep[]; postState?: DiagnosisResult; succeeded: boolean }
+export interface WorkflowRunResult {
+  steps: ProvisioningStep[];
+  postState?: DiagnosisResult;
+  /** Show-once secrets (e.g. a temporary password) - never persisted to run history. */
+  ephemeral?: Record<string, string>;
+  succeeded: boolean;
+}
 
 export type WorkflowRunKind = "Diagnose" | "Remediate";
 export interface WorkflowRunRecord {
@@ -134,7 +110,7 @@ export interface WorkflowRunRecord {
   durationMs: number;
 }
 
-export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string }
+export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string; type: "text" | "bool" }
 export interface WorkflowSummary {
   id: string;
   name: string;

@@ -1,7 +1,6 @@
 import { getAccessToken } from "./auth";
 import type {
-  AppTemplate, ArchiveRemediationOptions, ArchiveRemediationResult, ArchiveState,
-  Contract, Deployment, DiagnosisResult, DirectoryObject, ProvisioningResult,
+  AppTemplate, Contract, Deployment, DiagnosisResult, DirectoryObject, ProvisioningResult,
   ProvisioningTemplate, Sku, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
 } from "./types";
 
@@ -82,19 +81,6 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(body)
       })
-  },
-
-  exchange: {
-    archiveState: (tenantId: string, identity: string) =>
-      request<ArchiveState>(`/api/exchange/${tenantId}/archive?identity=${encodeURIComponent(identity)}`),
-    remediateArchive: (tenantId: string, identity: string, options: ArchiveRemediationOptions) =>
-      request<ArchiveRemediationResult>(
-        `/api/exchange/${tenantId}/archive/remediate?identity=${encodeURIComponent(identity)}`,
-        { method: "POST", body: JSON.stringify(options) }),
-    nudgeArchive: (tenantId: string, identity: string) =>
-      request<ArchiveRemediationResult>(
-        `/api/exchange/${tenantId}/archive/nudge?identity=${encodeURIComponent(identity)}`,
-        { method: "POST", body: JSON.stringify({}) })
   },
 
   workflows: {

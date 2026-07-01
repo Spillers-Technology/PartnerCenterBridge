@@ -110,7 +110,13 @@ export function Workflows() {
                   {tenants.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}
                 </select>
               </label>
-              {selected.inputs.map((i) => (
+              {selected.inputs.map((i) => i.type === "bool" ? (
+                <label key={i.key} className="check">
+                  <input type="checkbox" checked={(inputs[i.key] ?? "true") === "true"}
+                    onChange={(e) => setInputs({ ...inputs, [i.key]: String(e.target.checked) })} />
+                  {i.label}
+                </label>
+              ) : (
                 <label key={i.key} className="field">
                   {i.label}{i.required ? "" : " (optional)"}
                   <input placeholder={i.placeholder} value={inputs[i.key] ?? ""}
@@ -124,6 +130,9 @@ export function Workflows() {
               {error && <p className="error">{error}</p>}
               {diagnosis && <Findings result={diagnosis} title="Diagnosis" />}
               {run && <StepList result={{ steps: run.steps, succeeded: run.succeeded }} />}
+              {run?.ephemeral && Object.entries(run.ephemeral).map(([k, v]) => (
+                <p key={k}>{k}: <span className="mono">{v}</span> (shown once - not recorded)</p>
+              ))}
             </>
           )}
         </div>
