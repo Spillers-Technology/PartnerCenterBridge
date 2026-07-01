@@ -7,6 +7,7 @@ using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Orchestration;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
+using PartnerCenterBridge.Exchange;
 using PartnerCenterBridge.Graph;
 using PartnerCenterBridge.PartnerCenter;
 
@@ -31,6 +32,15 @@ builder.Services.AddScoped<SamBootstrapService>();
 builder.Services.AddScoped<IGraphTenantClientFactory, GraphTenantClientFactory>();
 builder.Services.AddScoped<IGraphUserService, GraphUserService>();
 builder.Services.AddSingleton<IIntuneWinPackageReader, IntuneWinPackageReader>();
+
+// Exchange Online (out-of-process EXO PowerShell V3, app-only certificate).
+builder.Services.Configure<ExchangeOptions>(cfg.GetSection(ExchangeOptions.SectionName));
+builder.Services.AddSingleton<IPwshRunner>(sp =>
+{
+    var o = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ExchangeOptions>>().Value;
+    return new PwshRunner(o.PwshPath, o.TimeoutSeconds);
+});
+builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
 builder.Services.AddScoped<IIntuneWin32Service, IntuneWin32Service>();
 builder.Services.AddScoped<DeploymentOrchestrator>();
 builder.Services.AddSingleton<IPackageStore, FilePackageStore>();

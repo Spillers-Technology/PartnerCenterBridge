@@ -28,11 +28,14 @@ services:
       Partner__ClientSecret: ""
       Partner__PartnerTenantId: ""
       Partner__SeedRefreshToken: ""
+      # Exchange Online (app-only cert). Leave blank locally; convert-to-shared reports failure gracefully.
+      Exchange__AppId: ""
+      Exchange__CertificatePath: "/certs/exo.pfx"
     depends_on:
       db:
         condition: service_healthy
     ports: ["5080:8080"]
-    volumes: ["keys:/keys", "packages:/packages"]
+    volumes: ["keys:/keys", "packages:/packages", "certs:/certs"]
 
   web:
     build:
@@ -44,3 +47,4 @@ volumes:
   pgdata:
   keys:
   packages:
+  certs:

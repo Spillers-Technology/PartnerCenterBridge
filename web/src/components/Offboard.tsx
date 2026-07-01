@@ -9,7 +9,8 @@ export function Offboard() {
   const [search, setSearch] = useState("");
   const [users, setUsers] = useState<DirectoryObject[]>([]);
   const [userId, setUserId] = useState("");
-  const [opts, setOpts] = useState({ blockSignIn: true, revokeSessions: true, removeLicenses: true, removeFromGroups: true });
+  const [opts, setOpts] = useState({ blockSignIn: true, revokeSessions: true, removeLicenses: true, removeFromGroups: true, convertMailboxToShared: false });
+  const [forwardingSmtpAddress, setForwardingSmtpAddress] = useState("");
   const [result, setResult] = useState<ProvisioningResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +27,12 @@ export function Offboard() {
   const submit = async () => {
     if (!tenantId || !userId) return;
     setBusy(true); setError(null); setResult(null);
-    try { setResult(await api.provisioning.terminate(tenantId, { userId, ...opts })); }
+    try {
+      setResult(await api.provisioning.terminate(tenantId, {
+        userId, ...opts,
+        forwardingSmtpAddress: forwardingSmtpAddress || undefined
+      }));
+    }
     catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   };
@@ -64,7 +70,8 @@ export function Offboard() {
               ["blockSignIn", "Block sign-in"],
               ["revokeSessions", "Revoke sessions"],
               ["removeLicenses", "Remove licenses"],
-              ["removeFromGroups", "Remove from groups"]
+              ["removeFromGroups", "Remove from groups"],
+              ["convertMailboxToShared", "Convert mailbox to shared (Exchange Online)"]
             ] as const).map(([key, label]) => (
               <label key={key} className="check">
                 <input type="checkbox" checked={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: e.target.checked })} />
@@ -72,6 +79,14 @@ export function Offboard() {
               </label>
             ))}
           </fieldset>
+
+          {opts.convertMailboxToShared && (
+            <label className="field">
+              Forward mailbox to (optional SMTP)
+              <input placeholder="manager@contoso.com" value={forwardingSmtpAddress}
+                onChange={(e) => setForwardingSmtpAddress(e.target.value)} />
+            </label>
+          )}
 
           <button onClick={submit} disabled={busy || !userId}>{busy ? "Offboarding…" : "Offboard user"}</button>
         </>
