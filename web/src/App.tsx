@@ -5,15 +5,19 @@ import { Contracts } from "./components/Contracts";
 import { AppTemplates } from "./components/AppTemplates";
 import { DeployWizard } from "./components/DeployWizard";
 import { Deployments } from "./components/Deployments";
+import { NewHire } from "./components/NewHire";
+import { Offboard } from "./components/Offboard";
 
-type Tab = "tenants" | "contracts" | "templates" | "deploy" | "history";
+type Tab = "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "tenants", label: "Tenants" },
   { key: "contracts", label: "Contracts" },
   { key: "templates", label: "App Templates" },
   { key: "deploy", label: "Deploy" },
-  { key: "history", label: "History" }
+  { key: "history", label: "History" },
+  { key: "newhire", label: "New Hire" },
+  { key: "offboard", label: "Offboard" }
 ];
 
 export function App() {
@@ -60,6 +64,8 @@ export function App() {
         {tab === "templates" && <AppTemplates />}
         {tab === "deploy" && <DeployWizard />}
         {tab === "history" && <Deployments />}
+        {tab === "newhire" && <NewHire />}
+        {tab === "offboard" && <Offboard />}
       </main>
     </div>
   );

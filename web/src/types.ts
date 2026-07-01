@@ -42,3 +42,40 @@ export interface Deployment {
   lastError?: string;
   lastSyncedAt?: string;
 }
+
+export interface Sku {
+  skuId: string;
+  skuPartNumber: string;
+  enabled: number;
+  consumed: number;
+}
+
+export interface DirectoryObject {
+  id: string;
+  displayName: string;
+  userPrincipalName?: string;
+}
+
+export interface ProvisioningStep {
+  name: string;
+  success: boolean;
+  detail?: string;
+}
+
+export interface ProvisioningResult {
+  userId?: string;
+  userPrincipalName?: string;
+  initialPassword?: string;
+  steps: ProvisioningStep[];
+  succeeded: boolean;
+}
+
+export interface ProvisioningTemplate {
+  contractId: string;
+  usageLocation: string;
+  upnDomain?: string;
+  defaultJobTitle?: string;
+  defaultDepartment?: string;
+  licenseSkuIds: string[];
+  groupIds: string[];
+}

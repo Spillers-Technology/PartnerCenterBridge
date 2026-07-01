@@ -1,5 +1,8 @@
 import { getAccessToken } from "./auth";
-import type { AppTemplate, Contract, Deployment, Tenant } from "./types";
+import type {
+  AppTemplate, Contract, Deployment, DirectoryObject, ProvisioningResult,
+  ProvisioningTemplate, Sku, Tenant
+} from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
@@ -50,6 +53,33 @@ export const api = {
       request<Deployment[]>("/api/deployments", {
         method: "POST",
         body: JSON.stringify({ templateId, tenantIds })
+      })
+  },
+
+  directory: {
+    skus: (tenantId: string) => request<Sku[]>(`/api/directory/${tenantId}/skus`),
+    groups: (tenantId: string) => request<DirectoryObject[]>(`/api/directory/${tenantId}/groups`),
+    users: (tenantId: string, search?: string) =>
+      request<DirectoryObject[]>(`/api/directory/${tenantId}/users${search ? `?search=${encodeURIComponent(search)}` : ""}`)
+  },
+
+  provisioning: {
+    hire: (tenantId: string, hire: Record<string, unknown>) =>
+      request<ProvisioningResult>("/api/provisioning/hire", {
+        method: "POST",
+        body: JSON.stringify({ tenantId, hire })
+      }),
+    terminate: (tenantId: string, termination: Record<string, unknown>) =>
+      request<ProvisioningResult>("/api/provisioning/terminate", {
+        method: "POST",
+        body: JSON.stringify({ tenantId, termination })
+      }),
+    getTemplate: (contractId: string) =>
+      request<ProvisioningTemplate | undefined>(`/api/contracts/${contractId}/provisioning-template`),
+    upsertTemplate: (contractId: string, body: Record<string, unknown>) =>
+      request<ProvisioningTemplate>(`/api/contracts/${contractId}/provisioning-template`, {
+        method: "PUT",
+        body: JSON.stringify(body)
       })
   }
 };

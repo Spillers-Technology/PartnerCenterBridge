@@ -32,6 +32,7 @@ fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 1rem 0; }
 .muted { color: var(--muted); }
 .mono { font-family: ui-monospace, monospace; font-size: 0.85rem; }
 .error { color: var(--err); white-space: pre-wrap; }
+.password { background: #0b1220; border: 1px solid var(--warn); border-radius: 6px; padding: 0.5rem 0.75rem; }
 .badge { padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--line); }
 .badge.active, .badge.succeeded, .badge.uptodate { color: var(--ok); border-color: var(--ok); }
 .badge.pending, .badge.uploading, .badge.committing, .badge.assigning, .badge.updateavailable, .badge.update, .badge.deploy { color: var(--warn); border-color: var(--warn); }

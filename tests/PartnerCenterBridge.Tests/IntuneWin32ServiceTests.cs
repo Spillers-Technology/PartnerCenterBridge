@@ -159,16 +159,4 @@ public class IntuneWin32ServiceTests : IDisposable
         Assert.Equal(DeploymentStatus.Failed, deployment.Status);
         Assert.NotNull(deployment.LastError);
     }
-
-    private sealed class FakeTokenProvider : ITokenProvider
-    {
-        public Task<string> GetAccessTokenAsync(string tenantId, string resource, CancellationToken ct = default)
-            => Task.FromResult("test-token");
-    }
-
-    private sealed class SingleHttpClientFactory : IHttpClientFactory
-    {
-        private readonly HttpClient _client = new();
-        public HttpClient CreateClient(string name) => _client;
-    }
 }
