@@ -7,6 +7,10 @@ RUN dotnet restore src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj
 RUN dotnet publish src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj -c Release -o /app --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+# Links the ghcr.io package to the repository.
+LABEL org.opencontainers.image.source="https://github.com/Spillers-Technology/PartnerCenterBridge" \
+      org.opencontainers.image.description="Partner Center Bridge API - repeatable cross-tenant Microsoft 365 ops for MSPs" \
+      org.opencontainers.image.licenses=MIT
 WORKDIR /app
 
 # Phase 3 needs PowerShell 7 + the Exchange Online V3 module in the image so the API can shell out
