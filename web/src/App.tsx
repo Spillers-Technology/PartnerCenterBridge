@@ -8,10 +8,14 @@ import { Deployments } from "./components/Deployments";
 import { NewHire } from "./components/NewHire";
 import { Offboard } from "./components/Offboard";
 import { Workflows } from "./components/Workflows";
+import { Dashboard } from "./components/Dashboard";
+import { UserSearch, type WorkflowLaunch } from "./components/UserSearch";
 
-type Tab = "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows";
+type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows";
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "finduser", label: "Find User" },
   { key: "tenants", label: "Tenants" },
   { key: "contracts", label: "Contracts" },
   { key: "templates", label: "App Templates" },
@@ -23,9 +27,12 @@ const TABS: { key: Tab; label: string }[] = [
 ];
 
 export function App() {
-  const [tab, setTab] = useState<Tab>("tenants");
+  const [tab, setTab] = useState<Tab>("dashboard");
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<string | null>(null);
+  const [wfLaunch, setWfLaunch] = useState<WorkflowLaunch | null>(null);
+
+  const launchWorkflow = (l: WorkflowLaunch) => { setWfLaunch(l); setTab("workflows"); };
 
   useEffect(() => {
     initAuth()
@@ -61,6 +68,8 @@ export function App() {
         </div>
       </header>
       <main>
+        {tab === "dashboard" && <Dashboard />}
+        {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
         {tab === "tenants" && <Tenants />}
         {tab === "contracts" && <Contracts />}
         {tab === "templates" && <AppTemplates />}
@@ -68,7 +77,7 @@ export function App() {
         {tab === "history" && <Deployments />}
         {tab === "newhire" && <NewHire />}
         {tab === "offboard" && <Offboard />}
-        {tab === "workflows" && <Workflows />}
+        {tab === "workflows" && <Workflows prefill={wfLaunch} />}
       </main>
     </div>
   );

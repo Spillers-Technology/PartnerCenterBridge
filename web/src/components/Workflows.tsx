@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import type { DiagnosisResult, Finding, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary } from "../types";
 import { StepList } from "./StepList";
+import type { WorkflowLaunch } from "./UserSearch";
 
 const badgeClass: Record<Finding["status"], string> = {
   Ok: "succeeded", Info: "uptodate", Warning: "pending", Blocker: "failed"
@@ -27,7 +28,7 @@ function Findings({ result, title }: { result: DiagnosisResult; title: string })
   );
 }
 
-export function Workflows() {
+export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   const [catalog, setCatalog] = useState<WorkflowSummary[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
@@ -49,6 +50,17 @@ export function Workflows() {
   }, []);
 
   const selected = useMemo(() => catalog.find((w) => w.id === selectedId), [catalog, selectedId]);
+
+  // Arriving from Find User: select the workflow, tenant, and inputs in one go.
+  useEffect(() => {
+    if (!prefill || catalog.length === 0) return;
+    const w = catalog.find((x) => x.id === prefill.workflowId);
+    if (!w) return;
+    setSelectedId(w.id);
+    setTenantId(prefill.tenantId);
+    setInputs({ ...Object.fromEntries(w.inputs.map((i) => [i.key, i.default ?? ""])), ...prefill.inputs });
+    setDiagnosis(null); setRun(null); setError(null);
+  }, [prefill, catalog]);
 
   const pick = (id: string) => {
     setSelectedId(id);

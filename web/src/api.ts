@@ -1,7 +1,8 @@
 import { getAccessToken } from "./auth";
 import type {
-  AppTemplate, Contract, Deployment, DiagnosisResult, DirectoryObject, ProvisioningResult,
-  ProvisioningTemplate, Sku, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
+  AppTemplate, Contract, Dashboard, Deployment, DiagnosisResult, DirectoryObject,
+  GlobalSearchResult, ProvisioningResult, ProvisioningTemplate, Sku, Tenant,
+  WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
 } from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
@@ -19,6 +20,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string }>("/health"),
+
+  dashboard: () => request<Dashboard>("/api/dashboard"),
+
+  search: {
+    users: (q: string) => request<GlobalSearchResult>(`/api/search/users?q=${encodeURIComponent(q)}`)
+  },
 
   tenants: {
     list: () => request<Tenant[]>("/api/tenants"),

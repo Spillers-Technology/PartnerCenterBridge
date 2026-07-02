@@ -91,6 +91,47 @@ export interface WorkflowRunResult {
   succeeded: boolean;
 }
 
+export interface GlobalUserHit {
+  tenantId: string;
+  tenantName: string;
+  id: string;
+  displayName: string;
+  userPrincipalName?: string;
+}
+
+export interface TenantSearchError { tenantId: string; tenantName: string; message: string }
+
+export interface GlobalSearchResult {
+  hits: GlobalUserHit[];
+  errors: TenantSearchError[];
+  tenantsSearched: number;
+}
+
+export interface DashboardStats {
+  tenants: number;
+  tenantsNoDelegation: number;
+  deployments: number;
+  deploymentsFailed: number;
+  deploymentsUpdateAvailable: number;
+  runsLast24h: number;
+  runsFailedLast7d: number;
+}
+
+export interface AttentionItem {
+  kind: string;
+  tenantId: string;
+  tenantName: string;
+  subject: string;
+  detail: string;
+  when?: string;
+}
+
+export interface Dashboard {
+  stats: DashboardStats;
+  needsAttention: AttentionItem[];
+  recentRuns: WorkflowRunRecord[];
+}
+
 export type WorkflowRunKind = "Diagnose" | "Remediate";
 export interface WorkflowRunRecord {
   id: string;
