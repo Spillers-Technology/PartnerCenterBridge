@@ -36,6 +36,13 @@ public enum DetectionRuleType
     PowerShellScript
 }
 
+/// <summary>Which half of a workflow a <see cref="Entities.WorkflowRun"/> recorded.</summary>
+public enum WorkflowRunKind
+{
+    Diagnose,
+    Remediate
+}
+
 /// <summary>Per-(template, tenant) deployment state, tracked so updates can fan out.</summary>
 public enum DeploymentStatus
 {
