@@ -10,6 +10,7 @@ using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 using PartnerCenterBridge.Exchange;
+using PartnerCenterBridge.Exchange.Workflows;
 using PartnerCenterBridge.Graph;
 using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
@@ -49,6 +50,7 @@ builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
 // failures pushed to the configured webhook (Notifications section; empty URL disables).
 builder.Services.AddScoped<PartnerCenterBridge.Core.Workflows.WorkflowCatalog>();
 builder.Services.AddGraphWorkflows();
+builder.Services.AddExchangeWorkflows();
 builder.Services.Configure<NotificationOptions>(cfg.GetSection(NotificationOptions.SectionName));
 builder.Services.AddScoped<IRunNotifier, WebhookRunNotifier>();
 builder.Services.AddHttpClient("notifications");

@@ -21,11 +21,18 @@ public class WorkflowRunResult
 {
     public List<ProvisioningStep> Steps { get; set; } = new();
     public DiagnosisResult? PostState { get; set; }
+
+    /// <summary>
+    /// Show-once secrets for the operator (e.g. a generated temporary password). Returned to the
+    /// UI but deliberately excluded from run-history persistence and notifications.
+    /// </summary>
+    public Dictionary<string, string> Ephemeral { get; set; } = new();
+
     public bool Succeeded => Steps.Count > 0 && Steps.All(s => s.Success);
 }
 
 /// <summary>Describes an input the workflow needs, so the UI can render a form generically.</summary>
-public record WorkflowInput(string Key, string Label, string? Placeholder = null, bool Required = true, string? Default = null);
+public record WorkflowInput(string Key, string Label, string? Placeholder = null, bool Required = true, string? Default = null, string Type = "text");
 
 /// <summary>
 /// A "known-fix" helpdesk workflow: diagnose a target's state transparently, then apply an
