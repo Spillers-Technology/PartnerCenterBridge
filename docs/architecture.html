@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link active" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Architecture</h1>
+
+<h2>Two independent auth planes</h2>
+<p>The design keeps <em>who you are</em> and <em>what the bridge may do in Microsoft's cloud</em>
+completely separate:</p>
+<table>
+  <tr><th>Plane</th><th>Who</th><th>How</th></tr>
+  <tr>
+    <td><strong>Operator plane</strong></td>
+    <td>Your technicians using the SPA + API</td>
+    <td>OIDC (JWT bearer) against your own identity provider. The operator's name from the
+        token is what lands in workflow run history.</td>
+  </tr>
+  <tr>
+    <td><strong>Microsoft plane</strong></td>
+    <td>The bridge acting in customer tenants</td>
+    <td>A multi-tenant Entra app under the <strong>Secure Application Model</strong>.
+        <code>SamTokenService</code> exchanges the stored (encrypted, auto-rotated) SAM refresh
+        token for a per-tenant Graph token on demand, scoped by that customer's GDAP roles.</td>
+  </tr>
+</table>
+
+<h2>Module layout</h2>
+<pre><code>web/ (React+Vite+TS)  --&gt;  src/PartnerCenterBridge.Api  --&gt;  Core (contracts / desired state / reconcile / workflows)
+                                    |- Graph          (tenant client factory, Intune Win32, users, Identity workflows)
+                                    |- Exchange       (EXO PowerShell V3 out-of-process, Mailbox workflows)
+                                    |- PartnerCenter  (SamTokenService, PartnerCenterClient)
+                                    |- Data           (EF Core + Postgres, encrypted secrets, run history)</code></pre>
+
+<table>
+  <tr><th>Project</th><th>Responsibility</th></tr>
+  <tr><td><code>Core</code></td>
+      <td>Domain entities, reconcile engine, the <code>IWorkflow</code> contract and catalog.
+          No external SDK dependencies - everything else depends on Core, never the reverse.</td></tr>
+  <tr><td><code>Data</code></td>
+      <td>EF Core <code>BridgeDbContext</code> + migrations. Secrets (like the SAM token) are
+          encrypted at rest via ASP.NET Data Protection. Workflow runs and deployments live here.</td></tr>
+  <tr><td><code>PartnerCenter</code></td>
+      <td><code>SamTokenService</code> (MSAL SAM flow + token rotation), Partner Center REST
+          client (customer list).</td></tr>
+  <tr><td><code>Graph</code></td>
+      <td>Per-tenant Graph clients, the full Intune Win32 upload state machine,
+          hire/offboard user service, and the Identity workflows.</td></tr>
+  <tr><td><code>Exchange</code></td>
+      <td>What Graph can't do: mailbox configuration through the Exchange Online PowerShell V3
+          module (app-only certificate), run out-of-process, plus the Mailbox workflows.</td></tr>
+  <tr><td><code>Api</code></td>
+      <td>Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration, workflow
+          dispatch + run recording.</td></tr>
+  <tr><td><code>web/</code></td>
+      <td>React SPA: Tenants, Contracts, App Templates, Deploy, History, New Hire, Offboard,
+          Workflows.</td></tr>
+</table>
+
+<h2>The contract model</h2>
+<p>
+  A <strong>contract</strong> is a named desired state shared by a set of tenants: which Win32
+  apps they should have (at which version), and how new users are provisioned. The reconcile
+  engine compares desired state against what each tenant actually has and produces a plan -
+  <em>deploy</em>, <em>update</em>, or <em>nothing</em> - that the operator reviews before it runs.
+  Pushing a new template version fans the update out to every tenant on the contract.
+</p>
+
+<h2>The workflow engine</h2>
+<p>
+  Workflows are the other half: not desired state, but <strong>known fixes</strong> for the
+  problems that land in MSP queues every week. Each implements one interface:
+</p>
+<pre><code>public interface IWorkflow
+{
+    string Id { get; }           // "mfa-reset"
+    string Name { get; }
+    string Description { get; }
+    string Category { get; }     // "Identity", "Mailbox"
+    IReadOnlyList&lt;WorkflowInput&gt; Inputs { get; }   // rendered generically by the UI
+
+    Task&lt;DiagnosisResult&gt; DiagnoseAsync(Tenant tenant, IReadOnlyDictionary&lt;string,string&gt; inputs, CancellationToken ct);
+    Task&lt;WorkflowRunResult&gt; RemediateAsync(Tenant tenant, IReadOnlyDictionary&lt;string,string&gt; inputs, CancellationToken ct);
+}</code></pre>
+<p>
+  Implementations live in the backend project that owns the API they call (Graph or Exchange)
+  and register through DI. The API lists and dispatches them uniformly and records every run;
+  the UI renders each workflow's input schema. <strong>Adding a workflow requires zero
+  controller or frontend changes.</strong> See <a href="workflows.html">Workflows</a> for the
+  catalog.
+</p>
+
+<h2>Audit trail</h2>
+<p>
+  Every diagnose and remediate run is persisted: workflow, tenant, operator identity, inputs,
+  every finding, every step, outcome, duration. Failures can additionally push to a webhook
+  (Teams Adaptive Card or plain JSON - <code>Notifications</code> config section). Show-once
+  secrets like generated temporary passwords are deliberately excluded from both.
+</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner Center Bridge - repeatable cross-tenant Microsoft 365 ops for MSPs</title>
+<meta name="description" content="An open-source bridge over Microsoft Graph and the Partner Center API: templated Intune deploys, contract-driven provisioning, Exchange mailbox fixes, and transparent diagnose-fix-verify workflows across every customer tenant.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<div class="hero">
+  <h1>Make Microsoft 365 work the way<br>it was <span>supposed to</span>.</h1>
+  <p class="tagline">
+    An open-source bridge over Microsoft Graph and the Partner Center API for MSPs:
+    declare the desired state once, and reconcile every customer tenant to it.
+    Non-invasive - nothing is installed in customer tenants beyond the GDAP consent you already have.
+  </p>
+  <div class="actions">
+    <a class="btn primary" href="getting-started.html">Get started</a>
+    <a class="btn" href="https://github.com/Spillers-Technology/PartnerCenterBridge">View on GitHub</a>
+  </div>
+</div>
+
+<main>
+
+<div class="cards">
+  <div class="card">
+    <h3>Win32 apps, every tenant</h3>
+    <p>Upload an <code>.intunewin</code> template once; the bridge runs the full Intune upload
+       state machine in each tenant and fans out updates to everyone who has the app.</p>
+  </div>
+  <div class="card">
+    <h3>Hire &amp; offboard by contract</h3>
+    <p>Contract-driven provisioning: usage location, licenses, groups, UPN convention.
+       New hires and terminations become one reviewed action, not a checklist.</p>
+  </div>
+  <div class="card">
+    <h3>Mailbox fixes that stick</h3>
+    <p>The "mailbox full / not archiving" repair replaces a ~10-cmdlet Exchange Online dance:
+       archive + auto-expand, retention policy, hidden blockers, assistant nudge.</p>
+  </div>
+  <div class="card">
+    <h3>Known-fix workflows</h3>
+    <p>MFA reset, license repair, password reset, compromised-account lockdown - each one
+       diagnoses transparently, fixes idempotently, then re-diagnoses to prove it worked.</p>
+  </div>
+</div>
+
+<h2>Diagnose &rarr; Fix &rarr; Verify</h2>
+<p>
+  Every workflow follows the same honest loop, and every run is recorded - who ran what,
+  against which tenant, with which findings. Ticket notes write themselves.
+</p>
+<div class="flow">
+  <div class="step">
+    <div class="num">1 - DIAGNOSE</div>
+    Read the real state from Graph or Exchange Online and show every finding verbatim:
+    <span class="badge ok">Ok</span> <span class="badge">Info</span>
+    <span class="badge warn">Warning</span> <span class="badge err">Blocker</span>
+  </div>
+  <div class="step">
+    <div class="num">2 - FIX</div>
+    Apply the known remediation, step by step, recording each step's success or failure.
+    Steps are idempotent - re-running is always safe.
+  </div>
+  <div class="step">
+    <div class="num">3 - VERIFY</div>
+    Re-diagnose immediately and show the post-fix state, so "it should be fixed now"
+    becomes "here is the state that proves it".
+  </div>
+</div>
+
+<h2>Why it's different</h2>
+<ul>
+  <li><strong>Non-invasive.</strong> No agents, no scripts dropped in customer tenants. The bridge
+      speaks the same Graph and Partner Center APIs Microsoft's own portals use, under the
+      Secure Application Model and per-customer GDAP consent.</li>
+  <li><strong>Transparent.</strong> Diagnoses are shown raw. Remediation steps are listed one by
+      one with their outcome. Nothing happens behind the operator's back.</li>
+  <li><strong>Auditable.</strong> Workflow runs persist to Postgres with operator identity and
+      full findings; failures can push to a Teams webhook.</li>
+  <li><strong>Self-hosted.</strong> Your credentials never leave your infrastructure. Runs on
+      docker-compose for evaluation, Kubernetes (Kustomize + Flux + SOPS) for production.</li>
+</ul>
+
+<h2>Try it in two minutes</h2>
+<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
+cd PartnerCenterBridge
+docker compose up --build
+# SPA:  http://localhost:8081
+# API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
+<p class="muted">
+  Auth is disabled in compose so you can click through the UI without an identity provider.
+  Acting in real customer tenants additionally needs a partner Entra app and a one-time
+  <a href="sam-bootstrap.html">SAM bootstrap</a>.
+</p>
+
+</main>
+
+<footer>
+  MIT licensed. Built by people who got tired of doing this by hand.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

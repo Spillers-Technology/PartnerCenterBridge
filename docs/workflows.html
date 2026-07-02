@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workflows - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link active" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>The workflow library</h1>
+<p>
+  Known-fix workflows are the tickets your queue sees every week, encoded once, done right
+  every time. Each one runs <strong>Diagnose &rarr; Fix &rarr; Verify</strong>: the diagnosis is
+  shown verbatim before anything changes, the fix is applied step by step, and a fresh diagnosis
+  proves (or disproves) the result. Every run is recorded with the operator's identity.
+</p>
+
+<h2>Identity</h2>
+
+<h3>MFA / auth method reset <span class="badge accent">mfa-reset</span></h3>
+<p>The "lost phone" ticket. Diagnose lists the user's registered authentication methods and
+warns when no strong method exists. Remediate revokes all sign-in sessions and removes every
+deletable registered method, forcing clean MFA re-registration at next sign-in. The password
+method is never touched.</p>
+
+<h3>Password reset + session revoke <span class="badge accent">password-reset</span></h3>
+<p>Sets a generated 16-character temporary password (must change at next sign-in) and revokes
+existing sessions so the old credential stops working everywhere. Diagnose flags
+directory-synced accounts as a <span class="badge err">Blocker</span> - a cloud-side reset
+doesn't stick for those; reset on-premises or via SSPR writeback instead. The temporary
+password is shown to the operator exactly once and never lands in run history or notifications.</p>
+
+<h3>Compromised account lockdown <span class="badge accent">compromised-lockdown</span></h3>
+<p>First-response containment for a suspected BEC. Diagnose shows sign-in state, MFA
+registration, and inbox rules that forward, redirect, or delete mail - the classic persistence
+trick. Remediate blocks sign-in, revokes every session, and disables the risky rules
+(disabled, not deleted, so they survive as evidence for the investigation).</p>
+
+<h3>License assignment repair <span class="badge accent">license-repair</span></h3>
+<p>The license that "is assigned but doesn't work". Diagnose checks the usage location (the
+usual silent culprit) and finds stuck SKUs. Remediate sets the usage location and reprocesses
+the assignment.</p>
+
+<h2>Mailbox</h2>
+
+<h3>Mailbox archive repair <span class="badge accent">mailbox-archive</span></h3>
+<p>The "mailbox full / not archiving" fix that replaces a ~10-cmdlet Exchange Online dance.
+Diagnose shows the full archive posture: sizes against quotas, archive + auto-expand state,
+retention policy, and the two hidden blockers (retention hold, disabled ELC processing) that
+silently stop the Managed Folder Assistant. Remediate enables the archive and auto-expansion,
+ensures a retention policy, clears the blockers, and kicks the assistant. The actual item move
+runs asynchronously on Microsoft's side - <strong>re-running remediate doubles as the
+nudge</strong>, which this problem routinely needs.</p>
+
+<h2>Run history &amp; notifications</h2>
+<p>
+  The Workflows tab shows recent runs: when, which workflow, which tenant, which operator, and
+  the outcome. The full findings and steps of every run persist in Postgres - ticket-ready
+  evidence of what was checked and what was changed. Configure the <code>Notifications</code>
+  section to push failed runs to a Teams incoming webhook (Adaptive Card) or any JSON receiver:
+</p>
+<pre><code>"Notifications": {
+  "WebhookUrl": "https://...",   // empty disables
+  "Format": "teams",             // or "json"
+  "NotifyOnSuccess": false
+}</code></pre>
+
+<h2>Writing your own</h2>
+<p>
+  Implement <code>IWorkflow</code> in the project that owns the API you're calling, register it
+  in that project's <code>Add*Workflows()</code> extension, and it appears in the catalog, the
+  UI, and run history automatically. Guidelines:
+</p>
+<ul>
+  <li>Diagnose must be read-only and explain <em>why</em> (<span class="badge warn">Warning</span>
+      findings carry the reason, not just the fact).</li>
+  <li>Remediation steps are idempotent; re-running a workflow is always safe.</li>
+  <li>Use <code>WorkflowRunResult.Ephemeral</code> for show-once secrets - it is excluded from
+      persistence and notifications by construction.</li>
+  <li>Cover it with WireMock tests; no live tenant needed.</li>
+</ul>
+<p>See <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>
+for the full conventions.</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

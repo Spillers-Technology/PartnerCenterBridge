@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deployment - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link active" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Deployment</h1>
+
+<h2>Evaluation: docker-compose</h2>
+<p>One command brings up Postgres 16, the API, and the SPA with auth disabled:</p>
+<pre><code>docker compose up --build
+# SPA:  http://localhost:8081
+# API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
+<p class="muted">Compose is for evaluation and development. It uses obvious dev credentials
+and no operator auth - don't expose it.</p>
+
+<h2>Production: Kubernetes (Kustomize + Flux + SOPS)</h2>
+<p>
+  <code>deploy/base</code> holds the core manifests (Deployment, Service, Ingress, PVCs for the
+  Data Protection key ring and package store); <code>deploy/overlays/production</code> applies
+  environment specifics. Render to verify:
+</p>
+<pre><code>kubectl kustomize deploy/overlays/production</code></pre>
+
+<h3>Configuration split</h3>
+<table>
+  <tr><th>Kind</th><th>Where</th><th>Examples</th></tr>
+  <tr>
+    <td>Non-secret config</td>
+    <td><code>configMapGenerator</code> in the overlay</td>
+    <td>Auth authority/audience, CORS origins, EXO cert path, notification format</td>
+  </tr>
+  <tr>
+    <td>Secrets</td>
+    <td><code>secrets.sops.yaml</code> - <strong>encrypt with SOPS before committing</strong></td>
+    <td>Postgres connection string, Entra client secret, optional seed refresh token,
+        notification webhook URL</td>
+  </tr>
+</table>
+
+<div class="callout warn">
+  The repository ships <code>secrets.sops.yaml</code> as a <code>CHANGEME</code> template.
+  Never commit real values unencrypted; with Flux + SOPS the encrypted file is decrypted
+  in-cluster at reconcile time.
+</div>
+
+<h3>What must persist</h3>
+<ul>
+  <li><strong>Postgres</strong> - tenants, contracts, templates, deployments, workflow run
+      history, and the encrypted SAM token live here.</li>
+  <li><strong>Data Protection key ring</strong> (<code>DataProtection:KeyRingPath</code>) -
+      loses this and the encrypted SAM token can't be decrypted; you'll need to
+      <a href="sam-bootstrap.html">re-bootstrap</a>.</li>
+  <li><strong>Package store</strong> - uploaded <code>.intunewin</code> templates.</li>
+</ul>
+
+<h3>Operator auth</h3>
+<p>
+  Point the <code>Auth</code> section at your OIDC provider (authority + audience; tested with
+  Authentik) and give the SPA matching <code>VITE_OIDC_AUTHORITY</code>,
+  <code>VITE_OIDC_CLIENT_ID</code>, <code>VITE_API_BASE</code>. The operator name claim
+  (<code>preferred_username</code> by default) is what workflow run history records.
+</p>
+
+<h3>Exchange Online certificate</h3>
+<p>
+  Mailbox workflows shell out to the EXO PowerShell V3 module with app-only certificate auth.
+  Mount the PFX and set the <code>Exchange</code> section (<code>AppId</code>,
+  <code>CertificatePath</code>, <code>CertificatePassword</code>). The API container image
+  already includes PowerShell and the ExchangeOnlineManagement module.
+</p>
+
+<h2>Upgrades</h2>
+<p>EF Core migrations apply automatically at startup, so rolling a new image forward is the
+whole upgrade. Roll back by deploying the previous image (migrations are additive).</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

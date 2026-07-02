@@ -1,5 +1,7 @@
 # Partner Center Bridge
 
+**Docs:** <https://spillers-technology.github.io/PartnerCenterBridge/>
+
 A two-part MSP bridge — an ASP.NET Core Web API plus a React SPA — that fronts Microsoft Graph
 and the Partner Center REST API to make cross-tenant Intune + identity work repeatable. Each
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
@@ -109,3 +111,8 @@ Check status any time: `GET /api/admin/sam/status` → `{ "bootstrapped": true|f
 After the token is stored it is rotated automatically on every use (well inside the 90-day
 window). Per-customer admin consent + a GDAP relationship are still required before the bridge
 can act in a given tenant.
+
+## License
+
+[MIT](LICENSE). See [CONTRIBUTING.md](CONTRIBUTING.md) for how to get involved and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities.
