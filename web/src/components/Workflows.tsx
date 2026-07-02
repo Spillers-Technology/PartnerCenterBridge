@@ -1,0 +1,127 @@
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../api";
+import type { DiagnosisResult, Finding, Tenant, WorkflowRunResult, WorkflowSummary } from "../types";
+import { StepList } from "./StepList";
+
+const badgeClass: Record<Finding["status"], string> = {
+  Ok: "succeeded", Info: "uptodate", Warning: "pending", Blocker: "failed"
+};
+
+function Findings({ result, title }: { result: DiagnosisResult; title: string }) {
+  return (
+    <div className="plan">
+      <h3>{title} {result.healthy ? <span className="badge succeeded">healthy</span> : <span className="badge failed">needs fixing</span>}</h3>
+      <table>
+        <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+        <tbody>
+          {result.findings.map((f, i) => (
+            <tr key={i}>
+              <td>{f.name}</td>
+              <td><span className={`badge ${badgeClass[f.status]}`}>{f.status}</span></td>
+              <td className="mono">{f.detail ?? ""}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export function Workflows() {
+  const [catalog, setCatalog] = useState<WorkflowSummary[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [tenantId, setTenantId] = useState("");
+  const [selectedId, setSelectedId] = useState("");
+  const [inputs, setInputs] = useState<Record<string, string>>({});
+  const [diagnosis, setDiagnosis] = useState<DiagnosisResult | null>(null);
+  const [run, setRun] = useState<WorkflowRunResult | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.workflows.list(), api.tenants.list()])
+      .then(([w, t]) => { setCatalog(w); setTenants(t); })
+      .catch((e) => setError(String(e)));
+  }, []);
+
+  const selected = useMemo(() => catalog.find((w) => w.id === selectedId), [catalog, selectedId]);
+
+  const pick = (id: string) => {
+    setSelectedId(id);
+    setDiagnosis(null); setRun(null); setError(null);
+    const w = catalog.find((x) => x.id === id);
+    setInputs(Object.fromEntries((w?.inputs ?? []).map((i) => [i.key, i.default ?? ""])));
+  };
+
+  const ready = Boolean(tenantId && selected &&
+    selected.inputs.filter((i) => i.required).every((i) => (inputs[i.key] ?? "").trim()));
+
+  const call = (label: string, fn: () => Promise<void>) => async () => {
+    setBusy(label); setError(null);
+    try { await fn(); } catch (e) { setError(String(e)); } finally { setBusy(null); }
+  };
+
+  const diagnose = call("diagnose", async () => {
+    setRun(null);
+    setDiagnosis(await api.workflows.diagnose(selected!.id, tenantId, inputs));
+  });
+  const fix = call("fix", async () => {
+    const r = await api.workflows.remediate(selected!.id, tenantId, inputs);
+    setRun(r); if (r.postState) setDiagnosis(r.postState);
+  });
+
+  const grouped = catalog.reduce<Record<string, WorkflowSummary[]>>((acc, w) => {
+    (acc[w.category] ??= []).push(w); return acc;
+  }, {});
+
+  return (
+    <section className="workflows">
+      <h2>Workflows</h2>
+      <div className="wf-layout">
+        <aside className="wf-list">
+          {Object.entries(grouped).map(([cat, items]) => (
+            <div key={cat}>
+              <h4>{cat}</h4>
+              {items.map((w) => (
+                <button key={w.id} className={selectedId === w.id ? "active" : ""} onClick={() => pick(w.id)}>
+                  {w.name}
+                </button>
+              ))}
+            </div>
+          ))}
+          {catalog.length === 0 && <p className="muted">No workflows.</p>}
+        </aside>
+
+        <div className="wf-detail">
+          {!selected && <p className="muted">Pick a workflow.</p>}
+          {selected && (
+            <>
+              <p className="muted">{selected.description}</p>
+              <label className="field">
+                Tenant
+                <select value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+                  <option value="">— choose —</option>
+                  {tenants.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}
+                </select>
+              </label>
+              {selected.inputs.map((i) => (
+                <label key={i.key} className="field">
+                  {i.label}{i.required ? "" : " (optional)"}
+                  <input placeholder={i.placeholder} value={inputs[i.key] ?? ""}
+                    onChange={(e) => setInputs({ ...inputs, [i.key]: e.target.value })} />
+                </label>
+              ))}
+              <div className="row">
+                <button onClick={diagnose} disabled={!ready || busy !== null}>{busy === "diagnose" ? "Checking…" : "Diagnose"}</button>
+                <button onClick={fix} disabled={!ready || busy !== null}>{busy === "fix" ? "Applying…" : "Apply fix"}</button>
+              </div>
+              {error && <p className="error">{error}</p>}
+              {diagnosis && <Findings result={diagnosis} title="Diagnosis" />}
+              {run && <StepList result={{ steps: run.steps, succeeded: run.succeeded }} />}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}

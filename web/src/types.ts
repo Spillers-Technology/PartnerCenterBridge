@@ -109,3 +109,17 @@ export interface ArchiveRemediationOptions {
   clearProcessingBlocks: boolean;
   triggerProcessing: boolean;
 }
+
+export type FindingStatus = "Ok" | "Info" | "Warning" | "Blocker";
+export interface Finding { name: string; status: FindingStatus; detail?: string }
+export interface DiagnosisResult { findings: Finding[]; healthy: boolean }
+export interface WorkflowRunResult { steps: ProvisioningStep[]; postState?: DiagnosisResult; succeeded: boolean }
+
+export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string }
+export interface WorkflowSummary {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  inputs: WorkflowInput[];
+}
