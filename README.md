@@ -8,16 +8,24 @@ and the Partner Center REST API to make cross-tenant Intune + identity work repe
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Status:** Phase 1 (templated Win32 `.intunewin` deploy across tenants, with updates),
-> Phase 2 (new-hire provisioning + offboarding via Graph, contract-driven), and Phase 3
-> (Exchange Online mailbox ops via EXO PowerShell V3) are in. Phase 4 (two-way LDAP) is
-> scaffolded for but not implemented.
+> **Maturity (v0.1.0), feature by feature:**
 >
-> **Mailbox archive workflow** ("full / not archiving"): one **Diagnose → Fix → Nudge** flow
-> that enables the archive + auto-expand, ensures a retention policy, clears the hidden blockers
-> (retention hold, `ElcProcessingDisabled`), and triggers the Managed Folder Assistant — with the
-> full mailbox state surfaced to the operator, since the move runs asynchronously and often needs
-> re-nudging. Replaces the ~10-cmdlet dance.
+> | Capability | Status |
+> |---|---|
+> | Templated Win32 `.intunewin` deploy across tenants, with updates | **Stable** |
+> | Contract-driven new-hire provisioning + offboarding via Graph | **Stable** |
+> | Cross-tenant Find User with per-person fix shortcuts | **Stable** |
+> | Known-fix workflow library (MFA reset, password reset, compromised lockdown, license repair) | **Beta** |
+> | Exchange Online mailbox ops via EXO PowerShell V3 (mailbox archive repair) | **Beta** |
+> | Two-way LDAP sync (Phase 4) | **Planned** — scaffolded, not implemented |
+>
+> **Known-fix workflows** run one **Diagnose → Fix → Verify** loop: the diagnosis is shown
+> verbatim before anything changes, the fix is applied step by step, and a fresh diagnosis proves
+> the result. Every run is persisted with the operator's identity. The **mailbox archive** fix
+> ("full / not archiving") enables the archive + auto-expand, ensures a retention policy, clears the
+> hidden blockers (retention hold, `ElcProcessingDisabled`), and triggers the Managed Folder
+> Assistant — re-running doubles as the nudge the asynchronous move routinely needs. Replaces the
+> ~10-cmdlet dance.
 
 ## Architecture
 
@@ -29,21 +37,22 @@ Two independent auth planes:
   SAM refresh token for a per-tenant Graph token on demand.
 
 ```
-web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile)
-                                     ├─ Graph (GraphTenantClientFactory, IntuneWin32Service, .intunewin reader)
+web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile / workflows)
+                                     ├─ Graph (GraphTenantClientFactory, IntuneWin32Service, .intunewin reader, Identity workflows)
+                                     ├─ Exchange (ExchangeOnlineService via EXO PowerShell V3, Mailbox workflows)
                                      ├─ PartnerCenter (SamTokenService, PartnerCenterClient)
-                                     └─ Data (EF Core + Postgres, Data-Protection-encrypted secrets)
+                                     └─ Data (EF Core + Postgres, Data-Protection-encrypted secrets, run history)
 ```
 
 | Project | Responsibility |
 |---|---|
-| `PartnerCenterBridge.Core` | Domain entities, reconcile engine, cross-project abstractions. No external SDK deps. |
-| `PartnerCenterBridge.Data` | EF Core `BridgeDbContext`, migrations, `ProtectedSamTokenStore`. |
+| `PartnerCenterBridge.Core` | Domain entities, reconcile engine, the `IWorkflow` contract + catalog, cross-project abstractions. No external SDK deps. |
+| `PartnerCenterBridge.Data` | EF Core `BridgeDbContext`, migrations, `ProtectedSamTokenStore`, workflow run history. |
 | `PartnerCenterBridge.PartnerCenter` | `SamTokenService` (MSAL SAM flow), `PartnerCenterClient` (REST v3). |
-| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory. |
-| `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`. |
-| `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration. |
-| `web/` | React SPA: Tenants, Contracts, App Templates, Deploy wizard, History. |
+| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory, Identity workflows (MFA/password reset, lockdown, license repair). |
+| `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`; the mailbox-archive workflow. |
+| `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration, workflow dispatch + run recording. |
+| `web/` | React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy wizard, History, New Hire, Offboard, Workflows. |
 
 ## Run locally (docker-compose)
 

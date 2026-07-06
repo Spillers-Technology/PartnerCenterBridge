@@ -4,8 +4,199 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Partner Center Bridge - repeatable cross-tenant Microsoft 365 ops for MSPs</title>
-<meta name="description" content="An open-source bridge over Microsoft Graph and the Partner Center API: templated Intune deploys, contract-driven provisioning, Exchange mailbox fixes, and transparent diagnose-fix-verify workflows across every customer tenant.">
-<link rel="stylesheet" href="styles.css">
+<meta name="description" content="An open-source, self-hosted bridge over Microsoft Graph and the Partner Center API: templated Intune Win32 deploys across every tenant, contract-driven hire/offboard, and transparent Diagnose - Fix - Verify workflows for the tickets your queue sees every week.">
+<meta name="theme-color" content="#0f172a">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Partner Center Bridge - cross-tenant Microsoft 365 ops for MSPs">
+<meta property="og:description" content="Declare desired state once, reconcile every customer tenant to it. Win32 fan-out, contract-driven provisioning, and Diagnose - Fix - Verify workflows - with current app screenshots.">
+<meta property="og:url" content="https://spillers-technology.github.io/PartnerCenterBridge/">
+<meta property="og:image" content="https://spillers-technology.github.io/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
+
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230ea5e9'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
+
+<style>
+  :root {
+    --ink: #0f172a;
+    --muted: #5b6b82;
+    --canvas: #f5f7fb;
+    --surface: #ffffff;
+    --surface-2: #eef2f8;
+    --line: #dde4ee;
+    --primary: #0369a1;
+    --primary-dark: #0c4a6e;
+    --sky: #0ea5e9;
+    --green: #16a34a;
+    --amber: #d97706;
+    --red: #dc2626;
+    --violet: #6d28d9;
+    --shadow: 0 18px 45px rgba(15, 23, 42, 0.16);
+    --maxw: 1180px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, Inter, sans-serif;
+    color: var(--ink);
+    background: var(--canvas);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; display: block; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Consolas, "Roboto Mono", monospace; }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar { height: 62px; display: flex; align-items: center; gap: 16px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); font-weight: 800; }
+  .brand svg { width: 28px; height: 28px; flex: 0 0 auto; }
+  .brand span { color: var(--primary); }
+  .nav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+  .nav a { color: #344154; font-size: 0.93rem; font-weight: 600; padding: 8px 10px; border-radius: 8px; }
+  .nav a:hover { background: var(--surface-2); text-decoration: none; }
+  .nav .nav-cta { color: #fff; background: var(--primary); margin-left: 6px; }
+  .nav .nav-cta:hover { background: var(--primary-dark); }
+
+  .hero { position: relative; min-height: 74vh; display: grid; align-items: center; overflow: hidden; color: #fff; background: #0b1220; }
+  .hero::before {
+    content: ""; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(90deg, rgba(8, 13, 24, 0.95) 0%, rgba(8, 13, 24, 0.78) 46%, rgba(8, 13, 24, 0.30) 100%),
+      url("assets/screenshots/pcbridge-dashboard.jpg");
+    background-size: cover; background-position: center top;
+  }
+  .hero::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 120px;
+    background: linear-gradient(180deg, rgba(245, 247, 251, 0), var(--canvas));
+  }
+  .hero-content { position: relative; z-index: 1; max-width: 720px; padding: 84px 0 108px; }
+  .release {
+    display: inline-flex; align-items: center; gap: 8px; color: #dbeafe;
+    border: 1px solid rgba(219, 234, 254, 0.36); background: rgba(15, 23, 42, 0.46);
+    border-radius: 8px; padding: 7px 11px; font-weight: 700; font-size: 0.86rem;
+  }
+  .release i { width: 9px; height: 9px; border-radius: 999px; background: var(--green); box-shadow: 0 0 0 5px rgba(22, 163, 74, 0.22); }
+  .hero h1 { margin: 22px 0 16px; font-size: 3.5rem; line-height: 1.03; font-weight: 800; }
+  .hero h1 span { color: var(--sky); }
+  .hero .lead { max-width: 640px; margin: 0; color: #e5edf7; font-size: 1.2rem; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 10px 16px; border-radius: 8px; border: 1px solid transparent; font-weight: 700; }
+  .btn.primary { background: var(--sky); color: #04283a; }
+  .btn.primary:hover { background: #38bdf8; text-decoration: none; }
+  .btn.secondary { color: #fff; border-color: rgba(255, 255, 255, 0.46); background: rgba(255, 255, 255, 0.08); }
+  .btn.secondary:hover { background: rgba(255, 255, 255, 0.16); text-decoration: none; }
+  .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+  .hero-meta span { border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(15, 23, 42, 0.4); color: #e5edf7; border-radius: 8px; padding: 6px 9px; font-size: 0.88rem; font-weight: 600; }
+
+  section { padding: 78px 0; }
+  .band { background: #fff; }
+  .section-head { max-width: 780px; margin-bottom: 32px; }
+  .kicker { color: var(--primary); font-size: 0.8rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 8px; }
+  h2 { margin: 0; font-size: 2.25rem; line-height: 1.12; }
+  .section-head p { color: var(--muted); font-size: 1.05rem; margin: 12px 0 0; }
+
+  .status-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .tile, .feature, .integration { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .tile strong, .feature strong, .integration strong { display: block; font-size: 1.02rem; margin-bottom: 6px; }
+  .tile p, .feature p, .integration p { color: var(--muted); margin: 0; font-size: 0.94rem; }
+  .maturity { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 10px; font-size: 0.74rem; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; padding: 3px 9px; border-radius: 999px; }
+  .maturity i { width: 8px; height: 8px; border-radius: 999px; background: currentColor; }
+  .maturity.stable { color: #116b32; background: #e8f7ee; }
+  .maturity.beta { color: #8a5200; background: #fff4d6; }
+  .maturity.planned { color: #475569; background: #e9eef5; }
+
+  .shots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  .shot { margin: 0; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08); }
+  .shot.wide { grid-column: 1 / -1; }
+  .shot img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top left; background: #0b1220; }
+  .shot figcaption { padding: 14px 16px 16px; }
+  .shot figcaption strong { display: block; margin-bottom: 4px; }
+  .shot figcaption span { color: var(--muted); font-size: 0.94rem; }
+
+  .flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .flow .step { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 18px; }
+  .flow .num { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 0.82rem; letter-spacing: 0.04em; margin-bottom: 8px; }
+  .flow .num b { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--surface-2); color: var(--primary); }
+  .flow .step p { color: var(--muted); margin: 0; font-size: 0.95rem; }
+  .flow .step.diagnose .num { color: var(--sky); }
+  .flow .step.fix .num { color: var(--amber); }
+  .flow .step.verify .num { color: var(--green); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.74rem; font-weight: 700; border: 1px solid var(--line); }
+  .badge.ok { color: var(--green); border-color: #b7e4c4; }
+  .badge.info { color: var(--sky); border-color: #b6e4f6; }
+  .badge.warn { color: var(--amber); border-color: #f4d9a6; }
+  .badge.err { color: var(--red); border-color: #f3bcbc; }
+
+  .features { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .feature em { display: inline-block; font-style: normal; font-weight: 800; color: var(--primary); margin-bottom: 8px; font-size: 0.86rem; }
+
+  .integrations { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .integration .tag { display: inline-flex; margin-bottom: 10px; padding: 3px 8px; border-radius: 6px; font-size: 0.74rem; font-weight: 800; }
+  .tag.stable { background: #e8f7ee; color: #116b32; }
+  .tag.beta { background: #fff4d6; color: #8a5200; }
+  .tag.planned { background: #e9eef5; color: #475569; }
+  .tag.core { background: #e0f2fe; color: #075985; }
+
+  .how { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 28px; align-items: stretch; }
+  .plane { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 18px; margin-bottom: 14px; }
+  .plane b { color: var(--primary); }
+  .codecard { background: #0b1220; border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); align-self: start; }
+  .codebar { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 14px; background: #070c17; }
+  .codebar span { width: 11px; height: 11px; border-radius: 999px; background: #475569; }
+  .codebar span:nth-child(1) { background: #ef4444; }
+  .codebar span:nth-child(2) { background: #f59e0b; }
+  .codebar span:nth-child(3) { background: #22c55e; }
+  pre { margin: 0; padding: 20px; overflow: auto; color: #e5edf7; font-size: 0.88rem; line-height: 1.7; }
+  pre .c { color: #7c8aa0; }
+  pre .v { color: #7dd3fc; }
+
+  .docs-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  .doc-link { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 16px; color: var(--ink); font-weight: 800; }
+  .doc-link:hover { border-color: var(--primary); text-decoration: none; }
+  .doc-link span { display: block; color: var(--muted); font-weight: 500; margin-top: 6px; font-size: 0.9rem; }
+
+  .cta-band { background: #0b1220; color: #fff; border-radius: 12px; padding: 34px; display: flex; gap: 24px; align-items: center; justify-content: space-between; }
+  .cta-band h2 { font-size: 1.9rem; }
+  .cta-band p { color: #cbd5e1; margin: 8px 0 0; }
+
+  footer { border-top: 1px solid var(--line); background: #fff; padding: 26px 0; color: var(--muted); }
+  footer .wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  footer nav { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
+
+  @media (max-width: 980px) {
+    .nav a:not(.nav-cta) { display: none; }
+    .hero h1 { font-size: 2.7rem; }
+    .status-grid, .features, .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .integrations, .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shots, .how { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .wrap { padding: 0 18px; }
+    .hero { min-height: 72vh; }
+    .hero::before { background-position: 34% top; }
+    .hero-content { padding: 44px 0 56px; }
+    .hero h1 { font-size: 2.1rem; }
+    .hero .lead { font-size: 1.02rem; }
+    .hero-meta { display: none; }
+    section { padding: 58px 0; }
+    h2 { font-size: 1.75rem; }
+    .status-grid, .features, .flow, .integrations, .docs-grid { grid-template-columns: 1fr; }
+    .cta-band { display: block; padding: 24px; }
+    .cta-band .actions { margin-top: 20px; }
+    footer nav { margin-left: 0; width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+</style>
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
   var initOpts = {
@@ -36,108 +227,280 @@
 </head>
 <body>
 
-<nav class="topnav">
-  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
-  <a class="nav-link" href="getting-started.html">Getting started</a>
-  <a class="nav-link" href="architecture.html">Architecture</a>
-  <a class="nav-link" href="workflows.html">Workflows</a>
-  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
-  <a class="nav-link" href="deployment.html">Deployment</a>
-  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
-</nav>
+<header>
+  <div class="wrap topbar">
+    <a class="brand" href="#top" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0ea5e9"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      Partner Center <span>Bridge</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#screens">Screens</a>
+      <a href="#loop">Diagnose - Fix - Verify</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="workflows.html">Workflows</a>
+      <a href="getting-started.html">Getting started</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
 
-<div class="hero">
-  <h1>Make Microsoft 365 work the way<br>it was <span>supposed to</span>.</h1>
-  <p class="tagline">
-    An open-source bridge over Microsoft Graph and the Partner Center API for MSPs:
-    declare the desired state once, and reconcile every customer tenant to it.
-    Non-invasive - nothing is installed in customer tenants beyond the GDAP consent you already have.
-  </p>
-  <div class="actions">
-    <a class="btn primary" href="getting-started.html">Get started</a>
-    <a class="btn" href="https://github.com/Spillers-Technology/PartnerCenterBridge">View on GitHub</a>
-  </div>
-</div>
+<main id="top">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div class="hero-content">
+        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.1.0</div>
+        <h1 id="hero-title">Cross-tenant Microsoft&nbsp;365 ops,<br><span>done the same way every time.</span></h1>
+        <p class="lead">
+          A self-hosted bridge over Microsoft Graph and the Partner Center API for MSPs.
+          Declare desired state once and reconcile every customer tenant to it - and fix the
+          tickets your queue sees every week with transparent Diagnose - Fix - Verify workflows.
+        </p>
+        <div class="actions">
+          <a class="btn primary" href="getting-started.html">Get started</a>
+          <a class="btn secondary" href="#screens">See the current app</a>
+        </div>
+        <div class="hero-meta" aria-label="Stack">
+          <span>ASP.NET Core 8</span>
+          <span>React + Vite + TS</span>
+          <span>PostgreSQL</span>
+          <span>Microsoft Graph</span>
+          <span>Partner Center v3</span>
+          <span>Exchange Online V3</span>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<main>
+  <section id="status">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">What's real today</div>
+        <h2>Honest maturity, feature by feature.</h2>
+        <p>No roadmap theatre. Here is what ships in the current build and how far along each piece is.</p>
+      </div>
+      <div class="status-grid">
+        <article class="tile">
+          <span class="maturity stable"><i></i> Stable</span>
+          <strong>Win32 apps, every tenant</strong>
+          <p>Upload an <code>.intunewin</code> template once; the bridge runs the full documented Intune
+             beta upload state machine per tenant and fans a new content version out to everyone on the contract.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity stable"><i></i> Stable</span>
+          <strong>Hire &amp; offboard by contract</strong>
+          <p>Contract-driven provisioning: usage location, licenses, groups, UPN convention. New hires and
+             terminations become one reviewed action with a per-step result, not a checklist.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity beta"><i></i> Beta</span>
+          <strong>Known-fix workflows</strong>
+          <p>MFA reset, password reset, compromised-account lockdown, and license repair - each one
+             diagnoses transparently, fixes idempotently, then re-diagnoses to prove it worked.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity beta"><i></i> Beta</span>
+          <strong>Mailbox archive repair</strong>
+          <p>The "mailbox full / not archiving" fix that replaces a ~10-cmdlet Exchange Online dance, run
+             through the EXO PowerShell V3 module out-of-process with an app-only certificate.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity stable"><i></i> Stable</span>
+          <strong>Find a user anywhere</strong>
+          <p>Search every active tenant at once and jump straight from a person to a fix - start from the
+             human on the phone, not the portal.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity planned"><i></i> Planned</span>
+          <strong>Two-way LDAP sync</strong>
+          <p>Phase 4. The abstractions are scaffolded but the sync itself is <strong>not implemented</strong> yet.
+             It is on the list, not in the build - and this page will say so until it is.</p>
+        </article>
+      </div>
+    </div>
+  </section>
 
-<div class="cards">
-  <div class="card">
-    <h3>Win32 apps, every tenant</h3>
-    <p>Upload an <code>.intunewin</code> template once; the bridge runs the full Intune upload
-       state machine in each tenant and fans out updates to everyone who has the app.</p>
-  </div>
-  <div class="card">
-    <h3>Hire &amp; offboard by contract</h3>
-    <p>Contract-driven provisioning: usage location, licenses, groups, UPN convention.
-       New hires and terminations become one reviewed action, not a checklist.</p>
-  </div>
-  <div class="card">
-    <h3>Mailbox fixes that stick</h3>
-    <p>The "mailbox full / not archiving" repair replaces a ~10-cmdlet Exchange Online dance:
-       archive + auto-expand, retention policy, hidden blockers, assistant nudge.</p>
-  </div>
-  <div class="card">
-    <h3>Known-fix workflows</h3>
-    <p>MFA reset, license repair, password reset, compromised-account lockdown - each one
-       diagnoses transparently, fixes idempotently, then re-diagnoses to prove it worked.</p>
-  </div>
-</div>
+  <section id="screens" class="band">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Current app</div>
+        <h2>Fresh screenshots from the React SPA.</h2>
+        <p>Generated from the live web client with mocked API data by
+          <a href="scripts/capture-product-media.mjs">docs/scripts/capture-product-media.mjs</a>, so the
+          Pages site always shows the current UI without needing a live backend or a real tenant.</p>
+      </div>
+      <div class="shots">
+        <figure class="shot wide">
+          <img src="assets/screenshots/pcbridge-dashboard.jpg" alt="Partner Center Bridge dashboard with tenant and deployment stat tiles, a Needs attention triage table, and recent workflow runs.">
+          <figcaption><strong>Dashboard</strong><span>One local-only triage view: tenant and deployment counts, what needs attention (failed deploys, missing GDAP, failed runs), and the recent run log - fast enough to hit on every page load.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/pcbridge-workflows.jpg" alt="Workflows tab running the Mailbox archive repair diagnosis, showing a findings table with Warning and Blocker statuses.">
+          <figcaption><strong>Diagnose before you touch anything</strong><span>Every workflow shows its findings verbatim first - sizes, archive state, retention policy, and the hidden blockers - with Ok / Info / Warning / Blocker status on each check.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/pcbridge-deploy.jpg" alt="Deploy wizard with a template selected, several target tenants checked, and a per-tenant results table.">
+          <figcaption><strong>Deploy fan-out</strong><span>Pick a packaged template, check the target tenants, and push. Each tenant reports its own status and Intune app id; pushing a new version is how "update everyone" works.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/pcbridge-finduser.jpg" alt="Find User screen showing matches across tenants with per-person fix buttons and an unreachable-tenant list.">
+          <figcaption><strong>Person-first Find User</strong><span>Search all active tenants at once. Each hit carries MFA reset, password reset, lockdown, and license repair; unreachable tenants are listed honestly, not hidden.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <img src="assets/screenshots/pcbridge-tenants.jpg" alt="Tenants table with status badges and per-tenant contract assignment dropdowns.">
+          <figcaption><strong>Tenants and contracts</strong><span>Sync your customer list from Partner Center, see delegation status at a glance, and assign each tenant to the contract whose desired state it should follow.</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
 
-<h2>Diagnose &rarr; Fix &rarr; Verify</h2>
-<p>
-  Every workflow follows the same honest loop, and every run is recorded - who ran what,
-  against which tenant, with which findings. Ticket notes write themselves.
-</p>
-<div class="flow">
-  <div class="step">
-    <div class="num">1 - DIAGNOSE</div>
-    Read the real state from Graph or Exchange Online and show every finding verbatim:
-    <span class="badge ok">Ok</span> <span class="badge">Info</span>
-    <span class="badge warn">Warning</span> <span class="badge err">Blocker</span>
-  </div>
-  <div class="step">
-    <div class="num">2 - FIX</div>
-    Apply the known remediation, step by step, recording each step's success or failure.
-    Steps are idempotent - re-running is always safe.
-  </div>
-  <div class="step">
-    <div class="num">3 - VERIFY</div>
-    Re-diagnose immediately and show the post-fix state, so "it should be fixed now"
-    becomes "here is the state that proves it".
-  </div>
-</div>
+  <section id="loop">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">The honest loop</div>
+        <h2>Diagnose &rarr; Fix &rarr; Verify.</h2>
+        <p>Every workflow follows the same shape, and every run is recorded - who ran what, against which
+          tenant, with which findings. Ticket notes write themselves.</p>
+      </div>
+      <div class="flow">
+        <div class="step diagnose">
+          <div class="num"><b>1</b> DIAGNOSE</div>
+          <p>Read the real state from Graph or Exchange Online and show every finding verbatim:
+            <span class="badge ok">Ok</span> <span class="badge info">Info</span>
+            <span class="badge warn">Warning</span> <span class="badge err">Blocker</span>. Nothing changes yet.</p>
+        </div>
+        <div class="step fix">
+          <div class="num"><b>2</b> FIX</div>
+          <p>Apply the known remediation step by step, recording each step's success or failure. Steps are
+            idempotent - re-running is always safe, and for the async mailbox move, re-running is the nudge.</p>
+        </div>
+        <div class="step verify">
+          <div class="num"><b>3</b> VERIFY</div>
+          <p>Re-diagnose immediately and show the post-fix state, so "it should be fixed now" becomes
+            "here is the state that proves it" - persisted to Postgres as ticket-ready evidence.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-<h2>Why it's different</h2>
-<ul>
-  <li><strong>Non-invasive.</strong> No agents, no scripts dropped in customer tenants. The bridge
-      speaks the same Graph and Partner Center APIs Microsoft's own portals use, under the
-      Secure Application Model and per-customer GDAP consent.</li>
-  <li><strong>Transparent.</strong> Diagnoses are shown raw. Remediation steps are listed one by
-      one with their outcome. Nothing happens behind the operator's back.</li>
-  <li><strong>Auditable.</strong> Workflow runs persist to Postgres with operator identity and
-      full findings; failures can push to a Teams webhook.</li>
-  <li><strong>Self-hosted.</strong> Your credentials never leave your infrastructure. Runs on
-      docker-compose for evaluation, Kubernetes (Kustomize + Flux + SOPS) for production.</li>
-</ul>
+  <section id="platform" class="band">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Why it's different</div>
+        <h2>Non-invasive, transparent, auditable, self-hosted.</h2>
+      </div>
+      <div class="features">
+        <article class="feature"><em>Non-invasive</em><strong>No agents in customer tenants</strong><p>The bridge speaks the same Graph and Partner Center APIs Microsoft's own portals use, under the Secure Application Model and per-customer GDAP consent. Nothing is installed downstream.</p></article>
+        <article class="feature"><em>Transparent</em><strong>Nothing happens behind your back</strong><p>Diagnoses are shown raw. Remediation steps are listed one by one with their outcome. Reconcile plans are previewed as a dry run before anything deploys.</p></article>
+        <article class="feature"><em>Auditable</em><strong>Every run is evidence</strong><p>Workflow runs persist to Postgres with operator identity, inputs, findings, and steps. Failures can push a Teams Adaptive Card or plain JSON to a webhook.</p></article>
+        <article class="feature"><em>Two auth planes</em><strong>Who you are vs. what the bridge may do</strong><p>Operators authenticate via your own OIDC provider (tested with Authentik). The Microsoft plane is a separate SAM app with an encrypted, auto-rotating refresh token.</p></article>
+        <article class="feature"><em>Contract model</em><strong>Desired state, reconciled</strong><p>A contract is a named desired state shared by a set of tenants. The reconcile engine produces a deploy / update / nothing plan you review before it runs.</p></article>
+        <article class="feature"><em>Self-hosted</em><strong>Your credentials stay yours</strong><p>Docker Compose for evaluation, Kubernetes (Kustomize + Flux + SOPS) for production. Secrets are encrypted at rest via ASP.NET Data Protection.</p></article>
+      </div>
+    </div>
+  </section>
 
-<h2>Try it in two minutes</h2>
-<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
+  <section id="integrations">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Integrations</div>
+        <h2>The Microsoft surfaces MSPs actually live in.</h2>
+        <p>Tags reflect real delivery status in the current build - not intentions.</p>
+      </div>
+      <div class="integrations">
+        <article class="integration"><span class="tag core">Core</span><strong>Microsoft Graph</strong><p>Per-tenant clients via <code>GraphTenantClientFactory</code>, powering Intune, users, groups, licenses, and the Identity workflows.</p></article>
+        <article class="integration"><span class="tag stable">Stable</span><strong>Partner Center v3</strong><p>Customer list sync and the Secure Application Model token flow via <code>SamTokenService</code> (MSAL), with automatic refresh-token rotation.</p></article>
+        <article class="integration"><span class="tag stable">Stable</span><strong>Intune Win32 apps</strong><p>The full <code>.intunewin</code> upload state machine: content version, chunked block-blob upload, commit with parsed encryption info, then assign.</p></article>
+        <article class="integration"><span class="tag beta">Beta</span><strong>Exchange Online V3</strong><p>Mailbox configuration Graph can't do, through the EXO PowerShell module (app-only certificate) run out-of-process via <code>PwshRunner</code>.</p></article>
+        <article class="integration"><span class="tag stable">Stable</span><strong>Authentik / OIDC</strong><p>Operator sign-in as a JWT bearer plane. Any standard OIDC provider works; set <code>Auth</code> and the matching <code>VITE_OIDC_*</code> vars.</p></article>
+        <article class="integration"><span class="tag stable">Stable</span><strong>Teams / webhook alerts</strong><p>Failed runs push an Adaptive Card to a Teams incoming webhook, or plain JSON to any receiver - configured in the <code>Notifications</code> section.</p></article>
+        <article class="integration"><span class="tag core">Core</span><strong>PostgreSQL</strong><p>The local source of truth via EF Core: tenants, contracts, templates, deployments, and full workflow run history.</p></article>
+        <article class="integration"><span class="tag planned">Planned</span><strong>Two-way LDAP</strong><p>Phase 4. Scaffolded for, not implemented. Directory sync back to on-prem is on the list but not in the build.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="quickstart" class="band">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Try it in two minutes</div>
+        <h2>Click through the whole UI with auth disabled.</h2>
+        <p>Compose runs Postgres, the API, and the SPA with auth off, so you can explore every screen without
+          an identity provider. Reaching real customer tenants additionally needs a partner Entra app and a
+          one-time <a href="sam-bootstrap.html">SAM bootstrap</a>.</p>
+      </div>
+      <div class="how">
+        <div>
+          <div class="plane"><b>Operator plane</b> - the SPA + API authenticate <em>you</em> via OIDC (JWT bearer). The operator's name from the token is what lands in run history.</div>
+          <div class="plane"><b>Microsoft plane</b> - a multi-tenant Entra app under the Secure Application Model. <code>SamTokenService</code> exchanges the stored, encrypted, auto-rotated refresh token for a per-tenant Graph token on demand.</div>
+          <div class="plane"><b>Reconcile engine</b> - <code>Core</code> compares each contract's desired state against what a tenant actually has and produces a plan you approve before it runs.</div>
+        </div>
+        <div class="codecard">
+          <div class="codebar"><span></span><span></span><span></span></div>
+<pre><span class="c"># Clone and run the local stack</span>
+git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
 cd PartnerCenterBridge
 docker compose up --build
-# SPA:  http://localhost:8081
-# API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
-<p class="muted">
-  Auth is disabled in compose so you can click through the UI without an identity provider.
-  Acting in real customer tenants additionally needs a partner Entra app and a one-time
-  <a href="sam-bootstrap.html">SAM bootstrap</a>.
-</p>
 
+<span class="c"># SPA:  http://localhost:8082  (auth disabled in compose)</span>
+<span class="c"># API:  http://localhost:5080  (Swagger at /swagger)</span>
+
+<span class="c"># Or run the pieces directly</span>
+dotnet run --project src/PartnerCenterBridge.Api
+cd web &amp;&amp; npm install &amp;&amp; npm run <span class="v">dev</span>
+
+<span class="c"># Tests need no tenant - orchestration runs against WireMock</span>
+dotnet test</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="docs">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Documentation</div>
+        <h2>Docs that match the current app.</h2>
+        <p>Start with getting started, then branch into architecture, the workflow catalog, the SAM bootstrap, and production deployment.</p>
+      </div>
+      <div class="docs-grid">
+        <a class="doc-link" href="getting-started.html">Getting started<span>Local Compose, prerequisites for real tenants, and the first session.</span></a>
+        <a class="doc-link" href="architecture.html">Architecture<span>Two auth planes, the module layout, the contract model, and the workflow engine.</span></a>
+        <a class="doc-link" href="workflows.html">Workflows<span>The full known-fix catalog, run history, notifications, and how to write your own.</span></a>
+        <a class="doc-link" href="sam-bootstrap.html">SAM bootstrap<span>Seeding the Secure Application Model refresh token, three ways.</span></a>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="cta-band">
+        <div>
+          <h2>Run it on your own stack.</h2>
+          <p>Free and open source under MIT, with Docker Compose, Kubernetes manifests, and docs that now match the current build.</p>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">Clone the repo</a>
+          <a class="btn secondary" href="deployment.html">Deployment guide</a>
+        </div>
+      </div>
+    </div>
+  </section>
 </main>
 
 <footer>
-  MIT licensed. Built by people who got tired of doing this by hand.
-  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+  <div class="wrap">
+    <a class="brand" href="#top">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0ea5e9"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      Partner Center Bridge
+    </a>
+    <span>MIT licensed. Built by people who got tired of doing this by hand.</span>
+    <nav aria-label="Footer">
+      <a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+      <a href="architecture.html">Architecture</a>
+      <a href="workflows.html">Workflows</a>
+      <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
+    </nav>
+  </div>
 </footer>
 
 </body>
