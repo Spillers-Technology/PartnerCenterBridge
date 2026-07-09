@@ -48,7 +48,7 @@
 <main>
 <h1>Getting started</h1>
 
-<h2>Run it locally (docker-compose)</h2>
+<h2>1. Five-minute local demo (docker-compose)</h2>
 <p>The fastest way to see the product. Auth is disabled in compose, so the UI works without
 an identity provider - you just can't reach real tenants yet.</p>
 <pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
@@ -56,6 +56,9 @@ cd PartnerCenterBridge
 docker compose up --build
 # SPA:  http://localhost:8082
 # API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
+<p>To point the same stack at real tenants later, copy <code>.env.example</code> to
+<code>.env</code> and fill in the <code>PARTNER_*</code> (and optionally
+<code>EXCHANGE_*</code>) values - compose picks them up automatically.</p>
 
 <p>Or run the pieces directly:</p>
 <pre><code># API (needs a Postgres; connection string in appsettings.json)
@@ -67,7 +70,7 @@ cd web &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
 <p>Tests need no tenant at all - orchestration is covered against WireMock:</p>
 <pre><code>dotnet test</code></pre>
 
-<h2>Prerequisites for real tenants</h2>
+<h2>2. Connect real tenants</h2>
 <p>To act in customer tenants the bridge needs the standard CSP plumbing you likely
 already have as an MSP:</p>
 <table>
@@ -101,7 +104,56 @@ already have as an MSP:</p>
   </tr>
 </table>
 
-<h2>First session</h2>
+<h3>App registration permissions</h3>
+<p>The Secure Application Model uses <strong>delegated</strong> (App+User) permissions: the
+bridge acts as the admin agent whose refresh token you seed at bootstrap. Grant these
+delegated permissions on the multi-tenant app registration and admin-consent them in your
+partner tenant. Effective access in each customer tenant is the <em>intersection</em> of
+this list with the roles on that customer's GDAP relationship.</p>
+<table>
+  <tr><th>API</th><th>Delegated permission</th><th>Used for</th></tr>
+  <tr>
+    <td>Partner Center (<code>https://api.partnercenter.microsoft.com</code>)</td>
+    <td><code>user_impersonation</code></td>
+    <td>Customer list sync; the SAM token exchange itself.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>DeviceManagementApps.ReadWrite.All</code></td>
+    <td>Win32 app templates: create, upload and assign Intune apps.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>User.ReadWrite.All</code></td>
+    <td>New hire, offboard (block sign-in, revoke sessions), license assignment, user lookups.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>Group.ReadWrite.All</code></td>
+    <td>Adding/removing group membership during provisioning and offboarding.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>UserAuthenticationMethod.ReadWrite.All</code></td>
+    <td>MFA reset and compromised-account lockdown (enumerating and deleting auth methods).</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>User-PasswordProfile.ReadWrite.All</code></td>
+    <td>Password reset workflow.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>Organization.Read.All</code></td>
+    <td>Reading subscribed SKUs for the license pickers and license repair.</td>
+  </tr>
+</table>
+<div class="callout">Treat this as the minimum. Because tokens are requested with
+<code>/.default</code>, the bridge can only ever use what is consented on the app - adding a
+permission later means re-consenting in the partner tenant (customer tenants inherit via
+GDAP + the multi-tenant consent).</div>
+
+<h2>3. First session</h2>
 <ol>
   <li><strong>Sync tenants:</strong> the Tenants tab pulls your customer list from Partner Center.</li>
   <li><strong>Create a contract:</strong> a named group of tenants sharing a desired state.</li>

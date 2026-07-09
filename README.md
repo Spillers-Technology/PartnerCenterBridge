@@ -60,7 +60,7 @@ Auth is disabled in compose so you can click through the UI without an IdP.
 
 ```bash
 docker compose up --build
-# SPA:     http://localhost:8081
+# SPA:     http://localhost:8082
 # API:     http://localhost:5080  (Swagger at /swagger)
 ```
 
@@ -120,7 +120,8 @@ curl -X POST /api/admin/sam/seed -H 'content-type: application/json' -d '{"refre
 Check status any time: `GET /api/admin/sam/status` → `{ "bootstrapped": true|false }`.
 After the token is stored it is rotated automatically on every use (well inside the 90-day
 window). Per-customer admin consent + a GDAP relationship are still required before the bridge
-can act in a given tenant.
+can act in a given tenant. The delegated permissions the multi-tenant app registration needs
+are listed in the [getting-started guide](https://spillers-technology.github.io/PartnerCenterBridge/getting-started.html).
 
 ## License
 

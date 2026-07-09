@@ -23,14 +23,16 @@ services:
       ConnectionStrings__Postgres: "Host=db;Port=5432;Database=pcbridge;Username=pcbridge;Password=pcbridge"
       Auth__Enabled: "false"
       Cors__AllowedOrigins__0: "http://localhost:8082"
-      # Fill these to exercise the Microsoft plane against real tenants:
-      Partner__ClientId: ""
-      Partner__ClientSecret: ""
-      Partner__PartnerTenantId: ""
-      Partner__SeedRefreshToken: ""
+      # Fill these to exercise the Microsoft plane against real tenants.
+      # Copy .env.example to .env and set values there; blank means UI-only demo.
+      Partner__ClientId: "${PARTNER_CLIENT_ID:-}"
+      Partner__ClientSecret: "${PARTNER_CLIENT_SECRET:-}"
+      Partner__PartnerTenantId: "${PARTNER_TENANT_ID:-}"
+      Partner__SeedRefreshToken: "${PARTNER_SEED_REFRESH_TOKEN:-}"
       # Exchange Online (app-only cert). Leave blank locally; convert-to-shared reports failure gracefully.
-      Exchange__AppId: ""
+      Exchange__AppId: "${EXCHANGE_APP_ID:-}"
       Exchange__CertificatePath: "/certs/exo.pfx"
+      Exchange__CertificatePassword: "${EXCHANGE_CERT_PASSWORD:-}"
     depends_on:
       db:
         condition: service_healthy
