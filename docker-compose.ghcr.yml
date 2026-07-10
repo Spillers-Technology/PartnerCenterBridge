@@ -1,0 +1,53 @@
+# Quickstart stack using the published images - no clone or build required:
+#   curl -LO https://raw.githubusercontent.com/Spillers-Technology/PartnerCenterBridge/main/docker-compose.ghcr.yml
+#   docker compose -f docker-compose.ghcr.yml up
+# Auth is disabled so you can click through the UI without an Authentik/OIDC provider.
+# Do NOT use these settings in a deployed environment. To build from source instead,
+# use docker-compose.yml in the repo root.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pcbridge
+      POSTGRES_USER: pcbridge
+      POSTGRES_PASSWORD: pcbridge
+    ports: ["5433:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pcbridge"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: ghcr.io/spillers-technology/partnercenterbridge-api:latest
+    environment:
+      ConnectionStrings__Postgres: "Host=db;Port=5432;Database=pcbridge;Username=pcbridge;Password=pcbridge"
+      Auth__Enabled: "false"
+      Cors__AllowedOrigins__0: "http://localhost:8082"
+      # Fill these to exercise the Microsoft plane against real tenants.
+      # Put values in a .env file next to this one; blank means UI-only demo.
+      Partner__ClientId: "${PARTNER_CLIENT_ID:-}"
+      Partner__ClientSecret: "${PARTNER_CLIENT_SECRET:-}"
+      Partner__PartnerTenantId: "${PARTNER_TENANT_ID:-}"
+      Partner__SeedRefreshToken: "${PARTNER_SEED_REFRESH_TOKEN:-}"
+      # Exchange Online (app-only cert). Leave blank locally; convert-to-shared reports failure gracefully.
+      Exchange__AppId: "${EXCHANGE_APP_ID:-}"
+      Exchange__CertificatePath: "/certs/exo.pfx"
+      Exchange__CertificatePassword: "${EXCHANGE_CERT_PASSWORD:-}"
+    depends_on:
+      db:
+        condition: service_healthy
+    ports: ["5080:8080"]
+    volumes: ["keys:/keys", "packages:/packages", "certs:/certs"]
+
+  web:
+    image: ghcr.io/spillers-technology/partnercenterbridge-web:latest
+    depends_on: ["api"]
+    ports: ["8082:80"]
+
+volumes:
+  pgdata:
+  keys:
+  packages:
+  certs:

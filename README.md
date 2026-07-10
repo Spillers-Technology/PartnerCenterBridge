@@ -59,7 +59,14 @@ web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (c
 Auth is disabled in compose so you can click through the UI without an IdP.
 
 ```bash
+# Fastest: published images, no clone or build needed.
+curl -LO https://raw.githubusercontent.com/Spillers-Technology/PartnerCenterBridge/main/docker-compose.ghcr.yml
+docker compose -f docker-compose.ghcr.yml up
+
+# Or build from source (from a clone):
 docker compose up --build
+
+# Either way:
 # SPA:     http://localhost:8082
 # API:     http://localhost:5080  (Swagger at /swagger)
 ```

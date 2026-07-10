@@ -50,15 +50,20 @@
 
 <h2>1. Five-minute local demo (docker-compose)</h2>
 <p>The fastest way to see the product. Auth is disabled in compose, so the UI works without
-an identity provider - you just can't reach real tenants yet.</p>
-<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
-cd PartnerCenterBridge
-docker compose up --build
+an identity provider - you just can't reach real tenants yet. The published images on
+ghcr.io are public, so no clone or build is needed:</p>
+<pre><code>curl -LO https://raw.githubusercontent.com/Spillers-Technology/PartnerCenterBridge/main/docker-compose.ghcr.yml
+docker compose -f docker-compose.ghcr.yml up
 # SPA:  http://localhost:8082
 # API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
-<p>To point the same stack at real tenants later, copy <code>.env.example</code> to
-<code>.env</code> and fill in the <code>PARTNER_*</code> (and optionally
-<code>EXCHANGE_*</code>) values - compose picks them up automatically.</p>
+<p>Or build from source:</p>
+<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
+cd PartnerCenterBridge
+docker compose up --build</code></pre>
+<p>To point the same stack at real tenants later, create a <code>.env</code> file next to
+the compose file (see <code>.env.example</code> in the repo) and fill in the
+<code>PARTNER_*</code> (and optionally <code>EXCHANGE_*</code>) values - compose picks
+them up automatically.</p>
 
 <p>Or run the pieces directly:</p>
 <pre><code># API (needs a Postgres; connection string in appsettings.json)
