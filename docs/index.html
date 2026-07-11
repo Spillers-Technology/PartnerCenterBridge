@@ -197,6 +197,7 @@
     html { scroll-behavior: auto; }
   }
 </style>
+<link rel="stylesheet" href="assets/lightbox.css">
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
   var initOpts = {
@@ -330,23 +331,33 @@
       </div>
       <div class="shots">
         <figure class="shot wide">
-          <img src="assets/screenshots/pcbridge-dashboard.jpg" alt="Partner Center Bridge dashboard with tenant and deployment stat tiles, a Needs attention triage table, and recent workflow runs.">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-dashboard.jpg" alt="Partner Center Bridge dashboard with tenant and deployment stat tiles, a Needs attention triage table, and recent workflow runs.">
+          </button>
           <figcaption><strong>Dashboard</strong><span>One local-only triage view: tenant and deployment counts, what needs attention (failed deploys, missing GDAP, failed runs), and the recent run log - fast enough to hit on every page load.</span></figcaption>
         </figure>
         <figure class="shot">
-          <img src="assets/screenshots/pcbridge-workflows.jpg" alt="Workflows tab running the Mailbox archive repair diagnosis, showing a findings table with Warning and Blocker statuses.">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-workflows.jpg" alt="Workflows tab running the Mailbox archive repair diagnosis, showing a findings table with Warning and Blocker statuses.">
+          </button>
           <figcaption><strong>Diagnose before you touch anything</strong><span>Every workflow shows its findings verbatim first - sizes, archive state, retention policy, and the hidden blockers - with Ok / Info / Warning / Blocker status on each check.</span></figcaption>
         </figure>
         <figure class="shot">
-          <img src="assets/screenshots/pcbridge-deploy.jpg" alt="Deploy wizard with a template selected, several target tenants checked, and a per-tenant results table.">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-deploy.jpg" alt="Deploy wizard with a template selected, several target tenants checked, and a per-tenant results table.">
+          </button>
           <figcaption><strong>Deploy fan-out</strong><span>Pick a packaged template, check the target tenants, and push. Each tenant reports its own status and Intune app id; pushing a new version is how "update everyone" works.</span></figcaption>
         </figure>
         <figure class="shot">
-          <img src="assets/screenshots/pcbridge-finduser.jpg" alt="Find User screen showing matches across tenants with per-person fix buttons and an unreachable-tenant list.">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-finduser.jpg" alt="Find User screen showing matches across tenants with per-person fix buttons and an unreachable-tenant list.">
+          </button>
           <figcaption><strong>Person-first Find User</strong><span>Search all active tenants at once. Each hit carries MFA reset, password reset, lockdown, and license repair; unreachable tenants are listed honestly, not hidden.</span></figcaption>
         </figure>
         <figure class="shot">
-          <img src="assets/screenshots/pcbridge-tenants.jpg" alt="Tenants table with status badges and per-tenant contract assignment dropdowns.">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-tenants.jpg" alt="Tenants table with status badges and per-tenant contract assignment dropdowns.">
+          </button>
           <figcaption><strong>Tenants and contracts</strong><span>Sync your customer list from Partner Center, see delegation status at a glance, and assign each tenant to the contract whose desired state it should follow.</span></figcaption>
         </figure>
       </div>
@@ -503,6 +514,6 @@ dotnet test</pre>
     </nav>
   </div>
 </footer>
-
+<script src="assets/lightbox.js"></script>
 </body>
 </html>
