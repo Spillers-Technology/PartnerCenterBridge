@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Config Snapshots - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
+<script>
+  var initOpts = {
+    projectKey: "vQsdaVKqB3x2jUBKW4xd",
+    ingestPoint: "https://replay.spillerstech.us/ingest",
+    defaultInputMode: 0,
+    obscureTextNumbers: false,
+    obscureTextEmails: false,
+  };
+  var startOpts = { userID: "" };
+  (function(A,s,a,y,e,r){
+    r=window.OpenReplay=[e,r,y,[s-1, e]];
+    s=document.createElement('script');s.src=A;s.async=!a;
+    document.getElementsByTagName('head')[0].appendChild(s);
+    r.start=function(v){r.push([0])};
+    r.stop=function(v){r.push([1])};
+    r.setUserID=function(id){r.push([2,id])};
+    r.setUserAnonymousID=function(id){r.push([3,id])};
+    r.setMetadata=function(k,v){r.push([4,k,v])};
+    r.event=function(k,p,i){r.push([5,k,p,i])};
+    r.issue=function(k,p){r.push([6,k,p])};
+    r.isActive=function(){return false};
+    r.getSessionToken=function(){};
+  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
+  OpenReplay.start();
+  OpenReplay.setMetadata("project", "PartnerCenterBridge");
+</script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="authentication.html">Authentication</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link active" href="config-snapshots.html">Config Snapshots</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Config Snapshots</h1>
+<p class="tagline" style="text-align:left;max-width:none;margin:0 0 1.5rem;">
+  Point-in-time backups of a tenant's configuration, section by section, diffable against each
+  other and optionally mirrored into a real git repository. This is a visibility and drift-detection
+  layer, deliberately separate from the Deploy wizard and known-fix Workflows that actually change
+  a tenant -- see "What this deliberately doesn't do" below.
+</p>
+
+<h2>Sections</h2>
+<p>A snapshot captures every registered section in one run. Today:</p>
+<table>
+  <tr><th>Section</th><th>Category</th><th>Graph resource</th></tr>
+  <tr><td>Conditional Access Policies</td><td>Identity</td><td><code>/identity/conditionalAccess/policies</code></td></tr>
+  <tr><td>Named Locations</td><td>Identity</td><td><code>/identity/conditionalAccess/namedLocations</code></td></tr>
+  <tr><td>Device Compliance Policies</td><td>Devices</td><td><code>/deviceManagement/deviceCompliancePolicies</code></td></tr>
+</table>
+<p>
+  Each captures the full object, minus <code>createdDateTime</code>/<code>modifiedDateTime</code>-style
+  timestamps (they change on every edit regardless of whether anything meaningful did, which would
+  otherwise show up as permanent noise in every diff). Adding a section is a new
+  <code>IConfigSection</code> implementation registered through DI -- same pattern as adding a
+  known-fix Workflow -- with no controller or diff-engine change needed.
+</p>
+
+<h2>Diffing</h2>
+<p>
+  Any two snapshot runs can be diffed, either one section at a time or across the whole tenant.
+  Each item is matched by its Graph <code>id</code>; the diff reports items added, removed, or
+  modified (with the specific top-level fields that changed). A run's history is the backup: taking
+  a new snapshot before a risky change gives you a known-good point to diff back against afterward.
+</p>
+
+<h2>Workbooks: export and import</h2>
+<p>
+  A single run, or a diff between two runs, can be exported as a portable file -- a run exports as
+  JSON, a diff exports as readable patch-style text (<code>*.patch</code>) suitable for pasting
+  into a ticket. An exported run can be re-imported (on this instance or a different one) to create
+  a new snapshot record from already-captured data, purely for comparison.
+</p>
+<div class="callout warn">
+  <strong>What this deliberately doesn't do:</strong> there is no "apply this diff/workbook to a
+  tenant" endpoint, and import never issues a single Graph write. A generic "replay this JSON at a
+  tenant" path would be an unreviewable, un-auditable way to mutate a customer's identity and
+  device configuration. Making changes stays the job of the Deploy wizard and the known-fix
+  Workflows, where every write is a single, named, reviewed action with its own diagnose/fix/verify
+  loop. Config Snapshots is the read side; those are the write side. Kept separate on purpose.
+</div>
+
+<h2>Git sync (optional)</h2>
+<p>
+  Set <code>GitSync:RepoUrl</code> and every successful capture also gets committed and pushed to a
+  real git repository -- GitHub or any host that speaks standard HTTPS git. Each section becomes
+  one file under <code>tenants/{tenant}/{section}.json</code>; a capture with no changes since the
+  last one makes no commit. This turns tenant configuration into real version-controlled history:
+  diffable and blameable with any git tool, browsable on GitHub, not just inside the app.
+</p>
+<p>
+  Implemented by shelling out to the <code>git</code> CLI (the same out-of-process pattern
+  <code>PwshRunner</code> uses for Exchange Online), not a native git library -- one well-known
+  tool already in the container image, not a new native-binary compatibility surface. The auth
+  token is sent as a per-request HTTP header and never written to the working copy's git config or
+  embedded in the remote URL, so it never touches disk.
+</p>
+<table>
+  <tr><th>Key</th><th>Notes</th></tr>
+  <tr><td><code>GitSync:RepoUrl</code></td><td>e.g. <code>https://github.com/your-org/tenant-config-history.git</code>. Unset = disabled (default).</td></tr>
+  <tr><td><code>GitSync:Branch</code></td><td>Default <code>main</code>.</td></tr>
+  <tr><td><code>GitSync:Token</code></td><td><strong>Secret.</strong> A token with push access (a GitHub PAT with <code>repo</code> scope, or equivalent).</td></tr>
+  <tr><td><code>GitSync:CommitterName</code> / <code>CommitterEmail</code></td><td>Attribution on the commits this app makes.</td></tr>
+  <tr><td><code>GitSync:LocalPath</code></td><td>Working copy on disk. Default <code>/git-sync</code> -- mount a persistent volume there in production, same as <code>/keys</code> and <code>/packages</code>.</td></tr>
+</table>
+
+<h2>Access control</h2>
+<p>
+  Follows the same per-tenant roles as everything else (see <a href="authentication.html">Authentication</a>):
+  <strong>Viewer</strong> can list runs and view/export diffs; <strong>Operator</strong> can also
+  take a new snapshot or import a workbook. There is no separate permission model for this feature.
+</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

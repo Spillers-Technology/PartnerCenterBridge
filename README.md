@@ -17,6 +17,7 @@ reconciles every tenant on the contract to it.
 > | Cross-tenant Find User with per-person fix shortcuts | **Stable** |
 > | Known-fix workflow library (MFA reset, password reset, compromised lockdown, license repair) | **Beta** |
 > | Exchange Online mailbox ops via EXO PowerShell V3 (mailbox archive repair) | **Beta** |
+> | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
 > | Two-way LDAP sync (Phase 4) | **Planned** — scaffolded, not implemented |
 >
 > **Known-fix workflows** run one **Diagnose → Fix → Verify** loop: the diagnosis is shown
@@ -101,6 +102,17 @@ cd web && npm install && npm run dev
 ```bash
 dotnet test          # reconcile logic, .intunewin parsing, SAM token rotation
 ```
+
+## Config snapshots
+
+Point-in-time backups of a tenant's configuration (Conditional Access, Named Locations, Device
+Compliance Policies today — adding a section is a new `IConfigSection`, same DI-registered-catalog
+pattern as workflows), diffable section-by-section or whole-tenant. A run or a diff exports as a
+portable file (JSON workbook / patch-style text) and can be re-imported for comparison — but there
+is deliberately no "apply this to a tenant" path; making changes stays the job of the Deploy wizard
+and known-fix workflows. Set `GitSync:RepoUrl` to also mirror every capture into a real git repo
+(one file per section, committed and pushed) for history you can browse and diff outside the app.
+Full detail: [Config Snapshots](https://spillers-technology.github.io/PartnerCenterBridge/config-snapshots.html).
 
 ## The Win32 deploy flow
 
