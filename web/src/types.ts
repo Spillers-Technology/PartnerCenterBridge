@@ -159,3 +159,33 @@ export interface WorkflowSummary {
   category: string;
   inputs: WorkflowInput[];
 }
+
+// --- Auth:Mode=Local: accounts, TOTP, passkeys, tenant sharing --------------------------------
+export type AuthMode = "Oidc" | "Local" | "Dev";
+
+export type TenantRole = "Viewer" | "Operator" | "Owner";
+/** Which tenants the current user has access to (used in MeProfile). */
+export interface TenantAccess { tenantId: string; tenantName: string; role: TenantRole }
+/** Who has access to a given tenant (used by the share/revoke panel) -- the other direction from TenantAccess. */
+export interface TenantGrant { userId: string; email: string; role: TenantRole; grantedAt: string; expiresAt?: string }
+
+export interface MeProfile {
+  id: string;
+  email: string;
+  displayName: string;
+  isSystemAdmin: boolean;
+  totpEnabled: boolean;
+  tenantAccess: TenantAccess[];
+}
+
+export interface AuthResponse { accessToken: string; user: MeProfile }
+export interface MfaChallengeResponse { mfaTicket: string }
+/** Discriminate a login response: an MfaChallengeResponse has no accessToken. */
+export function isMfaChallenge(r: AuthResponse | MfaChallengeResponse): r is MfaChallengeResponse {
+  return (r as MfaChallengeResponse).mfaTicket !== undefined;
+}
+
+export interface TotpEnrollResponse { pendingKey: string; secret: string; otpAuthUri: string }
+export interface TotpVerifyEnrollResponse { recoveryCodes: string[] }
+
+export interface PasskeyInfo { id: string; nickname?: string; createdAt: string; lastUsedAt?: string }
