@@ -44,6 +44,8 @@ public class BridgeDbContext : DbContext
     public DbSet<TenantAccessGrant> TenantAccessGrants => Set<TenantAccessGrant>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<ConfigSnapshotRun> ConfigSnapshotRuns => Set<ConfigSnapshotRun>();
+    public DbSet<ConfigSnapshotSection> ConfigSnapshotSections => Set<ConfigSnapshotSection>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -128,6 +130,21 @@ public class BridgeDbContext : DbContext
             e.HasIndex(p => p.CredentialId).IsUnique();
             e.HasOne(p => p.User).WithMany(u => u.PasskeyCredentials)
                 .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ConfigSnapshotRun>(e =>
+        {
+            e.HasIndex(r => new { r.TenantId, r.StartedAt });
+            e.HasOne(r => r.Tenant).WithMany()
+                .HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ConfigSnapshotSection>(e =>
+        {
+            e.HasIndex(s => new { s.RunId, s.SectionId }).IsUnique();
+            e.Property(s => s.ContentJson).HasColumnType("jsonb");
+            e.HasOne(s => s.Run).WithMany(r => r.Sections)
+                .HasForeignKey(s => s.RunId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<TenantAccessGrant>(e =>

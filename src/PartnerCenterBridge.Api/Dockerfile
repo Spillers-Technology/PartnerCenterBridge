@@ -15,8 +15,10 @@ WORKDIR /app
 
 # Phase 3 needs PowerShell 7 + the Exchange Online V3 module in the image so the API can shell out
 # to run app-only EXO cmdlets. (Graph handles everything else; EXO covers mailbox config only.)
+# git is for the optional config-snapshot git sync (GitSyncService) -- shells out rather than
+# using a native git library, so this is the only dependency it needs.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends wget ca-certificates \
+ && apt-get install -y --no-install-recommends wget ca-certificates git \
  && wget -q https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb -O /tmp/pm.deb \
  && dpkg -i /tmp/pm.deb && rm /tmp/pm.deb \
  && apt-get update && apt-get install -y --no-install-recommends powershell \

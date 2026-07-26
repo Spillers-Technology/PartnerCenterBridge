@@ -44,6 +44,22 @@ internal sealed class GraphRestClient
     public Task<JsonDocument> PutAsync(string url, object body, CancellationToken ct) => SendAsync(New(HttpMethod.Put, url, body), ct);
     public Task<JsonDocument> DeleteAsync(string url, CancellationToken ct) => SendAsync(New(HttpMethod.Delete, url, null), ct);
 
+    /// <summary>Follows <c>@odata.nextLink</c> until exhausted, returning every "value" element across all pages. Each element is cloned so it outlives the per-page JsonDocument.</summary>
+    public async Task<List<JsonElement>> GetAllAsync(string url, CancellationToken ct)
+    {
+        var results = new List<JsonElement>();
+        string? next = url;
+        while (next is not null)
+        {
+            using var doc = await GetAsync(next, ct);
+            if (doc.RootElement.TryGetProperty("value", out var value))
+                foreach (var item in value.EnumerateArray())
+                    results.Add(item.Clone());
+            next = doc.RootElement.TryGetProperty("@odata.nextLink", out var nl) ? nl.GetString() : null;
+        }
+        return results;
+    }
+
     /// <summary>Absolute base URL (e.g. <c>https://graph.microsoft.com/beta</c>) for building $ref bodies.</summary>
     public string BaseUrl => _baseUrl;
 
