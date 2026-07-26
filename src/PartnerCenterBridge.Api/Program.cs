@@ -8,14 +8,17 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PartnerCenterBridge.Api.Auth;
+using PartnerCenterBridge.Api.GitSync;
 using PartnerCenterBridge.Api.Notifications;
 using PartnerCenterBridge.Api.Orchestration;
+using PartnerCenterBridge.Core.ConfigSnapshots;
 using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 using PartnerCenterBridge.Exchange;
 using PartnerCenterBridge.Exchange.Workflows;
 using PartnerCenterBridge.Graph;
+using PartnerCenterBridge.Graph.ConfigSections;
 using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
 
@@ -70,6 +73,14 @@ builder.Services.AddScoped<DeploymentOrchestrator>();
 builder.Services.AddSingleton<IPackageStore, FilePackageStore>();
 builder.Services.AddHttpClient("graph");
 builder.Services.AddHttpClient<PartnerCenterClient>();
+
+// Config snapshots (backup + diff): catalog + Graph-backed sections, same pattern as workflows.
+// Git sync is opt-in -- GitSyncOptions.Enabled is false unless GitSync:RepoUrl is configured.
+builder.Services.AddScoped<ConfigSectionCatalog>();
+builder.Services.AddGraphConfigSections();
+builder.Services.Configure<GitSyncOptions>(cfg.GetSection(GitSyncOptions.SectionName));
+builder.Services.AddSingleton<GitSyncService>();
+builder.Services.AddScoped<ConfigSnapshotService>();
 
 // --- Operator plane: OIDC (Authentik), local self-registered accounts, or dev bypass ----------
 // Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a

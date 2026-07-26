@@ -1,21 +1,26 @@
 import { getAccessToken } from "./auth";
 import { getLocalToken } from "./session";
 import type {
-  AppTemplate, AuthMode, AuthResponse, Contract, Dashboard, Deployment, DiagnosisResult,
-  DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse, PasskeyInfo,
-  ProvisioningResult, ProvisioningTemplate, Sku, Tenant, TenantGrant, TenantRole,
-  TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
+  AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
+  Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
+  PasskeyInfo, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
+  TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
+  WorkflowSummary
 } from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function authHeaders(init: RequestInit = {}): Promise<Headers> {
   // OIDC and Auth:Mode=Local are mutually exclusive per deployment; whichever produced a token wins.
   const token = (await getAccessToken()) ?? getLocalToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
+  return headers;
+}
 
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = await authHeaders(init);
   const resp = await fetch(`${base}${path}`, { ...init, headers });
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
   return resp.status === 204 ? (undefined as T) : ((await resp.json()) as T);
@@ -160,5 +165,45 @@ export const api = {
       }),
     list: () => request<PasskeyInfo[]>("/api/auth/passkey"),
     remove: (id: string) => request<void>(`/api/auth/passkey/${id}`, { method: "DELETE" })
+  },
+
+  configSnapshots: {
+    sections: () => request<ConfigSection[]>("/api/config-sections"),
+    list: (tenantId: string) => request<ConfigSnapshotRun[]>(`/api/tenants/${tenantId}/config-snapshots`),
+    capture: (tenantId: string) =>
+      request<ConfigSnapshotRun>(`/api/tenants/${tenantId}/config-snapshots`, { method: "POST" }),
+    diff: (tenantId: string, beforeRunId: string, afterRunId: string, sectionId?: string) => {
+      const q = new URLSearchParams({ beforeRunId, afterRunId });
+      if (sectionId) q.set("sectionId", sectionId);
+      return request<SectionDiff[]>(`/api/tenants/${tenantId}/config-snapshots/diff?${q}`);
+    },
+    // Downloads need the bearer token attached to the request itself -- a plain <a href> can't
+    // carry an Authorization header, so these fetch the file as a blob and save it client-side.
+    exportDiff: (tenantId: string, beforeRunId: string, afterRunId: string, sectionId?: string) => {
+      const q = new URLSearchParams({ beforeRunId, afterRunId });
+      if (sectionId) q.set("sectionId", sectionId);
+      return download(`/api/tenants/${tenantId}/config-snapshots/diff/export?${q}`, `config-diff-${beforeRunId}-${afterRunId}.patch`);
+    },
+    exportRun: (tenantId: string, runId: string) =>
+      download(`/api/tenants/${tenantId}/config-snapshots/${runId}/export`, `config-snapshot-${runId}.json`),
+    import: (tenantId: string, sections: { sectionId: string; sectionName: string; contentJson: string }[]) =>
+      request<ConfigSnapshotRun>(`/api/tenants/${tenantId}/config-snapshots/import`, {
+        method: "POST", body: JSON.stringify({ sections })
+      })
   }
 };
+
+async function download(path: string, filename: string): Promise<void> {
+  const headers = await authHeaders();
+  const resp = await fetch(`${base}${path}`, { headers });
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
