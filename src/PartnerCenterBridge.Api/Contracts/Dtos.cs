@@ -8,6 +8,8 @@ public record TenantDto(Guid Id, string TenantId, string DisplayName, string? De
     public static TenantDto From(Tenant t) => new(t.Id, t.TenantId, t.DisplayName, t.DefaultDomain, t.Status, t.ContractId);
 }
 
+public record CreateTenantRequest(string TenantId, string DisplayName, string? DefaultDomain);
+
 public record ContractDto(Guid Id, string Name, string? Notes, int TenantCount, int DesiredAppCount)
 {
     public static ContractDto From(Contract c) => new(c.Id, c.Name, c.Notes, c.Tenants.Count, c.DesiredApps.Count);

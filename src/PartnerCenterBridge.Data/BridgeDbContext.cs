@@ -40,6 +40,10 @@ public class BridgeDbContext : DbContext
     public DbSet<ProvisioningTemplate> ProvisioningTemplates => Set<ProvisioningTemplate>();
     public DbSet<SecretRecord> Secrets => Set<SecretRecord>();
     public DbSet<WorkflowRun> WorkflowRuns => Set<WorkflowRun>();
+    public DbSet<AppUser> AppUsers => Set<AppUser>();
+    public DbSet<TenantAccessGrant> TenantAccessGrants => Set<TenantAccessGrant>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
+    public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -107,6 +111,42 @@ public class BridgeDbContext : DbContext
                 .HasConversion(JsonConverter<List<Core.Abstractions.ProvisioningStep>>(), JsonComparer<List<Core.Abstractions.ProvisioningStep>>());
             e.HasOne(r => r.Tenant).WithMany()
                 .HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AppUser>(e =>
+        {
+            e.HasIndex(u => u.Email).IsUnique();
+            e.Property(u => u.Email).IsRequired();
+            e.Property(u => u.DisplayName).IsRequired();
+            e.Property(u => u.PasswordHash).IsRequired();
+            e.Property(u => u.TotpRecoveryCodeHashes).HasColumnType("jsonb")
+                .HasConversion(StringListConverter, StringListComparer);
+        });
+
+        b.Entity<PasskeyCredential>(e =>
+        {
+            e.HasIndex(p => p.CredentialId).IsUnique();
+            e.HasOne(p => p.User).WithMany(u => u.PasskeyCredentials)
+                .HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<TenantAccessGrant>(e =>
+        {
+            // One grant per (tenant, user) -- granting again just updates the role/expiry.
+            e.HasIndex(g => new { g.TenantId, g.UserId }).IsUnique();
+            e.HasOne(g => g.Tenant).WithMany()
+                .HasForeignKey(g => g.TenantId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(g => g.User).WithMany(u => u.TenantAccessGrants)
+                .HasForeignKey(g => g.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AuditEvent>(e =>
+        {
+            // Insert-only trail; indexed the way it will actually be queried (recent-first,
+            // optionally scoped to a tenant or an actor).
+            e.HasIndex(a => a.OccurredAt);
+            e.HasIndex(a => new { a.TenantId, a.OccurredAt });
+            e.HasIndex(a => new { a.ActorUserId, a.OccurredAt });
         });
     }
 }

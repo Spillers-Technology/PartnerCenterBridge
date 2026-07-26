@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PartnerCenterBridge.Data;
@@ -11,9 +12,11 @@ using PartnerCenterBridge.Data;
 namespace PartnerCenterBridge.Data.Migrations
 {
     [DbContext(typeof(BridgeDbContext))]
-    partial class BridgeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260726213626_AddLocalAuthAndAudit")]
+    partial class AddLocalAuthAndAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -99,16 +102,6 @@ namespace PartnerCenterBridge.Data.Migrations
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<bool>("TotpEnabled")
-                        .HasColumnType("boolean");
-
-                    b.Property<string>("TotpRecoveryCodeHashes")
-                        .IsRequired()
-                        .HasColumnType("jsonb");
-
-                    b.Property<string>("TotpSecretProtected")
                         .HasColumnType("text");
 
                     b.HasKey("Id");
@@ -229,52 +222,6 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.HasIndex("TenantId", "AppTemplateId");
 
                     b.ToTable("Deployments");
-                });
-
-            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.PasskeyCredential", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<Guid>("AaGuid")
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<byte[]>("CredentialId")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<DateTimeOffset?>("LastUsedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Nickname")
-                        .HasColumnType("text");
-
-                    b.Property<byte[]>("PublicKey")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<long>("SignatureCounter")
-                        .HasColumnType("bigint");
-
-                    b.Property<byte[]>("UserHandle")
-                        .IsRequired()
-                        .HasColumnType("bytea");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CredentialId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("PasskeyCredentials");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.ProvisioningTemplate", b =>
@@ -639,17 +586,6 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.PasskeyCredential", b =>
-                {
-                    b.HasOne("PartnerCenterBridge.Core.Entities.AppUser", "User")
-                        .WithMany("PasskeyCredentials")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.ProvisioningTemplate", b =>
                 {
                     b.HasOne("PartnerCenterBridge.Core.Entities.Contract", "Contract")
@@ -703,8 +639,6 @@ namespace PartnerCenterBridge.Data.Migrations
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.AppUser", b =>
                 {
-                    b.Navigation("PasskeyCredentials");
-
                     b.Navigation("TenantAccessGrants");
                 });
 
