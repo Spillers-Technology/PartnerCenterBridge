@@ -1,14 +1,17 @@
 import { getAccessToken } from "./auth";
+import { getLocalToken } from "./session";
 import type {
-  AppTemplate, Contract, Dashboard, Deployment, DiagnosisResult, DirectoryObject,
-  GlobalSearchResult, ProvisioningResult, ProvisioningTemplate, Sku, Tenant,
-  WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
+  AppTemplate, AuthMode, AuthResponse, Contract, Dashboard, Deployment, DiagnosisResult,
+  DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse, PasskeyInfo,
+  ProvisioningResult, ProvisioningTemplate, Sku, Tenant, TenantGrant, TenantRole,
+  TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary
 } from "./types";
 
 const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = await getAccessToken();
+  // OIDC and Auth:Mode=Local are mutually exclusive per deployment; whichever produced a token wins.
+  const token = (await getAccessToken()) ?? getLocalToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (init.body && !(init.body instanceof FormData)) headers.set("Content-Type", "application/json");
@@ -30,8 +33,20 @@ export const api = {
   tenants: {
     list: () => request<Tenant[]>("/api/tenants"),
     sync: () => request<Tenant[]>("/api/tenants/sync", { method: "POST" }),
+    create: (tenantId: string, displayName: string, defaultDomain?: string) =>
+      request<Tenant>("/api/tenants", { method: "POST", body: JSON.stringify({ tenantId, displayName, defaultDomain }) }),
     setContract: (id: string, contractId: string | null) =>
       request<void>(`/api/tenants/${id}/contract`, { method: "PUT", body: JSON.stringify(contractId) })
+  },
+
+  tenantAccess: {
+    list: (tenantId: string) => request<TenantGrant[]>(`/api/tenants/${tenantId}/access`),
+    grant: (tenantId: string, email: string, role: TenantRole, expiresAt?: string | null) =>
+      request<void>(`/api/tenants/${tenantId}/access`, {
+        method: "POST", body: JSON.stringify({ email, role, expiresAt: expiresAt ?? null })
+      }),
+    revoke: (tenantId: string, userId: string) =>
+      request<void>(`/api/tenants/${tenantId}/access/${userId}`, { method: "DELETE" })
   },
 
   contracts: {
@@ -108,5 +123,42 @@ export const api = {
       request<WorkflowRunResult>(`/api/workflows/${id}/remediate`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })
       })
+  },
+
+  auth: {
+    mode: () => request<{ mode: AuthMode }>("/api/auth/mode"),
+    register: (email: string, password: string, displayName: string) =>
+      request<AuthResponse>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
+    login: (email: string, password: string) =>
+      request<AuthResponse | MfaChallengeResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+    me: () => request<MeProfile>("/api/auth/me")
+  },
+
+  totp: {
+    enroll: () => request<TotpEnrollResponse>("/api/auth/totp/enroll", { method: "POST" }),
+    verifyEnroll: (pendingKey: string, code: string) =>
+      request<TotpVerifyEnrollResponse>("/api/auth/totp/verify-enroll", { method: "POST", body: JSON.stringify({ pendingKey, code }) }),
+    disable: (password: string) =>
+      request<void>("/api/auth/totp/disable", { method: "POST", body: JSON.stringify({ password }) }),
+    challenge: (mfaTicket: string, code: string) =>
+      request<AuthResponse>("/api/auth/totp/challenge", { method: "POST", body: JSON.stringify({ mfaTicket, code }) })
+  },
+
+  passkey: {
+    // Options responses carry raw WebAuthn ceremony data (base64url byte fields) -- shaped by
+    // webauthn.ts, not modeled fully here.
+    registerOptions: () => request<{ challengeKey: string; options: unknown }>("/api/auth/passkey/register/options", { method: "POST" }),
+    registerVerify: (challengeKey: string, attestationResponse: unknown, nickname?: string) =>
+      request<void>("/api/auth/passkey/register/verify", {
+        method: "POST", body: JSON.stringify({ challengeKey, attestationResponse, nickname })
+      }),
+    loginOptions: () => request<{ challengeKey: string; options: unknown }>("/api/auth/passkey/login/options", { method: "POST" }),
+    loginVerify: (challengeKey: string, assertionResponse: unknown) =>
+      request<AuthResponse>("/api/auth/passkey/login/verify", {
+        method: "POST", body: JSON.stringify({ challengeKey, assertionResponse })
+      }),
+    list: () => request<PasskeyInfo[]>("/api/auth/passkey"),
+    remove: (id: string) => request<void>(`/api/auth/passkey/${id}`, { method: "DELETE" })
   }
 };

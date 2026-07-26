@@ -31,7 +31,23 @@ reconciles every tenant on the contract to it.
 
 Two independent auth planes:
 
-- **Operator plane** — the SPA + API authenticate *you* via Authentik OIDC (JWT bearer).
+- **Operator plane** — the SPA + API authenticate *you*. Three modes, picked with `Auth:Mode`.
+  Full detail: [Authentication](https://spillers-technology.github.io/PartnerCenterBridge/authentication.html).
+  - `Oidc` (default) — Authentik or any OIDC provider (JWT bearer). Every authenticated user has
+    full operator access; there's no external IdP to run this way without standing one up first.
+  - `Local` — self-registered accounts, no external IdP required. Registration is open (no invite
+    code), but a fresh account starts with zero tenant access: it can't touch a customer until an
+    Owner shares that tenant with it (`Viewer`/`Operator`/`Owner`). You become a tenant's Owner
+    automatically by adding it (`POST /api/tenants`) or first-syncing it from Partner Center —
+    there's no admin bypass for tenant power. (`IsSystemAdmin`, granted to the first account on a
+    fresh database, gates only the SAM admin endpoints — unrelated to tenant access.) Passkeys
+    (WebAuthn, discoverable/usernameless) are the primary sign-in method; password is the
+    permanent fallback. TOTP 2FA is available per-account, with recovery codes. Every auth event
+    and every mutation to a user, tenant, contract, template, deployment, or grant is appended to
+    an audit trail (`AuditEvents`/`WorkflowRuns`) — see `AuditSaveChangesInterceptor`. Set
+    `Auth:Local:SigningKey` (`openssl rand -base64 32`) as a secret; it signs locally issued JWTs.
+  - `Dev` — the docker-compose default (`Auth:Enabled=false`): everyone is `dev-operator`, no
+    credentials at all. Never use this on a deployed instance.
 - **Microsoft plane** — a multi-tenant Entra app under the **Secure Application Model** with a
   GDAP relationship per customer. `SamTokenService` exchanges the stored (encrypted, auto-rotated)
   SAM refresh token for a per-tenant Graph token on demand.

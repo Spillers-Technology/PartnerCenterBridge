@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
@@ -38,12 +39,14 @@ public class WorkflowsController : ControllerBase
     private readonly WorkflowCatalog _catalog;
     private readonly BridgeDbContext _db;
     private readonly IRunNotifier _notifier;
+    private readonly ITenantAccessService _access;
 
-    public WorkflowsController(WorkflowCatalog catalog, BridgeDbContext db, IRunNotifier notifier)
+    public WorkflowsController(WorkflowCatalog catalog, BridgeDbContext db, IRunNotifier notifier, ITenantAccessService access)
     {
         _catalog = catalog;
         _db = db;
         _notifier = notifier;
+        _access = access;
     }
 
     [HttpGet]
@@ -53,20 +56,37 @@ public class WorkflowsController : ControllerBase
             .Select(w => new WorkflowSummaryDto(w.Id, w.Name, w.Description, w.Category, w.Inputs))
             .ToList();
 
-    /// <summary>Recent run history, newest first, optionally filtered by tenant and/or workflow.</summary>
+    /// <summary>
+    /// Recent run history, newest first, optionally filtered by tenant and/or workflow. Under
+    /// <c>Auth:Mode=Local</c>, a non-admin caller who omits <paramref name="tenantId"/> only sees
+    /// runs for tenants they hold a grant on -- otherwise this endpoint would be a way to read
+    /// every other customer's history regardless of sharing.
+    /// </summary>
     [HttpGet("runs")]
-    public async Task<IReadOnlyList<WorkflowRunDto>> Runs(
+    public async Task<ActionResult<IReadOnlyList<WorkflowRunDto>>> Runs(
         [FromQuery] Guid? tenantId, [FromQuery] string? workflowId, [FromQuery] int take, CancellationToken ct)
     {
+        if (tenantId is not null && !await _access.HasRoleAsync(tenantId.Value, TenantRole.Viewer, ct))
+            return Forbid();
+
         var query = _db.WorkflowRuns.AsNoTracking().Include(r => r.Tenant).AsQueryable();
         if (tenantId is not null) query = query.Where(r => r.TenantId == tenantId);
         if (!string.IsNullOrEmpty(workflowId)) query = query.Where(r => r.WorkflowId == workflowId);
 
-        return (await query
+        if (tenantId is null && !_access.IsSystemAdmin)
+        {
+            var allowed = await _db.TenantAccessGrants.AsNoTracking()
+                .Where(g => g.UserId == _access.CurrentUserId
+                         && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
+                .Select(g => g.TenantId).ToListAsync(ct);
+            query = query.Where(r => allowed.Contains(r.TenantId));
+        }
+
+        return Ok((await query
                 .OrderByDescending(r => r.StartedAt)
                 .Take(Math.Clamp(take == 0 ? 50 : take, 1, 200))
                 .ToListAsync(ct))
-            .Select(WorkflowRunDto.From).ToList();
+            .Select(WorkflowRunDto.From).ToList());
     }
 
     [HttpPost("{id}/diagnose")]
@@ -74,6 +94,7 @@ public class WorkflowsController : ControllerBase
     {
         var (workflow, tenant, error) = await Resolve(id, req, ct);
         if (error is not null) return error;
+        if (!await _access.HasRoleAsync(tenant!.Id, TenantRole.Viewer, ct)) return Forbid();
 
         return await Record(workflow!, tenant!, req, WorkflowRunKind.Diagnose, async run =>
         {
@@ -89,6 +110,7 @@ public class WorkflowsController : ControllerBase
     {
         var (workflow, tenant, error) = await Resolve(id, req, ct);
         if (error is not null) return error;
+        if (!await _access.HasRoleAsync(tenant!.Id, TenantRole.Operator, ct)) return Forbid();
 
         return await Record(workflow!, tenant!, req, WorkflowRunKind.Remediate, async run =>
         {

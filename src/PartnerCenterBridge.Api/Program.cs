@@ -1,7 +1,11 @@
+using System.Security.Claims;
+using System.Text;
+using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Notifications;
@@ -19,8 +23,15 @@ var builder = WebApplication.CreateBuilder(args);
 var cfg = builder.Configuration;
 
 // --- Persistence -----------------------------------------------------------
-builder.Services.AddDbContext<BridgeDbContext>(o =>
-    o.UseNpgsql(cfg.GetConnectionString("Postgres")));
+// The audit interceptor needs the acting user, which needs HttpContext -- registered before the
+// DbContext so the (sp, o) overload below can resolve it.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<PartnerCenterBridge.Core.Abstractions.ICurrentActor, HttpContextCurrentActor>();
+builder.Services.AddScoped<AuditSaveChangesInterceptor>();
+
+builder.Services.AddDbContext<BridgeDbContext>((sp, o) =>
+    o.UseNpgsql(cfg.GetConnectionString("Postgres"))
+     .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
 
 // Data Protection keys must be persisted so the encrypted SAM token survives restarts.
 builder.Services.AddDataProtection()
@@ -60,27 +71,78 @@ builder.Services.AddSingleton<IPackageStore, FilePackageStore>();
 builder.Services.AddHttpClient("graph");
 builder.Services.AddHttpClient<PartnerCenterClient>();
 
-// --- Operator plane (OIDC via Authentik, or dev bypass) --------------------
-var authEnabled = cfg.GetValue("Auth:Enabled", true);
-if (authEnabled)
+// --- Operator plane: OIDC (Authentik), local self-registered accounts, or dev bypass ----------
+// Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a
+// fallback for existing config that predates Auth:Mode, mapping to Oidc/Dev as before.
+var authMode = cfg["Auth:Mode"] ?? (cfg.GetValue("Auth:Enabled", true) ? AuthModeInfo.Oidc : AuthModeInfo.Dev);
+builder.Services.AddSingleton(new AuthModeInfo(authMode));
+builder.Services.Configure<LocalAuthOptions>(cfg.GetSection(LocalAuthOptions.SectionName));
+builder.Services.AddSingleton<LocalTokenService>();
+builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
+builder.Services.AddScoped<AuthResponseFactory>();
+
+// TOTP and passkeys are Local-mode features, but registered unconditionally like the above --
+// AuthController/TotpController/PasskeyController are always present, so their constructors must
+// always resolve even under Oidc/Dev (where their endpoints just 400 via AuthModeInfo checks).
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<ChallengeCache>();
+builder.Services.AddSingleton<TotpService>();
+builder.Services.Configure<PasskeyOptions>(cfg.GetSection(PasskeyOptions.SectionName));
+builder.Services.AddSingleton<IFido2>(sp =>
 {
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(o =>
-        {
-            o.Authority = cfg["Auth:Authority"];
-            o.Audience = cfg["Auth:Audience"];
-            o.TokenValidationParameters = new TokenValidationParameters
+    var po = sp.GetRequiredService<IOptions<PasskeyOptions>>().Value;
+    var config = new Fido2Configuration
+    {
+        ServerDomain = po.RelyingPartyId,
+        ServerName = po.RelyingPartyName,
+        Origins = new HashSet<string>(po.Origins)
+    };
+    // No IMetadataService: this app doesn't verify authenticator attestation against the FIDO
+    // Metadata Service (AttestationPreference is None in PasskeyController), so it's never invoked.
+    return new Fido2(config, null!);
+});
+
+switch (authMode)
+{
+    case AuthModeInfo.Local:
+        var signingKey = cfg[$"{LocalAuthOptions.SectionName}:SigningKey"];
+        if (string.IsNullOrWhiteSpace(signingKey))
+            throw new InvalidOperationException(
+                "Auth:Local:SigningKey must be set (e.g. `openssl rand -base64 32`) when Auth:Mode=Local.");
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(o =>
             {
-                ValidateAudience = true,
-                ValidateIssuer = true,
-                NameClaimType = cfg["Auth:NameClaim"] ?? "preferred_username"
-            };
-        });
-}
-else
-{
-    builder.Services.AddAuthentication(DevAuthHandler.SchemeName)
-        .AddScheme<AuthenticationSchemeOptions, DevAuthHandler>(DevAuthHandler.SchemeName, _ => { });
+                o.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = LocalTokenService.Issuer,
+                    ValidateAudience = true,
+                    ValidAudience = LocalTokenService.Audience,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                    ValidateLifetime = true,
+                    NameClaimType = ClaimTypes.Name
+                };
+            });
+        break;
+    case AuthModeInfo.Dev:
+        builder.Services.AddAuthentication(DevAuthHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, DevAuthHandler>(DevAuthHandler.SchemeName, _ => { });
+        break;
+    default: // Oidc
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(o =>
+            {
+                o.Authority = cfg["Auth:Authority"];
+                o.Audience = cfg["Auth:Audience"];
+                o.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateAudience = true,
+                    ValidateIssuer = true,
+                    NameClaimType = cfg["Auth:NameClaim"] ?? "preferred_username"
+                };
+            });
+        break;
 }
 builder.Services.AddAuthorization();
 
@@ -88,9 +150,10 @@ var origins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Emp
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
-// Enums cross the wire as their names ("Active", "Ok"), matching the SPA's string unions.
+// Enums cross the wire as their names ("Active", "Ok"), matching the SPA's string unions --
+// except Fido2NetLib's, which need their own WebAuthn-spec wire values (see AppJsonStringEnumConverter).
 builder.Services.AddControllers().AddJsonOptions(o =>
-    o.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter()));
+    o.JsonSerializerOptions.Converters.Add(new PartnerCenterBridge.Api.AppJsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
