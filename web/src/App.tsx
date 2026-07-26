@@ -16,8 +16,9 @@ import { UserSearch, type WorkflowLaunch } from "./components/UserSearch";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
 import { Security } from "./components/Security";
+import { ConfigSnapshots } from "./components/ConfigSnapshots";
 
-type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows" | "security";
+type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows" | "snapshots" | "security";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -29,7 +30,8 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "history", label: "History" },
   { key: "newhire", label: "New Hire" },
   { key: "offboard", label: "Offboard" },
-  { key: "workflows", label: "Workflows" }
+  { key: "workflows", label: "Workflows" },
+  { key: "snapshots", label: "Config Snapshots" }
 ];
 
 export function App() {
@@ -119,6 +121,7 @@ export function App() {
         {tab === "newhire" && <NewHire />}
         {tab === "offboard" && <Offboard />}
         {tab === "workflows" && <Workflows prefill={wfLaunch} />}
+        {tab === "snapshots" && <ConfigSnapshots me={me} />}
         {tab === "security" && me && <Security me={me} onProfileChanged={refreshMe} />}
       </main>
     </div>

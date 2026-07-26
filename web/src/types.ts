@@ -189,3 +189,20 @@ export interface TotpEnrollResponse { pendingKey: string; secret: string; otpAut
 export interface TotpVerifyEnrollResponse { recoveryCodes: string[] }
 
 export interface PasskeyInfo { id: string; nickname?: string; createdAt: string; lastUsedAt?: string }
+
+// --- Config snapshots: backup + diff -----------------------------------------------------------
+export interface ConfigSection { id: string; name: string; category: string }
+
+export interface ConfigSnapshotSectionSummary { sectionId: string; sectionName: string; itemCount: number; failed: boolean; error?: string }
+export interface ConfigSnapshotRun {
+  id: string; tenantId: string; operator: string; startedAt: string; completedAt?: string;
+  succeeded: boolean; imported: boolean; gitCommitSha?: string; sections: ConfigSnapshotSectionSummary[];
+}
+
+export type ConfigChangeKind = "Added" | "Removed" | "Modified";
+export interface ConfigFieldChange { field: string; before?: string; after?: string }
+export interface ConfigItemChange { kind: ConfigChangeKind; itemId: string; label?: string; fieldChanges: ConfigFieldChange[] }
+export interface SectionDiff { sectionId: string; sectionName: string; changes: ConfigItemChange[] }
+
+export interface ConfigWorkbookSection { sectionId: string; sectionName: string; contentJson: string }
+export interface ConfigWorkbook { tenantDisplayName: string; capturedAt: string; operator: string; sections: ConfigWorkbookSection[] }
