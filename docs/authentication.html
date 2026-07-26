@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authentication - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
+<script>
+  var initOpts = {
+    projectKey: "vQsdaVKqB3x2jUBKW4xd",
+    ingestPoint: "https://replay.spillerstech.us/ingest",
+    defaultInputMode: 0,
+    obscureTextNumbers: false,
+    obscureTextEmails: false,
+  };
+  var startOpts = { userID: "" };
+  (function(A,s,a,y,e,r){
+    r=window.OpenReplay=[e,r,y,[s-1, e]];
+    s=document.createElement('script');s.src=A;s.async=!a;
+    document.getElementsByTagName('head')[0].appendChild(s);
+    r.start=function(v){r.push([0])};
+    r.stop=function(v){r.push([1])};
+    r.setUserID=function(id){r.push([2,id])};
+    r.setUserAnonymousID=function(id){r.push([3,id])};
+    r.setMetadata=function(k,v){r.push([4,k,v])};
+    r.event=function(k,p,i){r.push([5,k,p,i])};
+    r.issue=function(k,p){r.push([6,k,p])};
+    r.isActive=function(){return false};
+    r.getSessionToken=function(){};
+  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
+  OpenReplay.start();
+  OpenReplay.setMetadata("project", "PartnerCenterBridge");
+</script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link active" href="authentication.html">Authentication</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>Authentication</h1>
+<p class="tagline" style="text-align:left;max-width:none;margin:0 0 1.5rem;">
+  The operator plane -- <em>who is allowed to use the bridge, and against which tenants</em> --
+  is independent of the Microsoft plane (the SAM app that gives the bridge access to customer
+  tenants; see <a href="architecture.html">Architecture</a>). This page covers the operator
+  plane's three modes, and the self-service account model that ships with the local one.
+</p>
+
+<h2>Three modes</h2>
+<p>Set with <code>Auth:Mode</code>. Nothing else in the app changes based on the mode --
+controllers use the same <code>[Authorize]</code> attribute and the same
+<code>User.Identity.Name</code> regardless of which one issued the token.</p>
+<table>
+  <tr><th>Mode</th><th>Who can sign in</th><th>When to use it</th></tr>
+  <tr>
+    <td><span class="badge accent">Oidc</span> (default)</td>
+    <td>Anyone your OIDC provider (Authentik, or any standard OIDC IdP) authenticates. Every
+        signed-in user has full, unrestricted access to every tenant -- this mode predates the
+        tenant-sharing model below and keeps that original all-access behavior.</td>
+    <td>You already run an IdP and want every technician to go through it.</td>
+  </tr>
+  <tr>
+    <td><span class="badge ok">Local</span></td>
+    <td>Anyone who registers an account directly in the app. No external IdP required. See below
+        for the full account/sharing/2FA/passkey model.</td>
+    <td>Solo technicians, small teams, or anyone self-hosting without wanting to stand up
+        Authentik first. This is the friction-free default for adoption.</td>
+  </tr>
+  <tr>
+    <td><span class="badge warn">Dev</span> (<code>Auth:Enabled=false</code>)</td>
+    <td>Everyone, as a fixed <code>dev-operator</code> identity. No credentials at all.</td>
+    <td><strong>docker-compose evaluation only.</strong> Never on a deployed instance --
+        see the warning on <a href="getting-started.html">Getting started</a>.</td>
+  </tr>
+</table>
+
+<h2>Local accounts: open signup, scoped power</h2>
+<p>
+  Registration (<code>POST /api/auth/register</code>) is deliberately open: no invite code, no
+  admin approval queue. The safety story isn't the signup gate, it's that a fresh account starts
+  with <strong>zero tenant access</strong>. It can log in and see the app shell, but can't run a
+  single workflow or deployment against a customer tenant until someone shares that tenant with
+  it.
+</p>
+<div class="callout">
+  There is no admin flag that bypasses this. <code>IsSystemAdmin</code> (granted automatically to
+  the very first account on a fresh database) gates exactly one thing: the SAM refresh-token
+  admin endpoints (<code>/api/admin/sam/*</code>) -- instance-level infrastructure, not tenant
+  access. Every tenant permission, for every account including the system admin's, comes from an
+  explicit, visible grant.
+</div>
+
+<h3>Owning a tenant</h3>
+<p>You become a tenant's <strong>Owner</strong> automatically, the moment you bring it into the
+system, two ways:</p>
+<ul>
+  <li><strong>Add it directly</strong> -- <code>POST /api/tenants</code> (the "Add a tenant" form
+      on the Tenants screen) if you already have the GDAP relationship and just want to start
+      automating against it.</li>
+  <li><strong>Sync from Partner Center</strong> -- running a sync grants you Owner on any
+      <em>newly discovered</em> tenant. A tenant the system already knew about just gets its name
+      and domain refreshed; ownership is untouched.</li>
+</ul>
+
+<h3>Sharing (the collab model)</h3>
+<p>
+  An Owner can grant another registered user access to that tenant, self-service, from the
+  Tenants screen -- no central admin has to be the bottleneck for every hand-off:
+</p>
+<table>
+  <tr><th>Role</th><th>Can do</th></tr>
+  <tr><td><span class="badge">Viewer</span></td><td>Read dashboard, history, and diagnosis output for that tenant. Cannot remediate or deploy.</td></tr>
+  <tr><td><span class="badge accent">Operator</span></td><td>Everything a Viewer can, plus run known-fix workflows and Win32 deployments.</td></tr>
+  <tr><td><span class="badge ok">Owner</span></td><td>Everything an Operator can, plus grant or revoke other users' access to that tenant, and reassign its contract.</td></tr>
+</table>
+<p>Grants can carry an optional expiry -- useful for a contractor or a temporary engagement.</p>
+
+<h2>Two-factor authentication (TOTP)</h2>
+<p>
+  Any local account can enable RFC&nbsp;6238 TOTP from the Security screen. Enrollment is a
+  two-step confirm: the app shows a secret (and an <code>otpauth://</code> URI you can paste into
+  most authenticator apps -- there's no QR code rendered client-side, deliberately: a live TOTP
+  secret isn't something to hand to a third-party QR image service), and enabling only completes
+  once you prove you captured it by entering a live code. Ten single-use recovery codes are shown
+  exactly once at that point.
+</p>
+<p>
+  Once enabled, a password login returns an MFA challenge instead of a token; the account isn't
+  considered logged in until the second factor clears. A wrong code doesn't burn the challenge --
+  it's retryable (bounded) within its short server-side lifetime, so a typo doesn't force you back
+  through your password. A successful <strong>passkey</strong> login skips this step entirely:
+  WebAuthn possession-plus-verification is already MFA-equivalent.
+</p>
+
+<h2>Passkeys (primary sign-in)</h2>
+<p>
+  Passkeys are the primary way to sign in, not a bolt-on: registered as <em>discoverable</em>
+  (resident) credentials, so the login screen's "Sign in with a passkey" button needs no email
+  typed first -- the browser/authenticator presents whichever passkeys it holds for the site and
+  the user picks one. Password stays the permanent fallback credential; it's never removable from
+  an account, so a lost device or a browser without WebAuthn support can't lock anyone out.
+</p>
+<p>Passkey ceremonies (<code>/api/auth/passkey/*</code>) are standard WebAuthn/FIDO2 via
+<a href="https://github.com/passwordless-lib/fido2-net-lib" target="_blank" rel="noopener">Fido2NetLib</a>
+-- no proprietary protocol, works with platform authenticators (Windows Hello, Touch ID) and
+roaming ones (security keys) alike.</p>
+
+<h2>Audit trail</h2>
+<p>
+  Every security-relevant event is recorded to an append-only <code>AuditEvents</code> table:
+  registration, login success/failure, logout, TOTP enable/disable, a recovery code being spent,
+  passkeys added/removed, and every tenant-access grant or revoke -- who, when, and (for access
+  changes) what role. Mutations to sensitive entities (accounts, tenants, contracts, templates,
+  deployments, tenant grants) are captured automatically by an EF Core save-changes interceptor,
+  so logging isn't something a future controller can forget to do. This is in addition to, not
+  instead of, the workflow-run history described in <a href="architecture.html">Architecture</a>.
+</p>
+
+<h2>Configuration reference</h2>
+<table>
+  <tr><th>Key</th><th>Applies to</th><th>Notes</th></tr>
+  <tr><td><code>Auth:Mode</code></td><td>All</td><td><code>Oidc</code> (default) / <code>Local</code> / <code>Dev</code>. <code>Auth:Enabled=true|false</code> is still read as a fallback for config predating this key.</td></tr>
+  <tr><td><code>Auth:Authority</code>, <code>Auth:Audience</code>, <code>Auth:NameClaim</code></td><td>Oidc</td><td>Standard OIDC discovery + JWT bearer validation settings.</td></tr>
+  <tr><td><code>Auth:Local:SigningKey</code></td><td>Local</td><td><strong>Secret.</strong> Base64, 32+ bytes (<code>openssl rand -base64 32</code>). Signs locally issued JWTs; required to start in Local mode. Rotating it invalidates every outstanding token.</td></tr>
+  <tr><td><code>Auth:Local:MinPasswordLength</code>, <code>MaxFailedLogins</code>, <code>LockoutMinutes</code>, <code>AccessTokenLifetimeHours</code></td><td>Local</td><td>Defaults: 12 chars, 10 attempts, 15-minute lockout, 12-hour tokens.</td></tr>
+  <tr><td><code>Auth:Local:Passkey:RelyingPartyId</code></td><td>Local</td><td>Bare domain the SPA is served from (no scheme/port), e.g. <code>pcbridge.example.com</code>.</td></tr>
+  <tr><td><code>Auth:Local:Passkey:RelyingPartyName</code></td><td>Local</td><td>Display name shown by the OS passkey prompt.</td></tr>
+  <tr><td><code>Auth:Local:Passkey:Origins</code></td><td>Local</td><td>Exact origin(s) (scheme+host+port) the browser sends, e.g. <code>https://pcbridge.example.com</code>. A mismatch fails every ceremony.</td></tr>
+</table>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

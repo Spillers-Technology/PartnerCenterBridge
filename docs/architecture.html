@@ -39,6 +39,7 @@
   <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
   <a class="nav-link" href="getting-started.html">Getting started</a>
   <a class="nav-link active" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="authentication.html">Authentication</a>
   <a class="nav-link" href="workflows.html">Workflows</a>
   <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
   <a class="nav-link" href="deployment.html">Deployment</a>
@@ -56,8 +57,10 @@ completely separate:</p>
   <tr>
     <td><strong>Operator plane</strong></td>
     <td>Your technicians using the SPA + API</td>
-    <td>OIDC (JWT bearer) against your own identity provider. The operator's name from the
-        token is what lands in workflow run history.</td>
+    <td>OIDC (JWT bearer) against your own identity provider, <strong>or</strong> self-registered
+        local accounts with passkeys/TOTP and per-tenant sharing -- no IdP required. See
+        <a href="authentication.html">Authentication</a> for the full local-account model. The
+        operator's name from the token is what lands in workflow run history either way.</td>
   </tr>
   <tr>
     <td><strong>Microsoft plane</strong></td>
