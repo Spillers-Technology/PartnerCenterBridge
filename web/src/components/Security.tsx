@@ -108,7 +108,14 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
 
       <fieldset>
         <legend>Two-factor authentication (TOTP)</legend>
-        {me.totpEnabled ? (
+        {recoveryCodes ? (
+          <div className="password">
+            <p><strong>Save these recovery codes now -- they will not be shown again.</strong></p>
+            <p className="mono">{recoveryCodes.join("  ")}</p>
+            <p className="muted">Each code works once, if you lose access to your authenticator app.</p>
+            <button onClick={() => setRecoveryCodes(null)}>I've saved these codes</button>
+          </div>
+        ) : me.totpEnabled ? (
           <>
             <p>2FA is enabled. Password logins require a code from your authenticator app.</p>
             <form className="field" onSubmit={disableTotp}>
@@ -117,13 +124,6 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
               <button disabled={busy}>{busy ? "Disabling…" : "Disable 2FA"}</button>
             </form>
           </>
-        ) : recoveryCodes ? (
-          <div className="password">
-            <p><strong>Save these recovery codes now -- they will not be shown again.</strong></p>
-            <p className="mono">{recoveryCodes.join("  ")}</p>
-            <p className="muted">Each code works once, if you lose access to your authenticator app.</p>
-            <button onClick={() => setRecoveryCodes(null)}>I've saved these codes</button>
-          </div>
         ) : pendingKey ? (
           <form className="field" onSubmit={confirmTotpEnroll}>
             <p>Scan this into your authenticator app, or enter the key manually (no QR image is

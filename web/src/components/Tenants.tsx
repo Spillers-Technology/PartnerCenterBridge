@@ -66,7 +66,7 @@ function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
   );
 }
 
-export function Tenants({ me }: { me: MeProfile | null }) {
+export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProfileChanged: () => void }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [busy, setBusy] = useState(false);
@@ -83,7 +83,7 @@ export function Tenants({ me }: { me: MeProfile | null }) {
 
   const sync = async () => {
     setBusy(true); setError(null);
-    try { await api.tenants.sync(); await load(); }
+    try { await api.tenants.sync(); await load(); onProfileChanged(); }
     catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   };
@@ -95,6 +95,7 @@ export function Tenants({ me }: { me: MeProfile | null }) {
       await api.tenants.create(newTenant.tenantId, newTenant.displayName, newTenant.defaultDomain || undefined);
       setNewTenant({ tenantId: "", displayName: "", defaultDomain: "" });
       await load();
+      onProfileChanged();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

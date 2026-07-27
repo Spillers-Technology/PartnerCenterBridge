@@ -71,6 +71,7 @@ export function App() {
     try { await api.auth.logout(); } catch { /* best-effort */ }
     clearLocalToken();
     setMe(null);
+    setLocalScreen("login");
   };
 
   if (!ready || authMode === null) return <div className="center">Loading…</div>;
@@ -113,7 +114,7 @@ export function App() {
       <main>
         {tab === "dashboard" && <Dashboard />}
         {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
-        {tab === "tenants" && <Tenants me={me} />}
+        {tab === "tenants" && <Tenants me={me} onProfileChanged={refreshMe} />}
         {tab === "contracts" && <Contracts />}
         {tab === "templates" && <AppTemplates />}
         {tab === "deploy" && <DeployWizard />}

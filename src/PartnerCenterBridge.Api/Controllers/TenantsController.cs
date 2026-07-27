@@ -82,7 +82,9 @@ public class TenantsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TenantDto>>> Sync(
         [FromServices] PartnerCenterClient partnerCenter, CancellationToken ct)
     {
-        var customers = await partnerCenter.ListCustomersAsync(ct);
+        IReadOnlyList<CustomerSummary> customers;
+        try { customers = await partnerCenter.ListCustomersAsync(ct); }
+        catch (InvalidOperationException e) { return BadRequest(e.Message); }
         foreach (var c in customers)
         {
             var existing = await _db.Tenants.FirstOrDefaultAsync(t => t.TenantId == c.TenantId, ct);
