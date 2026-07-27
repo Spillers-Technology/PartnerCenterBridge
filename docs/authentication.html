@@ -56,6 +56,8 @@
   plane's three modes, and the self-service account model that ships with the local one.
 </p>
 
+<img src="assets/screenshots/pcbridge-login.jpg" alt="Login screen with a primary Sign in with a passkey button above a password fallback form and a Register link." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+
 <h2>Three modes</h2>
 <p>Set with <code>Auth:Mode</code>. Nothing else in the app changes based on the mode --
 controllers use the same <code>[Authorize]</code> attribute and the same
@@ -154,6 +156,8 @@ system, two ways:</p>
 <a href="https://github.com/passwordless-lib/fido2-net-lib" target="_blank" rel="noopener">Fido2NetLib</a>
 -- no proprietary protocol, works with platform authenticators (Windows Hello, Touch ID) and
 roaming ones (security keys) alike.</p>
+
+<img src="assets/screenshots/pcbridge-security.jpg" alt="Security screen listing a registered passkey and showing TOTP enabled, with a disable-2FA password confirmation form." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
 
 <h2>Audit trail</h2>
 <p>

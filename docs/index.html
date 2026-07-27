@@ -251,7 +251,7 @@
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap">
       <div class="hero-content">
-        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.1.0</div>
+        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.3.0</div>
         <h1 id="hero-title">Cross-tenant Microsoft&nbsp;365 ops,<br><span>done the same way every time.</span></h1>
         <p class="lead">
           A self-hosted bridge over Microsoft Graph and the Partner Center API for MSPs.
@@ -313,6 +313,20 @@
              human on the phone, not the portal.</p>
         </article>
         <article class="tile">
+          <span class="maturity beta"><i></i> Beta</span>
+          <strong>Self-registration, passkeys &amp; TOTP</strong>
+          <p>Run without an external IdP: open registration, WebAuthn passkeys as the primary
+             sign-in, TOTP with recovery codes, and per-tenant sharing where an Owner grants
+             Viewer/Operator/Owner access - no admin bypass.</p>
+        </article>
+        <article class="tile">
+          <span class="maturity beta"><i></i> Beta</span>
+          <strong>Config snapshots: diff &amp; git sync</strong>
+          <p>Point-in-time backups of Conditional Access, Named Locations, and Device Compliance
+             Policies, diffable section-by-section or whole-tenant, exportable as a workbook, and
+             optionally mirrored to a real git repo.</p>
+        </article>
+        <article class="tile">
           <span class="maturity planned"><i></i> Planned</span>
           <strong>Two-way LDAP sync</strong>
           <p>Phase 4. The abstractions are scaffolded but the sync itself is <strong>not implemented</strong> yet.
@@ -362,6 +376,18 @@
           </button>
           <figcaption><strong>Tenants and contracts</strong><span>Sync your customer list from Partner Center, see delegation status at a glance, and assign each tenant to the contract whose desired state it should follow.</span></figcaption>
         </figure>
+        <figure class="shot">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-login.jpg" alt="Login screen with a primary Sign in with a passkey button above a password fallback form.">
+          </button>
+          <figcaption><strong>Passkey-primary sign-in</strong><span>No external IdP required: register an account, tap a passkey to sign in - no email typed first - with password and TOTP as fallbacks. See <a href="authentication.html">Authentication</a>.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-config-snapshots.jpg" alt="Config Snapshots screen showing a diff between two runs with Modified, Added, and Removed Conditional Access and Named Location entries.">
+          </button>
+          <figcaption><strong>Config snapshots &amp; diff</strong><span>Point-in-time backups of Conditional Access, Named Locations, and Device Compliance Policies - diffed section-by-section, exportable as a patch. See <a href="config-snapshots.html">Config Snapshots</a>.</span></figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -405,7 +431,7 @@
         <article class="feature"><em>Non-invasive</em><strong>No agents in customer tenants</strong><p>The bridge speaks the same Graph and Partner Center APIs Microsoft's own portals use, under the Secure Application Model and per-customer GDAP consent. Nothing is installed downstream.</p></article>
         <article class="feature"><em>Transparent</em><strong>Nothing happens behind your back</strong><p>Diagnoses are shown raw. Remediation steps are listed one by one with their outcome. Reconcile plans are previewed as a dry run before anything deploys.</p></article>
         <article class="feature"><em>Auditable</em><strong>Every run is evidence</strong><p>Workflow runs persist to Postgres with operator identity, inputs, findings, and steps. Failures can push a Teams Adaptive Card or plain JSON to a webhook.</p></article>
-        <article class="feature"><em>Two auth planes</em><strong>Who you are vs. what the bridge may do</strong><p>Operators authenticate via your own OIDC provider (tested with Authentik). The Microsoft plane is a separate SAM app with an encrypted, auto-rotating refresh token.</p></article>
+        <article class="feature"><em>Two auth planes</em><strong>Who you are vs. what the bridge may do</strong><p>Operators authenticate via your own OIDC provider, or self-registered local accounts with passkeys and per-tenant sharing - no IdP required. The Microsoft plane is a separate SAM app with an encrypted, auto-rotating refresh token.</p></article>
         <article class="feature"><em>Contract model</em><strong>Desired state, reconciled</strong><p>A contract is a named desired state shared by a set of tenants. The reconcile engine produces a deploy / update / nothing plan you review before it runs.</p></article>
         <article class="feature"><em>Self-hosted</em><strong>Your credentials stay yours</strong><p>Docker Compose for evaluation, Kubernetes (Kustomize + Flux + SOPS) for production. Secrets are encrypted at rest via ASP.NET Data Protection.</p></article>
       </div>

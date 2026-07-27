@@ -154,6 +154,16 @@ this list with the roles on that customer's GDAP relationship.</p>
     <td><code>Organization.Read.All</code></td>
     <td>Reading subscribed SKUs for the license pickers and license repair.</td>
   </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>Policy.Read.All</code></td>
+    <td><a href="config-snapshots.html">Config Snapshots</a>: reading Conditional Access Policies and Named Locations.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>DeviceManagementConfiguration.Read.All</code></td>
+    <td><a href="config-snapshots.html">Config Snapshots</a>: reading Device Compliance Policies.</td>
+  </tr>
 </table>
 <div class="callout">Treat this as the minimum. Because tokens are requested with
 <code>/.default</code>, the bridge can only ever use what is consented on the app - adding a
@@ -170,13 +180,19 @@ GDAP + the multi-tenant consent).</div>
       (licenses, groups, UPN domain).</li>
   <li><strong>Deploy / provision / run workflows.</strong> Everything shows its plan or its
       diagnosis before it acts, and its steps after.</li>
+  <li><strong>Take a config snapshot</strong> (optional): the Config Snapshots tab backs up
+      Conditional Access, Named Locations, and Device Compliance Policies for a tenant and diffs
+      any two runs. See <a href="config-snapshots.html">Config Snapshots</a>.</li>
 </ol>
 
 <div class="callout">
-  <strong>Operator auth:</strong> in production the SPA and API sit behind your OIDC provider
-  (tested with Authentik). Set the <code>Auth</code> section (authority, audience) and matching
-  <code>VITE_OIDC_*</code> variables for the SPA. <code>Auth:Enabled=false</code> is for local
-  development only.
+  <strong>Operator auth:</strong> two real options for production, not just one. Put the SPA and
+  API behind your own OIDC provider (tested with Authentik) via the <code>Auth</code> section
+  (authority, audience) and matching <code>VITE_OIDC_*</code> SPA variables -- or set
+  <code>Auth:Mode=Local</code> for self-registered accounts (passkeys, TOTP, per-tenant sharing)
+  with no external IdP at all. Full detail: <a href="authentication.html">Authentication</a>.
+  <code>Auth:Mode=Dev</code> (<code>Auth:Enabled=false</code>) is for local development only --
+  never on a deployed instance.
 </div>
 
 </main>
