@@ -96,14 +96,32 @@ and no operator auth - don't expose it.</p>
       loses this and the encrypted SAM token can't be decrypted; you'll need to
       <a href="sam-bootstrap.html">re-bootstrap</a>.</li>
   <li><strong>Package store</strong> - uploaded <code>.intunewin</code> templates.</li>
+  <li><strong>Git sync working copy</strong> (<code>GitSync:LocalPath</code>, default
+      <code>/git-sync</code>) - only if git sync is enabled. Not strictly required to persist
+      (it re-clones if missing) but avoids a full re-clone on every pod restart.</li>
 </ul>
 
 <h3>Operator auth</h3>
 <p>
-  Point the <code>Auth</code> section at your OIDC provider (authority + audience; tested with
-  Authentik) and give the SPA matching <code>VITE_OIDC_AUTHORITY</code>,
-  <code>VITE_OIDC_CLIENT_ID</code>, <code>VITE_API_BASE</code>. The operator name claim
-  (<code>preferred_username</code> by default) is what workflow run history records.
+  Two options, not just one -- full detail on both: <a href="authentication.html">Authentication</a>.
+</p>
+<ul>
+  <li><strong>OIDC</strong> - point the <code>Auth</code> section at your provider (authority +
+      audience; tested with Authentik) and give the SPA matching
+      <code>VITE_OIDC_AUTHORITY</code>, <code>VITE_OIDC_CLIENT_ID</code>,
+      <code>VITE_API_BASE</code>. The operator name claim (<code>preferred_username</code> by
+      default) is what workflow run history records.</li>
+  <li><strong><code>Auth:Mode=Local</code></strong> - self-registered accounts, no IdP to stand
+      up. Set <code>Auth:Local:SigningKey</code> (a secret) and, for passkeys,
+      <code>Auth:Local:Passkey:RelyingPartyId</code>/<code>Origins</code> matching the public
+      hostname the SPA is served from.</li>
+</ul>
+
+<h3>Config snapshot git sync (optional)</h3>
+<p>
+  Set <code>GitSync:RepoUrl</code> (and <code>GitSync:Token</code>, a secret) to mirror every
+  config snapshot capture to a real git repo. Unset by default -- see
+  <a href="config-snapshots.html">Config Snapshots</a> for the full key reference.
 </p>
 
 <h3>Exchange Online certificate</h3>

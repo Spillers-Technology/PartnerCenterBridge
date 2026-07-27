@@ -192,6 +192,65 @@ const provisioningTemplate = {
   licenseSkuIds: ["sku-e3"], groupIds: ["g1", "g3"],
 };
 
+// Auth:Mode=Local + Config Snapshots mock data. authModeOverride lets the same router serve the
+// original (auth-disabled "Dev") screens unchanged while a later page in this same run asks for
+// "Local" mode to exercise Login/Register/Security.
+let authModeOverride = null;
+
+const meProfile = {
+  id: "u1", email: "jspillers@example.com", displayName: "jspillers",
+  isSystemAdmin: true, totpEnabled: true,
+  tenantAccess: [{ tenantId: tenants[0].id, tenantName: "Contoso Ltd", role: "Owner" }],
+};
+
+const passkeys = [
+  { id: "pk1", nickname: "YubiKey 5C", createdAt: minutesAgo(43200), lastUsedAt: minutesAgo(62) },
+];
+
+const configSections = [
+  { id: "conditional-access-policies", name: "Conditional Access Policies", category: "Identity" },
+  { id: "named-locations", name: "Named Locations", category: "Identity" },
+  { id: "device-compliance-policies", name: "Device Compliance Policies", category: "Devices" },
+];
+
+const snapshotRuns = [
+  {
+    id: "run1", tenantId: tenants[0].id, operator: "jspillers",
+    startedAt: minutesAgo(2880), completedAt: minutesAgo(2880), succeeded: true, imported: false,
+    gitCommitSha: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    sections: [
+      { sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies", itemCount: 6, failed: false },
+      { sectionId: "named-locations", sectionName: "Named Locations", itemCount: 2, failed: false },
+      { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", itemCount: 4, failed: false },
+    ],
+  },
+  {
+    id: "run2", tenantId: tenants[0].id, operator: "jspillers",
+    startedAt: minutesAgo(30), completedAt: minutesAgo(30), succeeded: true, imported: false,
+    gitCommitSha: "f9e8d7c6b5a4938271605f4e3d2c1b0a9988776a",
+    sections: [
+      { sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies", itemCount: 7, failed: false },
+      { sectionId: "named-locations", sectionName: "Named Locations", itemCount: 1, failed: false },
+      { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", itemCount: 4, failed: false },
+    ],
+  },
+];
+
+const snapshotDiff = [
+  {
+    sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies",
+    changes: [
+      { kind: "Modified", itemId: "1", label: "Require MFA for admins", fieldChanges: [{ field: "state", before: '"enabledForReportingButNotEnforced"', after: '"enabled"' }] },
+      { kind: "Added", itemId: "7", label: "Block legacy authentication", fieldChanges: [] },
+    ],
+  },
+  {
+    sectionId: "named-locations", sectionName: "Named Locations",
+    changes: [{ kind: "Removed", itemId: "loc2", label: "Old branch office", fieldChanges: [] }],
+  },
+  { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", changes: [] },
+];
+
 // ---------------------------------------------------------------------------
 // API mock router
 // ---------------------------------------------------------------------------
@@ -266,6 +325,19 @@ async function handleApi(route) {
       { tenantId: tenants[1].id, tenantName: "Fabrikam Inc", templateId: "t1", templateName: "7-Zip 24.08", action: "Update" },
     ]);
   }
+
+  if (method === "GET" && apiPath === "/auth/mode") return json(route, { mode: authModeOverride || "Dev" });
+  if (method === "POST" && apiPath === "/auth/login") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
+  if (method === "POST" && apiPath === "/auth/register") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
+  if (method === "GET" && apiPath === "/auth/me") return json(route, meProfile);
+  if (method === "POST" && apiPath === "/auth/logout") return json(route, {}, 204);
+  if (method === "GET" && apiPath === "/auth/passkey") return json(route, passkeys);
+  if (method === "GET" && apiPath === "/config-sections") return json(route, configSections);
+
+  match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots$/);
+  if (method === "GET" && match) return json(route, snapshotRuns);
+  match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots\/diff$/);
+  if (method === "GET" && match) return json(route, snapshotDiff);
 
   return json(route, {});
 }
@@ -351,6 +423,59 @@ async function main() {
     await gotoTab(page, "Tenants");
     await page.getByText("Wingtip Partners", { exact: false }).waitFor({ timeout: 20_000 });
     await page.screenshot({ path: path.join(outDir, "pcbridge-tenants.jpg"), type: "jpeg", quality: 92 });
+
+    // --- Auth:Mode=Local screens: Login (passkey-primary), Register, Security, Config Snapshots.
+    // Separate pages/contexts because these need their own unauthenticated -> authenticated
+    // lifecycle, distinct from the auth-disabled "Dev" mode the screens above ran under.
+    authModeOverride = "Local";
+
+    console.log("Rendering Login (passkey-primary)...");
+    const loginPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
+    await loginPage.route("**/*", (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      return pathname.startsWith("/api/") ? handleApi(route) : route.continue();
+    });
+    await loginPage.addStyleTag({
+      content: `*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; caret-color: transparent !important; }`,
+    });
+    await loginPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await loginPage.getByRole("button", { name: "Sign in with a passkey" }).waitFor({ timeout: 20_000 });
+    await loginPage.screenshot({ path: path.join(outDir, "pcbridge-login.jpg"), type: "jpeg", quality: 92 });
+
+    console.log("Rendering Register...");
+    await loginPage.getByRole("button", { name: "Register", exact: true }).click();
+    await loginPage.getByText("Create an account", { exact: true }).waitFor({ timeout: 20_000 });
+    await loginPage.screenshot({ path: path.join(outDir, "pcbridge-register.jpg"), type: "jpeg", quality: 92 });
+    await loginPage.close();
+
+    console.log("Signing in (mocked) to render Security...");
+    const securedPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
+    await securedPage.route("**/*", (route) => {
+      const pathname = new URL(route.request().url()).pathname;
+      return pathname.startsWith("/api/") ? handleApi(route) : route.continue();
+    });
+    await securedPage.addStyleTag({
+      content: `*, *::before, *::after { transition-duration: 0s !important; animation-duration: 0s !important; caret-color: transparent !important; }`,
+    });
+    await securedPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await securedPage.locator("input[type=email]").fill("jspillers@example.com");
+    await securedPage.locator("input[type=password]").fill("correct-horse-battery-staple-1");
+    await securedPage.getByRole("button", { name: "Sign in", exact: true }).click();
+    await securedPage.locator("header nav button", { hasText: /^Security$/ }).waitFor({ timeout: 20_000 });
+    await securedPage.locator("header nav button", { hasText: /^Security$/ }).click();
+    await securedPage.getByText("YubiKey 5C", { exact: false }).waitFor({ timeout: 20_000 });
+    await securedPage.screenshot({ path: path.join(outDir, "pcbridge-security.jpg"), type: "jpeg", quality: 92 });
+
+    console.log("Rendering Config Snapshots (diff view)...");
+    await gotoTab(securedPage, "Config Snapshots");
+    await securedPage.getByText("jspillers", { exact: false }).first().waitFor({ timeout: 20_000 });
+    const diffSelects = securedPage.locator("fieldset select");
+    await diffSelects.nth(0).selectOption({ index: 1 });
+    await diffSelects.nth(1).selectOption({ index: 2 });
+    await securedPage.getByRole("button", { name: "View diff", exact: true }).click();
+    await securedPage.getByText("Block legacy authentication", { exact: false }).waitFor({ timeout: 20_000 });
+    await securedPage.screenshot({ path: path.join(outDir, "pcbridge-config-snapshots.jpg"), type: "jpeg", quality: 92 });
+    await securedPage.close();
 
     console.log(`Captured screenshots in ${path.relative(repoRoot, outDir)}`);
   } finally {
