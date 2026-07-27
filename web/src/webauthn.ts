@@ -54,7 +54,8 @@ export async function createPasskey(options: RegisterOptionsWire) {
     clientExtensionResults: cred.getClientExtensionResults() as Record<string, unknown>,
     response: {
       attestationObject: bytesToBase64Url(response.attestationObject),
-      clientDataJSON: bytesToBase64Url(response.clientDataJSON)
+      clientDataJSON: bytesToBase64Url(response.clientDataJSON),
+      transports: response.getTransports()
     }
   };
 }

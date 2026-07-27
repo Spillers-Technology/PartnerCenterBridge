@@ -44,6 +44,10 @@ public class SamTokenService : ITokenProvider
 
     public async Task<string> GetAccessTokenAsync(string tenantId, string resource, CancellationToken ct = default)
     {
+        if (string.IsNullOrEmpty(_opts.ClientId) || string.IsNullOrEmpty(_opts.ClientSecret))
+            throw new InvalidOperationException(
+                "Partner Center is not configured on this deployment (Partner:ClientId / Partner:ClientSecret).");
+
         var refreshToken = await _store.GetRefreshTokenAsync(ct) ?? _opts.SeedRefreshToken
             ?? throw new InvalidOperationException(
                 "Secure Application Model is not bootstrapped: no SAM refresh token is available. " +
