@@ -38,6 +38,24 @@ These are starting priors, not fixed law — revise whichever rule the log below
   an artifact of the test run, not the code, just as often as a "green" one can be hiding a real
   defect — check which before acting on either.
 
+### First-unit tooling bug — found by reading the background process's own output
+
+Task 1's first dispatch attempt (Terra, implement role) sat "in progress" for over 30 minutes.
+The dispatching subagent kept re-arming a wait/poll loop on faith rather than checking the
+underlying `codex exec` background shell's actual exit status. Reading that process's own output
+file directly (`bda6yq61z.output`, 8 lines) showed it had died in under a second: `error: the
+argument '--sandbox <SANDBOX_MODE>' cannot be used with '--approve-for-me'`, exit code 2. All
+three `.claude/agents/codex-*.agent.md` implement-role commands paired `-s workspace-write` with
+`--approve-for-me`, which this codex CLI version rejects as mutually exclusive —
+`--approve-for-me` already implies the workspace-write sandbox on its own. Fixed in all three
+files, then live-verified (not just assumed) with a throwaway `codex exec ... --approve-for-me`
+call that wrote a real file, confirming `sandbox: workspace-write` in its own startup banner.
+
+**Rule, restated from the source project's own log and now confirmed on this one: when an
+integration fails, read the other system's logs before touching your own code, and before
+trusting a "still running" status on faith.** A dispatcher polling a background task must check
+that task's actual output/exit code, not just re-arm another wait.
+
 ## Log
 
 | Unit | Task type | Author | Reviewer | Defects found | Defects real | Caught by tests instead | Est. tokens | Verdict |
