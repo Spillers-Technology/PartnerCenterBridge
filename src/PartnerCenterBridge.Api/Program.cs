@@ -90,6 +90,9 @@ builder.Services.AddSingleton(new AuthModeInfo(authMode));
 builder.Services.Configure<LocalAuthOptions>(cfg.GetSection(LocalAuthOptions.SectionName));
 builder.Services.AddSingleton<LocalTokenService>();
 builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
+builder.Services.AddMcpServer()
+    .WithHttpTransport(o => o.Stateless = true)
+    .WithToolsFromAssembly();
 builder.Services.AddScoped<AuthResponseFactory>();
 
 // TOTP and passkeys are Local-mode features, but registered unconditionally like the above --
@@ -199,6 +202,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapMcp("/mcp").RequireAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();
