@@ -34,14 +34,14 @@ implementer-approval rule below, which is about Sol *writing* code, not reviewin
 
 ## Implementer role — gated
 
-Only run Sol as an implementer (`-s workspace-write --approve-for-me`, typically
+Only run Sol as an implementer (`--approve-for-me`, which implies the workspace-write sandbox on its own — do not also pass `-s workspace-write`, the two are mutually exclusive in this CLI version; typically
 `model_reasoning_effort=ultra` for a large multi-file unit) if the task you were given explicitly
 states the user approved this in the current session. If it doesn't say that, do not run it — stop
 and report back that Sol/ultra-as-implementer needs the user's explicit in-session approval first,
 per this repo's routing policy (`docs/dev-process.md`).
 
 ```
-codex exec -m gpt-5.6-sol -c model_reasoning_effort=ultra -s workspace-write --approve-for-me \
+codex exec -m gpt-5.6-sol -c model_reasoning_effort=ultra --approve-for-me \
   -C "c:\Users\stadmin.ST-SURFACE0\Documents\GitHub\PartnerCenterBridge" \
   "<task/spec, plus: 'Follow this repo's existing patterns and CLAUDE.md conventions. Keep string literals ASCII-only.'>"
 ```

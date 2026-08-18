@@ -23,7 +23,7 @@ guessing at what "tightly specified" would look like — this tier is not the ri
 ## Command
 
 ```
-codex exec -m gpt-5.6-luna -c model_reasoning_effort=low -s workspace-write --approve-for-me \
+codex exec -m gpt-5.6-luna -c model_reasoning_effort=low --approve-for-me \
   -C "c:\Users\stadmin.ST-SURFACE0\Documents\GitHub\PartnerCenterBridge" \
   "<the task prompt, verbatim from what you were given, plus: 'Follow this repo's existing patterns and CLAUDE.md conventions. Keep string literals ASCII-only.'>"
 ```

@@ -18,7 +18,7 @@ through `git` and Codex's own output.
 **Implement**: Codex writes the code.
 
 ```
-codex exec -m gpt-5.6-terra -c model_reasoning_effort=<medium|high> -s workspace-write --approve-for-me \
+codex exec -m gpt-5.6-terra -c model_reasoning_effort=<medium|high> --approve-for-me \
   -C "c:\Users\stadmin.ST-SURFACE0\Documents\GitHub\PartnerCenterBridge" \
   "<task/spec, plus: 'Follow this repo's existing patterns and CLAUDE.md conventions. Keep string literals ASCII-only.'>"
 ```
