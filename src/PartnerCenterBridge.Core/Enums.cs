@@ -70,6 +70,29 @@ public enum TenantRole
     Owner = 2
 }
 
+/// <summary>
+/// How a tenant's mutating MCP tool calls are gated. <see cref="Queue"/> is the default for every
+/// tenant and the safe choice: a mutation stages an <see cref="Entities.PendingAction"/> a human
+/// must approve in the SPA instead of executing immediately. <see cref="ClientTrust"/> executes
+/// immediately, relying on the MCP client's own confirmation UX -- only a PCB system admin can
+/// switch a tenant into this mode (see <see cref="Entities.Tenant.McpApprovalMode"/>).
+/// </summary>
+public enum McpApprovalMode
+{
+    Queue = 0,
+    ClientTrust = 1
+}
+
+/// <summary>Lifecycle of an <see cref="Entities.PendingAction"/>.</summary>
+public enum PendingActionStatus
+{
+    Pending,
+    Approved,
+    Rejected,
+    Executed,
+    Expired
+}
+
 /// <summary>Kind of <see cref="Entities.AuditEvent"/>. Kept as a closed set so a SIEM/log sink can
 /// alert on specific categories (e.g. every <see cref="TenantAccessGranted"/>) without string matching.</summary>
 public enum AuditEventType

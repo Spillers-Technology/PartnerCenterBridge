@@ -10,7 +10,7 @@ namespace PartnerCenterBridge.Api.Auth;
 /// </summary>
 public interface ITenantAccessService
 {
-    /// <summary>True if the current caller is a system admin (bypasses per-tenant grants entirely) or holds a non-expired grant at or above <paramref name="minimum"/> on <paramref name="tenantId"/>.</summary>
+    /// <summary>True if the current caller holds a non-expired grant at or above <paramref name="minimum"/> on <paramref name="tenantId"/>. System admin never bypasses this -- see TenantAccessService's remarks.</summary>
     Task<bool> HasRoleAsync(Guid tenantId, TenantRole minimum, CancellationToken ct);
 
     /// <summary>True if the current caller is a system admin.</summary>
