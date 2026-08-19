@@ -33,9 +33,11 @@ public class PendingActionService
 
     /// <summary>
     /// Marks Approved, runs <paramref name="execute"/>, then marks Executed -- or records
-    /// <see cref="PendingAction.ExecutionError"/> and rethrows if it fails. The caller (Task 6's
-    /// controller) supplies <paramref name="execute"/> so this service never itself knows how to
-    /// run any specific ActionType.
+    /// <see cref="PendingAction.ExecutionError"/> and rethrows if it fails. A failed execution is
+    /// deliberately not auto-retried because an executor may not be idempotent, and this foundation
+    /// does not automatically surface it for manual retry; reconciliation and retry UX are deferred
+    /// to a later plan. The caller (Task 6's controller) supplies <paramref name="execute"/> so
+    /// this service never itself knows how to run any specific ActionType.
     /// </summary>
     public async Task<PendingAction> ApproveAsync(Guid id, Guid decidedByUserId, Func<PendingAction, Task> execute, CancellationToken ct)
     {

@@ -170,4 +170,104 @@ public class PendingActionServiceTests
         Assert.Equal(1, executionCount);
         Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
     }
+
+    [Fact]
+    public async Task Concurrent_approval_and_rejection_claim_once()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var action = await new PendingActionService(db.Context).StageAsync(
+            tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+        using var approveContext = db.CreateContext();
+        using var rejectContext = db.CreateContext();
+        var approveService = new PendingActionService(approveContext);
+        var rejectService = new PendingActionService(rejectContext);
+        var approvalExecutionStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseApprovalExecution = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionCount = 0;
+
+        async Task Execute(PendingAction _)
+        {
+            Interlocked.Increment(ref executionCount);
+            approvalExecutionStarted.TrySetResult();
+            await releaseApprovalExecution.Task;
+        }
+
+        var approval = approveService.ApproveAsync(
+            action.Id, Guid.NewGuid(), Execute, CancellationToken.None);
+        await approvalExecutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                rejectService.RejectAsync(action.Id, Guid.NewGuid(), CancellationToken.None));
+        }
+        finally
+        {
+            releaseApprovalExecution.TrySetResult();
+        }
+
+        await approval;
+
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(1, executionCount);
+        Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_approval_and_lazy_expiry_leave_expired_action_unexecuted()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var action = await new PendingActionService(db.Context).StageAsync(
+            tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+        action.ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1);
+        await db.Context.SaveChangesAsync();
+        using var approveContext = db.CreateContext();
+        using var expiryContext = db.CreateContext();
+        var approveService = new PendingActionService(approveContext);
+        var expiryService = new PendingActionService(expiryContext);
+        var approveReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var expiryReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseRace = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionCount = 0;
+
+        async Task<PendingAction> ApproveAfterRelease()
+        {
+            approveReady.TrySetResult();
+            await releaseRace.Task;
+            return await approveService.ApproveAsync(
+                action.Id, Guid.NewGuid(), _ =>
+                {
+                    Interlocked.Increment(ref executionCount);
+                    return Task.CompletedTask;
+                }, CancellationToken.None);
+        }
+
+        async Task<PendingAction?> ExpireAfterRelease()
+        {
+            expiryReady.TrySetResult();
+            await releaseRace.Task;
+            return await expiryService.GetAsync(action.Id, CancellationToken.None);
+        }
+
+        var approval = ApproveAfterRelease();
+        var expiry = ExpireAfterRelease();
+        await Task.WhenAll(approveReady.Task, expiryReady.Task).WaitAsync(TimeSpan.FromSeconds(5));
+        releaseRace.TrySetResult();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => approval);
+        var expired = await expiry;
+
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(0, executionCount);
+        Assert.Equal(PendingActionStatus.Expired, expired!.Status);
+        Assert.Equal(PendingActionStatus.Expired, persisted!.Status);
+    }
 }
