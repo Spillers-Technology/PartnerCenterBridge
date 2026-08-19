@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "../theme";
 import { Dashboard } from "./Dashboard";
+import type { Dashboard as DashboardData } from "../types";
 
 vi.mock("../api", () => ({ api: { dashboard: vi.fn() } }));
 
@@ -17,6 +18,26 @@ function renderDashboard() {
 }
 
 describe("Dashboard", () => {
+  it("shows loading skeletons while the fetch is pending, then the populated view once it resolves", async () => {
+    let resolveDashboard!: (value: DashboardData) => void;
+    vi.mocked(api.dashboard).mockReturnValue(
+      new Promise((resolve) => { resolveDashboard = resolve; })
+    );
+
+    renderDashboard();
+
+    expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.queryByText("5")).not.toBeInTheDocument();
+
+    resolveDashboard({
+      stats: { tenants: 5, tenantsNoDelegation: 1, deployments: 8, deploymentsFailed: 1, deploymentsUpdateAvailable: 2, runsLast24h: 6, runsFailedLast7d: 1 },
+      needsAttention: [],
+      recentRuns: []
+    });
+
+    expect(await screen.findByText("5")).toBeInTheDocument();
+  });
+
   it("renders stats and tables once data loads", async () => {
     vi.mocked(api.dashboard).mockResolvedValue({
       stats: {
