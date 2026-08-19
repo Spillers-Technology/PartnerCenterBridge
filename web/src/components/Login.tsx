@@ -1,9 +1,16 @@
 import { useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { api } from "../api";
 import { setLocalToken } from "../session";
 import { getPasskey, passkeysSupported, type LoginOptionsWire } from "../webauthn";
 import { isMfaChallenge } from "../types";
 import type { AuthResponse } from "../types";
+import { useAsyncAction } from "../hooks/useAsyncAction";
 
 type Step = "start" | "password" | "mfa";
 
@@ -13,89 +20,111 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [mfaTicket, setMfaTicket] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const finish = (r: AuthResponse) => {
     setLocalToken(r.accessToken);
     onAuthenticated(r);
   };
 
-  const withPasskey = async () => {
-    setBusy(true); setError(null);
-    try {
-      const { challengeKey, options } = await api.passkey.loginOptions();
-      const assertionResponse = await getPasskey(options as LoginOptionsWire);
-      const r = await api.passkey.loginVerify(challengeKey, assertionResponse);
+  const passkeyAction = useAsyncAction(async () => {
+    const { challengeKey, options } = await api.passkey.loginOptions();
+    const assertionResponse = await getPasskey(options as LoginOptionsWire);
+    finish(await api.passkey.loginVerify(challengeKey, assertionResponse));
+  });
+
+  const passwordAction = useAsyncAction(async () => {
+    const r = await api.auth.login(email, password);
+    if (isMfaChallenge(r)) {
+      setMfaTicket(r.mfaTicket);
+      setStep("mfa");
+    } else {
       finish(r);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
     }
-  };
+  });
 
-  const submitPassword = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    setBusy(true); setError(null);
-    try {
-      const r = await api.auth.login(email, password);
-      if (isMfaChallenge(r)) {
-        setMfaTicket(r.mfaTicket);
-        setStep("mfa");
-      } else {
-        finish(r);
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const mfaAction = useAsyncAction(async () => {
+    finish(await api.totp.challenge(mfaTicket, code));
+  });
 
-  const submitMfa = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    setBusy(true); setError(null);
-    try {
-      finish(await api.totp.challenge(mfaTicket, code));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const busy = passkeyAction.busy || passwordAction.busy || mfaAction.busy;
+  const error = passkeyAction.error ?? passwordAction.error ?? mfaAction.error;
+
+  if (step === "mfa") {
+    return (
+      <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>
+        <Stack
+          component="form"
+          spacing={2}
+          sx={{ width: "100%", maxWidth: 360 }}
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            void mfaAction.run();
+          }}
+        >
+          <Typography variant="h5" component="h1">
+            Partner Center Bridge
+          </Typography>
+          <TextField
+            autoFocus
+            label="6-digit code (or a recovery code)"
+            placeholder="123456"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          <Button type="submit" variant="contained" disabled={busy}>
+            {mfaAction.busy ? "Verifying…" : "Verify"}
+          </Button>
+          {error && <Alert severity="error">{error}</Alert>}
+        </Stack>
+      </Box>
+    );
+  }
 
   return (
-    <div className="center">
-      <h1>Partner Center Bridge</h1>
+    <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>
+      <Stack spacing={2} sx={{ width: "100%", maxWidth: 360 }}>
+        <Typography variant="h5" component="h1">
+          Partner Center Bridge
+        </Typography>
 
-      {step === "mfa" ? (
-        <form className="field" onSubmit={submitMfa}>
-          <label>Enter the 6-digit code from your authenticator app (or a recovery code)</label>
-          <input autoFocus value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
-          <button disabled={busy}>{busy ? "Verifying…" : "Verify"}</button>
-        </form>
-      ) : (
-        <>
-          {passkeysSupported && (
-            <>
-              <button onClick={withPasskey} disabled={busy}>{busy ? "Waiting for passkey…" : "Sign in with a passkey"}</button>
-              <p className="muted">or use your password</p>
-            </>
-          )}
-          <form className="field" onSubmit={submitPassword}>
-            <label>Email</label>
-            <input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <label>Password</label>
-            <input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
-          </form>
-          <p className="muted">
-            No account yet? <button onClick={onGoRegister}>Register</button>
-          </p>
-        </>
-      )}
-      {error && <p className="error">{error}</p>}
-    </div>
+        {passkeysSupported && (
+          <>
+            <Button variant="contained" onClick={() => void passkeyAction.run()} disabled={busy}>
+              {passkeyAction.busy ? "Waiting for passkey…" : "Sign in with a passkey"}
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              or use your password
+            </Typography>
+          </>
+        )}
+
+        <Stack
+          component="form"
+          spacing={2}
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            void passwordAction.run();
+          }}
+        >
+          <TextField label="Email" type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} />
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+          <Button type="submit" variant="contained" disabled={busy}>
+            {passwordAction.busy ? "Signing in…" : "Sign in"}
+          </Button>
+        </Stack>
+
+        <Typography variant="body2" color="text.secondary">
+          No account yet? <Button size="small" onClick={onGoRegister}>Register</Button>
+        </Typography>
+
+        {error && <Alert severity="error">{error}</Alert>}
+      </Stack>
+    </Box>
   );
 }
