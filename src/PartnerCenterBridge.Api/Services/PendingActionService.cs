@@ -58,7 +58,7 @@ public class PendingActionService
         // the claimed values and to avoid returning a stale instance left over from StageAsync.
         var action = await _db.PendingActions.AsNoTracking()
             .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "approved", ct);
+        await AuditTransitionAsync(action, "approved");
         try
         {
             await execute(action);
@@ -71,7 +71,7 @@ public class PendingActionService
                     .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None);
             action.ExecutionError = ex.Message;
             if (updated != 0)
-                await AuditTransitionAsync(action, $"execution failed: {ex.Message}", ct);
+                await AuditTransitionAsync(action, $"execution failed: {ex.Message}");
             throw;
         }
 
@@ -84,7 +84,7 @@ public class PendingActionService
         action.Status = PendingActionStatus.Executed;
         action.ExecutedAt = executedAt;
         if (executed != 0)
-            await AuditTransitionAsync(action, "executed", ct);
+            await AuditTransitionAsync(action, "executed");
         return action;
     }
 
@@ -99,7 +99,7 @@ public class PendingActionService
 
         var action = await _db.PendingActions.AsNoTracking()
             .SingleAsync(action => action.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "rejected", ct);
+        await AuditTransitionAsync(action, "rejected");
         return action;
     }
 
@@ -122,7 +122,7 @@ public class PendingActionService
 
         var action = await _db.PendingActions.AsNoTracking()
             .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "retried", ct);
+        await AuditTransitionAsync(action, "retried");
         try
         {
             await execute(action);
@@ -137,7 +137,7 @@ public class PendingActionService
                     .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None);
             action.ExecutionError = ex.Message;
             if (updated != 0)
-                await AuditTransitionAsync(action, $"retried, failed again: {ex.Message}", ct);
+                await AuditTransitionAsync(action, $"retried, failed again: {ex.Message}");
             throw;
         }
 
@@ -152,7 +152,7 @@ public class PendingActionService
         action.Status = PendingActionStatus.Executed;
         action.ExecutedAt = executedAt;
         if (executed != 0)
-            await AuditTransitionAsync(action, "retried, succeeded", ct);
+            await AuditTransitionAsync(action, "retried, succeeded");
         return action;
     }
 
@@ -185,7 +185,7 @@ public class PendingActionService
         var action = await _db.PendingActions.AsNoTracking()
             .SingleOrDefaultAsync(action => action.Id == id, ct);
         if (expired != 0 && action is not null)
-            await AuditTransitionAsync(action, "expired", ct);
+            await AuditTransitionAsync(action, "expired");
         return action;
     }
 
@@ -204,7 +204,7 @@ public class PendingActionService
               AND ""Status"" = {(int)PendingActionStatus.Pending}
               AND ""ExpiresAt"" >= {decidedAt}", ct);
 
-    private async Task AuditTransitionAsync(PendingAction action, string detail, CancellationToken ct)
+    private async Task AuditTransitionAsync(PendingAction action, string detail)
     {
         _db.AuditEvents.Add(new AuditEvent
         {
@@ -216,6 +216,6 @@ public class PendingActionService
             ActorName = _actor.Name,
             Detail = detail
         });
-        await _db.SaveChangesAsync(ct);
+        await _db.SaveChangesAsync(CancellationToken.None);
     }
 }

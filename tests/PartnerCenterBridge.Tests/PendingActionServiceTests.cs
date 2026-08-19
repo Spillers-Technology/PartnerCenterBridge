@@ -56,6 +56,30 @@ public class PendingActionServiceTests
     }
 
     [Fact]
+    public async Task Approve_persists_final_audit_when_request_is_cancelled_after_claim()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var svc = CreateService(db.Context);
+        var action = await svc.StageAsync(tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+        using var cancellation = new CancellationTokenSource();
+        var executed = false;
+
+        var result = await svc.ApproveAsync(action.Id, Guid.NewGuid(), _ =>
+        {
+            executed = true;
+            cancellation.Cancel();
+            return Task.CompletedTask;
+        }, cancellation.Token);
+
+        Assert.True(executed);
+        Assert.Equal(PendingActionStatus.Executed, result.Status);
+        await AssertAuditDetailsAsync(db, action.Id, "approved", "executed");
+    }
+
+    [Fact]
     public async Task Approve_records_the_error_and_rethrows_when_execution_fails()
     {
         using var db = new TestDb();
