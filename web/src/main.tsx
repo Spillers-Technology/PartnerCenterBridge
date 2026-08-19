@@ -5,15 +5,18 @@ import CssBaseline from "@mui/material/CssBaseline";
 import { App } from "./App";
 import { theme } from "./theme";
 import { ConfirmDialogProvider } from "./hooks/useConfirm";
+import { ToastProvider } from "./hooks/useToast";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <ConfirmDialogProvider>
-        <App />
-      </ConfirmDialogProvider>
+      <ToastProvider>
+        <ConfirmDialogProvider>
+          <App />
+        </ConfirmDialogProvider>
+      </ToastProvider>
     </ThemeProvider>
   </React.StrictMode>
 );
