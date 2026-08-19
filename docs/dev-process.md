@@ -37,6 +37,14 @@ These are starting priors, not fixed law — revise whichever rule the log below
   accepting it; reproduce a fix's effect directly before calling it closed. A "red" report can be
   an artifact of the test run, not the code, just as often as a "green" one can be hiding a real
   defect — check which before acting on either.
+- **A codex sandbox restriction can itself produce a false "pre-existing failure" or "permission
+  denied" claim.** `windows.sandbox=unelevated`'s restricted-fs/restricted-network posture blocks
+  some real operations (writing `.git/index.lock`, spawning a subprocess a test needs) that work
+  fine unsandboxed — the implementer's own honest report of what it saw can still be wrong about
+  *why*. Run the same command directly, unsandboxed, before accepting "pre-existing" or
+  "permission blocked" as the explanation (Unit 3: a claimed 3-test GitSync failure and a claimed
+  git permission block were both sandbox artifacts — 63/63 passed and the commit succeeded
+  immediately when run directly).
 
 ### First-unit tooling bug — found by reading the background process's own output
 
