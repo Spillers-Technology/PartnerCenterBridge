@@ -10,7 +10,7 @@ namespace PartnerCenterBridge.Api.Auth;
 /// </summary>
 public interface ITenantAccessService
 {
-    /// <summary>True if the current caller holds a non-expired grant at or above <paramref name="minimum"/> on <paramref name="tenantId"/>. System admin never bypasses this -- see TenantAccessService's remarks.</summary>
+    /// <summary>True if the current caller is non-Local (OIDC/dev-auth), which is always authorized without restriction, or if the caller is Local-mode and holds a non-expired grant at or above <paramref name="minimum"/> on <paramref name="tenantId"/>. System admin never bypasses tenant grants on its own -- see TenantAccessService's remarks.</summary>
     Task<bool> HasRoleAsync(Guid tenantId, TenantRole minimum, CancellationToken ct);
 
     /// <summary>True if the current caller is a system admin.</summary>

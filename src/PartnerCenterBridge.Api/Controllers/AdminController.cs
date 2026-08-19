@@ -57,6 +57,7 @@ public class AdminController : ControllerBase
     [HttpPatch("tenants/{id:guid}/mcp-mode")]
     public async Task<IActionResult> SetMcpMode(Guid id, [FromBody] SetMcpModeRequest req, CancellationToken ct)
     {
+        if (!Enum.IsDefined(typeof(McpApprovalMode), req.Mode)) return BadRequest("Invalid mode.");
         if (!_access.IsSystemAdmin) return Forbid();
         var tenant = await _db.Tenants.FindAsync([id], ct);
         if (tenant is null) return NotFound();
