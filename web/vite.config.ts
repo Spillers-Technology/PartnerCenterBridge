@@ -13,6 +13,13 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/setupTests.ts"]
+    setupFiles: ["./src/setupTests.ts"],
+    // The default 5000ms is too tight once the full suite runs its jsdom environments in
+    // parallel: real userEvent.type() keystroke-by-keystroke simulation under MUI's component
+    // weight reliably exceeds it under contention (reproduced: Register's multi-field form test
+    // times out in the full run, passes in isolation). Bump rather than serialize workers --
+    // serializing was already tried and correctly reverted in an earlier task as unjustified
+    // speculative engineering; this is the actual, evidenced fix.
+    testTimeout: 10000
   }
 });
