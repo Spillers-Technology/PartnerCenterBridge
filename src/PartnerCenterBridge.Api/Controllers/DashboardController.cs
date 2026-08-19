@@ -73,6 +73,20 @@ public class DashboardController : ControllerBase
             .Select(r => new AttentionItem("Workflow failed", r.TenantId, r.Tenant?.DisplayName ?? "",
                 r.WorkflowName, r.Error ?? "one or more steps failed", r.StartedAt)));
 
+        attention.AddRange(await _db.PendingActions.AsNoTracking()
+            .Include(a => a.Tenant)
+            .Where(a => a.Status == PendingActionStatus.Pending
+                     || (a.Status == PendingActionStatus.Approved && a.ExecutionError != null))
+            .OrderByDescending(a => a.CreatedAt)
+            .Take(10)
+            .Select(a => new AttentionItem(
+                a.Status == PendingActionStatus.Pending ? "Needs approval" : "Execution failed",
+                a.TenantId, a.Tenant!.DisplayName, a.ActionType,
+                a.Status == PendingActionStatus.Approved && a.ExecutionError != null
+                    ? a.ExecutionError : a.PreviewSummary,
+                a.CreatedAt))
+            .ToListAsync(ct));
+
         var recentRuns = (await _db.WorkflowRuns.AsNoTracking()
             .Include(r => r.Tenant)
             .OrderByDescending(r => r.StartedAt)

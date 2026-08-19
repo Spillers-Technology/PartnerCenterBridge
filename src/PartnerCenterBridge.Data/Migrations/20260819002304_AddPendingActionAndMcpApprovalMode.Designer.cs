@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PartnerCenterBridge.Data;
@@ -11,9 +12,11 @@ using PartnerCenterBridge.Data;
 namespace PartnerCenterBridge.Data.Migrations
 {
     [DbContext(typeof(BridgeDbContext))]
-    partial class BridgeDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260819002304_AddPendingActionAndMcpApprovalMode")]
+    partial class AddPendingActionAndMcpApprovalMode
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -299,38 +302,6 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.HasIndex("TenantId", "AppTemplateId");
 
                     b.ToTable("Deployments");
-                });
-
-            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.McpToken", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<DateTimeOffset?>("LastUsedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<DateTimeOffset?>("RevokedAt")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("McpTokens");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.PasskeyCredential", b =>
@@ -818,17 +789,6 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Navigation("Tenant");
                 });
 
-            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.McpToken", b =>
-                {
-                    b.HasOne("PartnerCenterBridge.Core.Entities.AppUser", "User")
-                        .WithMany("McpTokens")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.PasskeyCredential", b =>
                 {
                     b.HasOne("PartnerCenterBridge.Core.Entities.AppUser", "User")
@@ -904,8 +864,6 @@ namespace PartnerCenterBridge.Data.Migrations
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.AppUser", b =>
                 {
-                    b.Navigation("McpTokens");
-
                     b.Navigation("PasskeyCredentials");
 
                     b.Navigation("TenantAccessGrants");

@@ -20,7 +20,10 @@ export interface Contract {
 export interface AppTemplate {
   id: string;
   displayName: string;
+  description?: string;
   publisher?: string;
+  installCommandLine: string;
+  uninstallCommandLine: string;
   contentVersion: number;
   hasPackage: boolean;
   contractId?: string;
@@ -160,6 +163,20 @@ export interface WorkflowSummary {
   inputs: WorkflowInput[];
 }
 
+export type PendingActionStatus = "Pending" | "Approved" | "Rejected" | "Executed" | "Expired";
+
+export interface PendingAction {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  actionType: string;
+  previewSummary: string;
+  status: PendingActionStatus;
+  createdAt: string;
+  expiresAt: string;
+  executionError: string | null;
+}
+
 // --- Auth:Mode=Local: accounts, TOTP, passkeys, tenant sharing --------------------------------
 export type AuthMode = "Oidc" | "Local" | "Dev";
 
@@ -189,6 +206,13 @@ export interface TotpEnrollResponse { pendingKey: string; secret: string; otpAut
 export interface TotpVerifyEnrollResponse { recoveryCodes: string[] }
 
 export interface PasskeyInfo { id: string; nickname?: string; createdAt: string; lastUsedAt?: string }
+export interface McpTokenInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}
 
 // --- Config snapshots: backup + diff -----------------------------------------------------------
 export interface ConfigSection { id: string; name: string; category: string }

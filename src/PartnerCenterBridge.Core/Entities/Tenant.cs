@@ -21,6 +21,13 @@ public class Tenant
 
     public TenantStatus Status { get; set; } = TenantStatus.Active;
 
+    /// <summary>
+    /// Gates mutating MCP tool calls against this tenant. Defaults to the safe Queue mode;
+    /// settable only by a system admin (see AdminController.SetMcpMode) -- never by the tenant's
+    /// own Owner, deliberately, since this is a platform safety policy, not tenant power.
+    /// </summary>
+    public McpApprovalMode McpApprovalMode { get; set; } = McpApprovalMode.Queue;
+
     /// <summary>Contract this tenant is served under. A contract may cover many tenants.</summary>
     public Guid? ContractId { get; set; }
     public Contract? Contract { get; set; }

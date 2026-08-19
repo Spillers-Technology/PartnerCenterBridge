@@ -10,6 +10,10 @@ web/dist/
 # Local secrets — never commit plaintext
 appsettings.*.Local.json
 
+# Subagent-driven-development scratch workspace (per-plan dispatch briefs,
+# review packages, reports) — not part of the shipped repo
+.superpowers/
+
 # Logs
 logs
 *.log

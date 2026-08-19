@@ -54,4 +54,5 @@ public class AppUser
 
     public ICollection<TenantAccessGrant> TenantAccessGrants { get; set; } = new List<TenantAccessGrant>();
     public ICollection<PasskeyCredential> PasskeyCredentials { get; set; } = new List<PasskeyCredential>();
+    public ICollection<McpToken> McpTokens { get; set; } = new List<McpToken>();
 }

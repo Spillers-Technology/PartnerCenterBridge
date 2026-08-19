@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication;
@@ -81,6 +82,8 @@ builder.Services.AddGraphConfigSections();
 builder.Services.Configure<GitSyncOptions>(cfg.GetSection(GitSyncOptions.SectionName));
 builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddScoped<ConfigSnapshotService>();
+builder.Services.AddScoped<PartnerCenterBridge.Api.Services.PendingActionService>();
+builder.Services.AddScoped<PartnerCenterBridge.Api.Services.IPendingActionExecutor, PartnerCenterBridge.Api.Mcp.WorkflowRemediateExecutor>();
 
 // --- Operator plane: OIDC (Authentik), local self-registered accounts, or dev bypass ----------
 // Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a
@@ -90,6 +93,9 @@ builder.Services.AddSingleton(new AuthModeInfo(authMode));
 builder.Services.Configure<LocalAuthOptions>(cfg.GetSection(LocalAuthOptions.SectionName));
 builder.Services.AddSingleton<LocalTokenService>();
 builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
+builder.Services.AddMcpServer()
+    .WithHttpTransport(o => o.Stateless = true)
+    .WithToolsFromAssembly();
 builder.Services.AddScoped<AuthResponseFactory>();
 
 // TOTP and passkeys are Local-mode features, but registered unconditionally like the above --
@@ -133,6 +139,17 @@ switch (authMode)
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                     ValidateLifetime = true,
                     NameClaimType = ClaimTypes.Name
+                };
+                o.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var db = context.HttpContext.RequestServices.GetRequiredService<BridgeDbContext>();
+                        if (!await McpTokenValidator.ValidateAsync(context.Principal, db, context.HttpContext.RequestAborted))
+                        {
+                            context.Fail("MCP token has been revoked.");
+                        }
+                    }
                 };
             });
         break;
@@ -196,9 +213,11 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseAuthentication();
+app.UseMiddleware<McpPatEndpointRestrictionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapMcp("/mcp").RequireAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
 app.Run();

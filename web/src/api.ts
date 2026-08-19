@@ -3,7 +3,7 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  PasskeyInfo, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
+  McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
   TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
@@ -67,6 +67,9 @@ export const api = {
     list: () => request<AppTemplate[]>("/api/apptemplates"),
     create: (body: Record<string, unknown>) =>
       request<AppTemplate>("/api/apptemplates", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<AppTemplate>(`/api/apptemplates/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (id: string) => request<void>(`/api/apptemplates/${id}`, { method: "DELETE" }),
     uploadPackage: (id: string, file: File) => {
       const fd = new FormData();
       fd.append("file", file);
@@ -130,6 +133,13 @@ export const api = {
       })
   },
 
+  pendingActions: {
+    list: () => request<PendingAction[]>("/api/pending-actions"),
+    approve: (id: string) => request<void>(`/api/pending-actions/${id}/approve`, { method: "POST" }),
+    reject: (id: string) => request<void>(`/api/pending-actions/${id}/reject`, { method: "POST" }),
+    retry: (id: string) => request<void>(`/api/pending-actions/${id}/retry`, { method: "POST" })
+  },
+
   auth: {
     mode: () => request<{ mode: AuthMode }>("/api/auth/mode"),
     register: (email: string, password: string, displayName: string) =>
@@ -165,6 +175,13 @@ export const api = {
       }),
     list: () => request<PasskeyInfo[]>("/api/auth/passkey"),
     remove: (id: string) => request<void>(`/api/auth/passkey/${id}`, { method: "DELETE" })
+  },
+
+  mcpTokens: {
+    list: () => request<McpTokenInfo[]>("/api/mcp-tokens"),
+    create: (name: string) =>
+      request<{ id: string; name: string; jwt: string }>("/api/mcp-tokens", { method: "POST", body: JSON.stringify({ name }) }),
+    revoke: (id: string) => request<void>(`/api/mcp-tokens/${id}`, { method: "DELETE" }),
   },
 
   configSnapshots: {

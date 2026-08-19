@@ -18,12 +18,13 @@ public record ContractDto(Guid Id, string Name, string? Notes, int TenantCount, 
 public record CreateContractRequest(string Name, string? Notes);
 
 public record AppTemplateDto(
-    Guid Id, string DisplayName, string? Publisher, int ContentVersion,
+    Guid Id, string DisplayName, string? Description, string? Publisher,
+    string InstallCommandLine, string UninstallCommandLine, int ContentVersion,
     bool HasPackage, Guid? ContractId, IReadOnlyList<DetectionRule> DetectionRules, IReadOnlyList<AssignmentSpec> Assignments)
 {
     public static AppTemplateDto From(AppTemplate a) => new(
-        a.Id, a.DisplayName, a.Publisher, a.ContentVersion, a.Content is not null, a.ContractId,
-        a.DetectionRules, a.Assignments);
+        a.Id, a.DisplayName, a.Description, a.Publisher, a.InstallCommandLine, a.UninstallCommandLine,
+        a.ContentVersion, a.Content is not null, a.ContractId, a.DetectionRules, a.Assignments);
 }
 
 public record CreateAppTemplateRequest(
@@ -35,6 +36,13 @@ public record CreateAppTemplateRequest(
     Guid? ContractId,
     List<DetectionRule>? DetectionRules,
     List<AssignmentSpec>? Assignments);
+
+public record UpdateAppTemplateRequest(
+    string DisplayName,
+    string? Description,
+    string? Publisher,
+    string InstallCommandLine,
+    string UninstallCommandLine);
 
 public record DeployRequest(Guid TemplateId, List<Guid> TenantIds);
 
