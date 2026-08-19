@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen, waitForElementToBeRemoved } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "../theme";
@@ -25,7 +25,7 @@ describe("useToast / ToastProvider", () => {
     expect(await screen.findByText("Deployment succeeded")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /close/i }));
-    await waitForElementToBeRemoved(() => screen.queryByText("Deployment succeeded"));
+    expect(screen.queryByText("Deployment succeeded")).not.toBeInTheDocument();
   });
 
   it("queues a second toast behind the first, showing them one at a time", async () => {

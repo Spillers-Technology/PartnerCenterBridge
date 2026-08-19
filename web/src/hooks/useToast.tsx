@@ -33,7 +33,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           key={current.id}
           open
           autoHideDuration={5000}
-          onClose={() => close(current.id)}
+          onClose={(_event, reason) => {
+            if (reason === "clickaway") return;
+            close(current.id);
+          }}
           anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         >
           <Alert onClose={() => close(current.id)} severity={current.severity} variant="filled" sx={{ width: "100%" }}>
