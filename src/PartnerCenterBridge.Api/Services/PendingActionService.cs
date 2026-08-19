@@ -180,10 +180,10 @@ public class PendingActionService
             SET ""Status"" = {(int)PendingActionStatus.Expired}
             WHERE ""Id"" = {id}
               AND ""Status"" = {(int)PendingActionStatus.Pending}
-              AND ""ExpiresAt"" < {now}", ct);
+              AND ""ExpiresAt"" < {now}", CancellationToken.None);
 
         var action = await _db.PendingActions.AsNoTracking()
-            .SingleOrDefaultAsync(action => action.Id == id, ct);
+            .SingleOrDefaultAsync(action => action.Id == id, CancellationToken.None);
         if (expired != 0 && action is not null)
             await AuditTransitionAsync(action, "expired");
         return action;

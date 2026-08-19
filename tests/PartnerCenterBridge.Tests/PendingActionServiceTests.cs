@@ -159,6 +159,26 @@ public class PendingActionServiceTests
     }
 
     [Fact]
+    public async Task GetAsync_returns_expired_and_audits_when_request_is_already_cancelled()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var svc = CreateService(db.Context);
+        var action = await svc.StageAsync(tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+        action.ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1);
+        await db.Context.SaveChangesAsync();
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        var result = await svc.GetAsync(action.Id, cancellation.Token);
+
+        Assert.Equal(PendingActionStatus.Expired, result!.Status);
+        await AssertAuditDetailsAsync(db, action.Id, "expired");
+    }
+
+    [Fact]
     public async Task Concurrent_approvals_claim_once_and_execute_once()
     {
         using var db = new TestDb();
