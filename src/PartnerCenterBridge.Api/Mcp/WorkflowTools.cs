@@ -113,7 +113,7 @@ public class WorkflowTools
                 run.Healthy = result.PostState?.Healthy;
                 run.Succeeded = result.Succeeded;
                 var outcome = $"Executed immediately (tenant is in ClientTrust mode). Succeeded={result.Succeeded}.";
-                if (result.Succeeded && result.Ephemeral.Count > 0)
+                if (result.Ephemeral.Count > 0)
                     outcome += " One-time values: " + string.Join(", ", result.Ephemeral.Select(pair => $"{pair.Key}={pair.Value}")) + ".";
                 return outcome;
             }
@@ -136,7 +136,7 @@ public class WorkflowTools
         var preview = $"Remediate '{workflow.Name}' on {tenant.DisplayName}. Current diagnosis: " +
             string.Join("; ", diagnosis.Findings.Select(f => $"{f.Name}={f.Status}"));
         // Interim restriction: Queue mode has no safe approval-time channel for this workflow's one-time value.
-        if (workflowId == "password-reset")
+        if (workflow.Id == "password-reset")
             throw new InvalidOperationException("This workflow produces a one-time value that Queue-mode staging cannot safely deliver yet. Use ClientTrust mode or the SPA directly for this workflow until a proper approval-time secret-delivery design exists.");
         var payload = new WorkflowRemediatePayload(workflowId, inputs);
         var staged = await _pending.StageAsync(tenantId, "workflow.remediate", _access.CurrentUserId ?? Guid.Empty, payload, preview, ct);
