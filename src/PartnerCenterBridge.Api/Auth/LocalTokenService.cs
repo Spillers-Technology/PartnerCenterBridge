@@ -50,4 +50,32 @@ public class LocalTokenService
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
+    /// <summary>
+    /// Issues a revocable PAT for headless MCP clients. Same claims shape as IssueAccessToken so
+    /// every existing [Authorize]/ITenantAccessService check treats it identically to a normal
+    /// login token -- the only addition is "jti", checked against McpToken.RevokedAt on validation.
+    /// </summary>
+    public string IssueMcpToken(AppUser user, McpToken token)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, user.DisplayName),
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Email, user.Email),
+            new Claim(UserIdClaim, user.Id.ToString()),
+            new Claim(SystemAdminClaim, user.IsSystemAdmin ? "true" : "false"),
+            new Claim(JwtRegisteredClaimNames.Jti, token.Id.ToString())
+        };
+
+        var credentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256);
+        var jwt = new JwtSecurityToken(
+            issuer: Issuer,
+            audience: Audience,
+            claims: claims,
+            expires: (token.ExpiresAt ?? DateTimeOffset.UtcNow.AddYears(1)).UtcDateTime,
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(jwt);
+    }
 }

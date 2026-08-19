@@ -47,6 +47,7 @@ public class BridgeDbContext : DbContext
     public DbSet<ConfigSnapshotRun> ConfigSnapshotRuns => Set<ConfigSnapshotRun>();
     public DbSet<ConfigSnapshotSection> ConfigSnapshotSections => Set<ConfigSnapshotSection>();
     public DbSet<PendingAction> PendingActions => Set<PendingAction>();
+    public DbSet<McpToken> McpTokens => Set<McpToken>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -153,6 +154,12 @@ public class BridgeDbContext : DbContext
             e.HasIndex(p => new { p.TenantId, p.Status });
             e.HasOne(p => p.Tenant).WithMany()
                 .HasForeignKey(p => p.TenantId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<McpToken>(e =>
+        {
+            e.HasOne(t => t.User).WithMany(u => u.McpTokens)
+                .HasForeignKey(t => t.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<TenantAccessGrant>(e =>

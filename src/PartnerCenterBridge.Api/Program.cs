@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication;
@@ -137,6 +138,23 @@ switch (authMode)
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
                     ValidateLifetime = true,
                     NameClaimType = ClaimTypes.Name
+                };
+                o.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var jti = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);
+                        if (jti is null) return; // a normal login token, not an MCP PAT -- nothing to check.
+                        var db = context.HttpContext.RequestServices.GetRequiredService<BridgeDbContext>();
+                        var token = await db.McpTokens.FindAsync(Guid.Parse(jti));
+                        if (token is null || token.RevokedAt is not null)
+                        {
+                            context.Fail("MCP token has been revoked.");
+                            return;
+                        }
+                        token.LastUsedAt = DateTimeOffset.UtcNow;
+                        await db.SaveChangesAsync();
+                    }
                 };
             });
         break;

@@ -24,7 +24,7 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
     {
         typeof(AppUser), typeof(TenantAccessGrant), typeof(Tenant),
         typeof(Contract), typeof(AppTemplate), typeof(Deployment), typeof(PasskeyCredential),
-        typeof(PendingAction)
+        typeof(PendingAction), typeof(McpToken)
     };
 
     private readonly ICurrentActor _actor;
