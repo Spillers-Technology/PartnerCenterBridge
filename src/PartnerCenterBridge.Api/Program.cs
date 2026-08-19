@@ -83,6 +83,7 @@ builder.Services.Configure<GitSyncOptions>(cfg.GetSection(GitSyncOptions.Section
 builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddScoped<ConfigSnapshotService>();
 builder.Services.AddScoped<PartnerCenterBridge.Api.Services.PendingActionService>();
+builder.Services.AddScoped<PartnerCenterBridge.Api.Services.IPendingActionExecutor, PartnerCenterBridge.Api.Mcp.WorkflowRemediateExecutor>();
 
 // --- Operator plane: OIDC (Authentik), local self-registered accounts, or dev bypass ----------
 // Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a
