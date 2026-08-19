@@ -25,17 +25,18 @@ interface PendingConfirm {
 }
 
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
-  const [pending, setPending] = useState<PendingConfirm | null>(null);
+  const [queue, setQueue] = useState<PendingConfirm[]>([]);
+  const pending = queue[0] ?? null;
   const isPhone = useIsPhone();
 
   const confirm = useCallback<ConfirmFn>(
-    (options) => new Promise<boolean>((resolve) => setPending({ options, resolve })),
+    (options) => new Promise<boolean>((resolve) => setQueue((q) => [...q, { options, resolve }])),
     []
   );
 
   const close = (value: boolean) => {
     pending?.resolve(value);
-    setPending(null);
+    setQueue((q) => q.slice(1));
   };
 
   return (

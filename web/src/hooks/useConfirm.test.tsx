@@ -82,4 +82,44 @@ describe("useConfirm / ConfirmDialogProvider", () => {
     }
     expect(() => render(<Bare />)).toThrow("useConfirm must be used within a ConfirmDialogProvider");
   });
+
+  it("handles concurrent confirm calls with FIFO queue", async () => {
+    const user = userEvent.setup();
+    const results: boolean[] = [];
+
+    function ConcurrentHarness() {
+      const confirm = useConfirm();
+      return (
+        <button
+          onClick={async () => {
+            const first = confirm({ title: "First?", message: "First message.", confirmLabel: "Yes1", cancelLabel: "No1" });
+            const second = confirm({ title: "Second?", message: "Second message.", confirmLabel: "Yes2", cancelLabel: "No2" });
+            results.push(await first);
+            results.push(await second);
+          }}
+        >
+          Ask Both
+        </button>
+      );
+    }
+
+    render(
+      <ThemeProvider theme={theme}>
+        <ConfirmDialogProvider>
+          <ConcurrentHarness />
+        </ConfirmDialogProvider>
+      </ThemeProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ask Both" }));
+    expect(await screen.findByText("First?")).toBeInTheDocument();
+    expect(screen.queryByText("Second?")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Yes1" }));
+    expect(await screen.findByText("Second?")).toBeInTheDocument();
+    expect(screen.queryByText("First?")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "No2" }));
+    expect(results).toEqual([true, false]);
+  });
 });
