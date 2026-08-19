@@ -15,9 +15,12 @@ describe("theme", () => {
   });
 
   it("keeps the existing dark surface tones", () => {
+    expect(theme.palette.mode).toBe("dark");
     expect(theme.palette.background.default).toBe("#0f172a");
     expect(theme.palette.background.paper).toBe("#1e293b");
     expect(theme.palette.divider).toBe("#334155");
+    expect(theme.palette.text.primary).toBe("#e2e8f0");
+    expect(theme.palette.text.secondary).toBe("#94a3b8");
   });
 
   it("uses an 8px border radius", () => {

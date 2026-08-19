@@ -13,8 +13,6 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    setupFiles: ["./src/setupTests.ts"],
-    fileParallelism: false,
-    maxWorkers: 1
+    setupFiles: ["./src/setupTests.ts"]
   }
 });
