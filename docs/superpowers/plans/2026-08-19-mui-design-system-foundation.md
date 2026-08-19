@@ -322,7 +322,7 @@ describe("useAsyncAction", () => {
   it("goes busy then success on a resolving action, returning the result", async () => {
     const { result } = renderHook(() => useAsyncAction((x: number) => Promise.resolve(x * 2)));
 
-    let pending: Promise<number | undefined>;
+    let pending!: Promise<number | undefined>; // definite-assignment: set inside act() below
     act(() => { pending = result.current.run(21); });
     expect(result.current.busy).toBe(true);
 
@@ -837,6 +837,7 @@ git commit -m "Add useToast hook and ToastProvider"
 - [ ] **Step 1: Write the failing test — `web/src/components/AppShell.test.tsx`**
 
 ```tsx
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -862,7 +863,7 @@ function mockMatchMedia(matches: boolean) {
   }));
 }
 
-function renderShell(props: Partial<React.ComponentProps<typeof AppShell>> = {}) {
+function renderShell(props: Partial<ComponentProps<typeof AppShell>> = {}) {
   const onSelectTab = vi.fn();
   const onSignOut = vi.fn();
   render(
