@@ -41,6 +41,7 @@
   <a class="nav-link" href="architecture.html">Architecture</a>
   <a class="nav-link active" href="authentication.html">Authentication</a>
   <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="mcp-server.html">MCP Server</a>
   <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
   <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
   <a class="nav-link" href="deployment.html">Deployment</a>
@@ -157,7 +158,23 @@ system, two ways:</p>
 -- no proprietary protocol, works with platform authenticators (Windows Hello, Touch ID) and
 roaming ones (security keys) alike.</p>
 
-<img src="assets/screenshots/pcbridge-security.jpg" alt="Security screen listing a registered passkey and showing TOTP enabled, with a disable-2FA password confirmation form." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+<img src="assets/screenshots/pcbridge-security.jpg" alt="Security screen listing a registered passkey, TOTP enabled, and an MCP access token named Claude Desktop." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+
+<h2>MCP personal access tokens</h2>
+<p>
+  A fourth credential type, layered on top of Local mode rather than a fourth <code>Auth:Mode</code>:
+  a <strong>personal access token (PAT)</strong> is a long-lived, individually revocable JWT for
+  machine callers -- specifically, an MCP client that can't do an interactive browser login. Mint
+  one from the Security screen's "MCP access tokens" panel; it carries the same identity and
+  tenant-access as your account, so revoke it immediately if the client using it is decommissioned
+  or compromised.
+</p>
+<div class="callout">
+  A PAT is confined to the MCP transport (<code>/mcp</code>) only -- dedicated middleware rejects
+  it everywhere else with 403, so a leaked PAT cannot be replayed against the REST API. See
+  <a href="mcp-server.html">MCP Server</a> for the full model, including the Queue/ClientTrust
+  approval modes that gate what an MCP client is actually allowed to change.
+</div>
 
 <h2>Audit trail</h2>
 <p>

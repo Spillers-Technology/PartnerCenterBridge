@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MCP Server - Partner Center Bridge</title>
+<link rel="stylesheet" href="styles.css">
+<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
+<script>
+  var initOpts = {
+    projectKey: "vQsdaVKqB3x2jUBKW4xd",
+    ingestPoint: "https://replay.spillerstech.us/ingest",
+    defaultInputMode: 0,
+    obscureTextNumbers: false,
+    obscureTextEmails: false,
+  };
+  var startOpts = { userID: "" };
+  (function(A,s,a,y,e,r){
+    r=window.OpenReplay=[e,r,y,[s-1, e]];
+    s=document.createElement('script');s.src=A;s.async=!a;
+    document.getElementsByTagName('head')[0].appendChild(s);
+    r.start=function(v){r.push([0])};
+    r.stop=function(v){r.push([1])};
+    r.setUserID=function(id){r.push([2,id])};
+    r.setUserAnonymousID=function(id){r.push([3,id])};
+    r.setMetadata=function(k,v){r.push([4,k,v])};
+    r.event=function(k,p,i){r.push([5,k,p,i])};
+    r.issue=function(k,p){r.push([6,k,p])};
+    r.isActive=function(){return false};
+    r.getSessionToken=function(){};
+  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
+  OpenReplay.start();
+  OpenReplay.setMetadata("project", "PartnerCenterBridge");
+</script>
+</head>
+<body>
+
+<nav class="topnav">
+  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
+  <a class="nav-link" href="getting-started.html">Getting started</a>
+  <a class="nav-link" href="architecture.html">Architecture</a>
+  <a class="nav-link" href="authentication.html">Authentication</a>
+  <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link active" href="mcp-server.html">MCP Server</a>
+  <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
+  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
+  <a class="nav-link" href="deployment.html">Deployment</a>
+  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
+</nav>
+
+<main>
+<h1>MCP Server</h1>
+<p class="tagline" style="text-align:left;max-width:none;margin:0 0 1.5rem;">
+  The bridge exposes a <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model
+  Context Protocol</a> server so an LLM can drive it the same way a human operator does through the
+  SPA -- same tools, same tenant-access model, same audit trail. Every tool call that changes
+  something in a customer tenant is staged for a human to approve by default; nothing an MCP client
+  says gets to touch Microsoft's cloud unless a person clicked Approve, unless you explicitly opt a
+  tenant out of that.
+</p>
+
+<img src="assets/screenshots/pcbridge-approvals.jpg" alt="Approvals tab listing a pending MFA reset action awaiting approval, with Approve and Reject buttons and a preview of what will change." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+
+<h2>Transport and connecting</h2>
+<p>
+  Streamable HTTP at <code>POST /mcp</code>, via the official <code>ModelContextProtocol.AspNetCore</code>
+  SDK, stateless (no server-side session pinning between calls). It sits behind the same
+  <code>[Authorize]</code> bearer-token gate as every REST controller -- there is no separate MCP
+  auth stack to configure. Point an MCP client (Claude Code, Claude Desktop, or anything else that
+  speaks Streamable HTTP) at <code>https://your-instance/mcp</code> with a bearer token in the
+  <code>Authorization</code> header.
+</p>
+<div class="callout warn">
+  There is no OAuth 2.1 discovery flow (<code>.well-known/oauth-authorization-server</code>) yet --
+  a client that expects to discover and negotiate credentials itself won't work out of the box.
+  Today you mint a credential first (see Personal access tokens below) and configure the client
+  with it directly.
+</div>
+
+<h2>Personal access tokens</h2>
+<p>
+  MCP clients are machine callers, not interactive browser sessions, so they authenticate with a
+  <strong>personal access token (PAT)</strong> instead of a normal login -- a long-lived, individually
+  revocable JWT you mint from the Security tab (<code>Auth:Mode=Local</code> only; PATs are tied to
+  local accounts, the same way <a href="authentication.html">tenant sharing</a> is). A PAT carries
+  the same identity claims your login token would, plus a <code>jti</code> that <code>McpTokenValidator</code>
+  checks against <code>McpToken.RevokedAt</code> on every request -- revoking a token from the
+  Security tab takes effect on its next call, no waiting for it to expire.
+</p>
+<div class="callout">
+  <strong>A PAT can only reach <code>/mcp</code>.</strong> Dedicated middleware rejects any
+  <code>jti</code>-bearing request outside that path with 403 -- a stolen or leaked PAT cannot be
+  used to call the REST API directly, register a new passkey, or reach anything an interactive
+  login token could. This check is scoped to <code>Auth:Mode=Local</code> specifically, since a
+  standard OIDC access token (Entra ID and most providers) commonly carries its own unrelated
+  <code>jti</code> claim that has nothing to do with this app's PATs.
+</div>
+
+<h2>The tool catalog</h2>
+<p>Seven tools today, covering read access and the one mutating action (workflow remediation):</p>
+<table>
+  <tr><th>Tool</th><th>Does</th></tr>
+  <tr><td><code>who_am_i</code></td><td>Identity the server resolved for this call -- useful for a client to confirm it's authenticated as the account it expects.</td></tr>
+  <tr><td><code>list_tenants</code></td><td>Customer tenants the caller has access to, with GDAP delegation status. Scoped by the same per-tenant roles as the SPA.</td></tr>
+  <tr><td><code>get_dashboard</code></td><td>The same triage view as the SPA's landing page: stats, needs-attention items, recent runs.</td></tr>
+  <tr><td><code>list_workflows</code></td><td>The known-fix workflow catalog (MFA reset, password reset, license repair, mailbox archive, etc.) with each one's required inputs.</td></tr>
+  <tr><td><code>diagnose_workflow</code></td><td>Runs a workflow's read-only diagnosis. Never mutates anything -- safe to call regardless of the tenant's approval mode.</td></tr>
+  <tr><td><code>remediate_workflow</code></td><td>Runs a workflow's fix. This is the one tool that can change something in a tenant -- see Approval modes below for what actually happens when it's called.</td></tr>
+  <tr><td><code>check_pending_action</code></td><td>Polls a staged action's current status and any execution error, so a client that just staged something in Queue mode can find out what happened to it.</td></tr>
+</table>
+<p>
+  Every tool is annotated with MCP's <code>readOnlyHint</code>/<code>destructiveHint</code>
+  metadata, so a well-behaved client can tell <code>remediate_workflow</code> apart from the other
+  six without guessing from its name.
+</p>
+
+<h2>Approval modes: Queue and ClientTrust</h2>
+<p>
+  Each tenant has an <code>McpApprovalMode</code>, defaulting to <strong>Queue</strong>. This is
+  the whole point of the human-in-the-loop design:
+</p>
+<table>
+  <tr><th>Mode</th><th>What <code>remediate_workflow</code> does</th></tr>
+  <tr>
+    <td><span class="badge ok">Queue</span> (default)</td>
+    <td>Re-runs the workflow's diagnosis as a preview, then stages the fix as a <code>PendingAction</code>
+        instead of running anything -- returns the pending action's id. Nothing in the tenant
+        changes until a human approves it from the Approvals tab. The preview includes the actual
+        input values (which user, which mailbox, etc.), not just the workflow's name, so an
+        approver can tell what they're approving.</td>
+  </tr>
+  <tr>
+    <td><span class="badge warn">ClientTrust</span></td>
+    <td>Runs immediately, same as if a human had clicked "Fix" in the SPA. For a tenant you've
+        decided an MCP client can be trusted to act on unattended -- a deliberate per-tenant opt-out,
+        not a default.</td>
+  </tr>
+</table>
+<div class="callout">
+  Switching a tenant to ClientTrust requires <code>IsSystemAdmin</code>
+  (<code>PATCH /api/admin/tenants/{id}/mcp-mode</code>) -- there's no SPA toggle yet, so it's an
+  API call today. This is the one place <code>IsSystemAdmin</code> gates something MCP-specific,
+  and it's deliberately a safety-policy flag, not a tenant-operational bypass -- see
+  <a href="authentication.html">Authentication</a>'s note on what <code>IsSystemAdmin</code> is
+  and isn't allowed to do.
+</div>
+
+<h2>The approval workflow</h2>
+<p>
+  A staged action shows up in the Approvals tab (and the Dashboard's "needs attention" tile) for
+  anyone with Operator+ access to that tenant. Approving or rejecting is an atomically claimed
+  state transition -- two people clicking Approve on the same action at the same moment can't both
+  succeed, closing a real double-execution race the state machine was built to prevent. If an
+  approved action's execution fails (a Graph error, an expired GDAP relationship, whatever), it
+  stays <strong>Approved</strong> with the error attached and shows up as retryable, rather than
+  silently vanishing or double-counting as both failed and re-queued.
+</p>
+<p>
+  Every claim, audit, and execution-outcome transition writes an explicit <code>AuditEvent</code>
+  in the same transaction as the state change itself, so a crash mid-transition can't leave a
+  status change with no audit record behind it.
+</p>
+
+<h2>Access control</h2>
+<p>
+  MCP tools use the exact same <code>ITenantAccessService</code> the REST API does -- there is no
+  separate MCP permission model. <code>list_tenants</code>, <code>get_dashboard</code>, and the
+  workflow tools all resolve the caller's real tenant grants; <code>check_pending_action</code>
+  requires Viewer+ on the staged action's tenant before it will say anything about it.
+</p>
+
+</main>
+
+<footer>
+  MIT licensed.
+  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+</footer>
+
+</body>
+</html>

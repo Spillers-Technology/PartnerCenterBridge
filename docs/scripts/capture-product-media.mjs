@@ -158,6 +158,20 @@ const dashboard = {
   recentRuns: runs,
 };
 
+const pendingActions = [
+  {
+    id: "pa1", tenantId: tenants[0].id, tenantName: "Contoso Ltd", actionType: "workflow.remediate",
+    previewSummary: "Remediate 'MFA / auth method reset' on Contoso Ltd. Current diagnosis: Registered methods=Blocker; Active sessions=Warning. Inputs: userUpn=maya.chen@contoso.com.",
+    status: "Pending", createdAt: minutesAgo(6), expiresAt: minutesAgo(-54), executionError: null,
+  },
+  {
+    id: "pa2", tenantId: tenants[2].id, tenantName: "Tailspin Toys", actionType: "workflow.remediate",
+    previewSummary: "Remediate 'License assignment repair' on Tailspin Toys. Current diagnosis: Usage location=Blocker. Inputs: userUpn=marco.chen@tailspintoys.com.",
+    status: "Approved", createdAt: minutesAgo(40), expiresAt: minutesAgo(-20),
+    executionError: "usage location set, but SKU still in error state after reprocess",
+  },
+];
+
 const searchResult = {
   tenantsSearched: 4,
   hits: [
@@ -205,6 +219,10 @@ const meProfile = {
 
 const passkeys = [
   { id: "pk1", nickname: "YubiKey 5C", createdAt: minutesAgo(43200), lastUsedAt: minutesAgo(62) },
+];
+
+const mcpTokens = [
+  { id: "mt1", name: "Claude Desktop", createdAt: minutesAgo(20160), expiresAt: null, lastUsedAt: minutesAgo(12) },
 ];
 
 const configSections = [
@@ -286,6 +304,8 @@ async function handleApi(route) {
 
   if (method === "GET" && apiPath === "/search/users") return json(route, searchResult);
 
+  if (method === "GET" && apiPath === "/pending-actions") return json(route, pendingActions);
+
   if (method === "GET" && apiPath === "/workflows") return json(route, workflows);
   if (method === "GET" && apiPath === "/workflows/runs") return json(route, runs);
 
@@ -332,6 +352,7 @@ async function handleApi(route) {
   if (method === "GET" && apiPath === "/auth/me") return json(route, meProfile);
   if (method === "POST" && apiPath === "/auth/logout") return json(route, {}, 204);
   if (method === "GET" && apiPath === "/auth/passkey") return json(route, passkeys);
+  if (method === "GET" && apiPath === "/mcp-tokens") return json(route, mcpTokens);
   if (method === "GET" && apiPath === "/config-sections") return json(route, configSections);
 
   match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots$/);
@@ -423,6 +444,11 @@ async function main() {
     await gotoTab(page, "Tenants");
     await page.getByText("Wingtip Partners", { exact: false }).waitFor({ timeout: 20_000 });
     await page.screenshot({ path: path.join(outDir, "pcbridge-tenants.jpg"), type: "jpeg", quality: 92 });
+
+    console.log("Rendering Approvals (MCP human-in-the-loop queue)...");
+    await gotoTab(page, "Approvals");
+    await page.getByText("usage location set, but SKU still in error state", { exact: false }).waitFor({ timeout: 20_000 });
+    await page.screenshot({ path: path.join(outDir, "pcbridge-approvals.jpg"), type: "jpeg", quality: 92 });
 
     // --- Auth:Mode=Local screens: Login (passkey-primary), Register, Security, Config Snapshots.
     // Separate pages/contexts because these need their own unauthenticated -> authenticated

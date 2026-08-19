@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Partner Center Bridge - repeatable cross-tenant Microsoft 365 ops for MSPs</title>
-<meta name="description" content="An open-source, self-hosted bridge over Microsoft Graph and the Partner Center API: templated Intune Win32 deploys across every tenant, contract-driven hire/offboard, and transparent Diagnose - Fix - Verify workflows for the tickets your queue sees every week.">
+<meta name="description" content="An open-source, self-hosted bridge over Microsoft Graph and the Partner Center API: templated Intune Win32 deploys across every tenant, contract-driven hire/offboard, transparent Diagnose - Fix - Verify workflows, and an MCP server so an LLM can drive it with human-in-the-loop approval.">
 <meta name="theme-color" content="#0f172a">
 
 <meta property="og:type" content="website">
@@ -240,6 +240,7 @@
       <a href="architecture.html">Architecture</a>
       <a href="authentication.html">Authentication</a>
       <a href="workflows.html">Workflows</a>
+      <a href="mcp-server.html">MCP Server</a>
       <a href="config-snapshots.html">Config Snapshots</a>
       <a href="getting-started.html">Getting started</a>
       <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
@@ -251,7 +252,7 @@
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap">
       <div class="hero-content">
-        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.4.0</div>
+        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.5.0</div>
         <h1 id="hero-title">Cross-tenant Microsoft&nbsp;365 ops,<br><span>done the same way every time.</span></h1>
         <p class="lead">
           A self-hosted bridge over Microsoft Graph and the Partner Center API for MSPs.
@@ -384,6 +385,12 @@
         </figure>
         <figure class="shot">
           <button class="lightbox-trigger" type="button" data-lightbox>
+            <img src="assets/screenshots/pcbridge-approvals.jpg" alt="Approvals tab listing a pending MFA reset action awaiting approval and a failed license repair action offering Retry.">
+          </button>
+          <figcaption><strong>MCP with a human in the loop</strong><span>An LLM can drive the bridge through the same MCP tools a technician's client would call - but a mutating action lands here for a human to approve first, by default. See <a href="mcp-server.html">MCP Server</a>.</span></figcaption>
+        </figure>
+        <figure class="shot">
+          <button class="lightbox-trigger" type="button" data-lightbox>
             <img src="assets/screenshots/pcbridge-config-snapshots.jpg" alt="Config Snapshots screen showing a diff between two runs with Modified, Added, and Removed Conditional Access and Named Location entries.">
           </button>
           <figcaption><strong>Config snapshots &amp; diff</strong><span>Point-in-time backups of Conditional Access, Named Locations, and Device Compliance Policies - diffed section-by-section, exportable as a patch. See <a href="config-snapshots.html">Config Snapshots</a>.</span></figcaption>
@@ -451,6 +458,7 @@
         <article class="integration"><span class="tag stable">Stable</span><strong>Intune Win32 apps</strong><p>The full <code>.intunewin</code> upload state machine: content version, chunked block-blob upload, commit with parsed encryption info, then assign.</p></article>
         <article class="integration"><span class="tag beta">Beta</span><strong>Exchange Online V3</strong><p>Mailbox configuration Graph can't do, through the EXO PowerShell module (app-only certificate) run out-of-process via <code>PwshRunner</code>.</p></article>
         <article class="integration"><span class="tag stable">Stable</span><strong>Authentik / OIDC</strong><p>Operator sign-in as a JWT bearer plane. Any standard OIDC provider works; set <code>Auth</code> and the matching <code>VITE_OIDC_*</code> vars.</p></article>
+        <article class="integration"><span class="tag stable">Stable</span><strong>MCP (Model Context Protocol)</strong><p>Streamable HTTP server at <code>/mcp</code> so an LLM can drive the bridge through the same tools, tenant access, and human-in-the-loop approval a technician uses. See <a href="mcp-server.html">MCP Server</a>.</p></article>
         <article class="integration"><span class="tag stable">Stable</span><strong>Teams / webhook alerts</strong><p>Failed runs push an Adaptive Card to a Teams incoming webhook, or plain JSON to any receiver - configured in the <code>Notifications</code> section.</p></article>
         <article class="integration"><span class="tag core">Core</span><strong>PostgreSQL</strong><p>The local source of truth via EF Core: tenants, contracts, templates, deployments, and full workflow run history.</p></article>
         <article class="integration"><span class="tag planned">Planned</span><strong>Two-way LDAP</strong><p>Phase 4. Scaffolded for, not implemented. Directory sync back to on-prem is on the list but not in the build.</p></article>
@@ -541,6 +549,7 @@ dotnet test</pre>
       <a href="architecture.html">Architecture</a>
       <a href="authentication.html">Authentication</a>
       <a href="workflows.html">Workflows</a>
+      <a href="mcp-server.html">MCP Server</a>
       <a href="config-snapshots.html">Config Snapshots</a>
       <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">License</a>
     </nav>

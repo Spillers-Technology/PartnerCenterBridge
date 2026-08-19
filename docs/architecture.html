@@ -41,6 +41,7 @@
   <a class="nav-link active" href="architecture.html">Architecture</a>
   <a class="nav-link" href="authentication.html">Authentication</a>
   <a class="nav-link" href="workflows.html">Workflows</a>
+  <a class="nav-link" href="mcp-server.html">MCP Server</a>
   <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
   <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
   <a class="nav-link" href="deployment.html">Deployment</a>
@@ -101,8 +102,18 @@ completely separate:</p>
           dispatch + run recording.</td></tr>
   <tr><td><code>web/</code></td>
       <td>React SPA: Tenants, Contracts, App Templates, Deploy, History, New Hire, Offboard,
-          Workflows.</td></tr>
+          Workflows, Approvals.</td></tr>
 </table>
+
+<h2>The MCP surface</h2>
+<p>
+  Alongside the REST API, <code>Api</code> exposes a <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model Context Protocol</a>
+  server at <code>/mcp</code> (Streamable HTTP) so an LLM client can call the same operations a
+  technician would through the SPA -- <code>ITenantAccessService</code>, the workflow catalog, and
+  the audit trail are all shared with the REST controllers, not a parallel implementation. A
+  mutating tool call is staged as a <code>PendingAction</code> for human approval by default,
+  rather than executing directly; see <a href="mcp-server.html">MCP Server</a> for the full model.
+</p>
 
 <h2>The contract model</h2>
 <p>
