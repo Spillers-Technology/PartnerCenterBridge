@@ -1,7 +1,15 @@
 # SPA UX Uplift — Design
 
-Status: approved by Joey 2026-08-18, ready for implementation planning (implementation deferred
-until the MCP server work lands — see Sequencing below).
+Status: **Superseded 2026-08-19** by
+[2026-08-19-mui-design-system-foundation-design.md](2026-08-19-mui-design-system-foundation-design.md).
+The Radix/hand-rolled-tokens direction below was never implemented (this repo's MCP-server
+deferral condition was satisfied, but no code was written against this spec). The successor spec
+adopts Material UI instead and folds this document's two real findings — no confirm before any
+destructive action, and two forms with no error handling at all — in as requirements rather than
+losing them. Kept here for the audit findings and reasoning, not as a live implementation target.
+
+~~Status: approved by Joey 2026-08-18, ready for implementation planning (implementation deferred
+until the MCP server work lands — see Sequencing below).~~
 
 ## Motivation
 
