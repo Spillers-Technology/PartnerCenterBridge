@@ -17,7 +17,7 @@ public class McpPatEndpointRestrictionMiddlewareTests
         {
             nextCalled = true;
             return Task.CompletedTask;
-        });
+        }, new AuthModeInfo(AuthModeInfo.Local));
         var context = CreateAuthenticatedContext(path,
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(LocalTokenService.UserIdClaim, Guid.NewGuid().ToString()),
@@ -37,7 +37,7 @@ public class McpPatEndpointRestrictionMiddlewareTests
         {
             nextCalled = true;
             return Task.CompletedTask;
-        });
+        }, new AuthModeInfo(AuthModeInfo.Local));
         var context = CreateAuthenticatedContext("/mcp/messages",
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
 
@@ -55,10 +55,32 @@ public class McpPatEndpointRestrictionMiddlewareTests
         {
             nextCalled = true;
             return Task.CompletedTask;
-        });
+        }, new AuthModeInfo(AuthModeInfo.Local));
         var context = CreateAuthenticatedContext("/api/workflows/mfa-reset/remediate",
             new Claim(LocalTokenService.UserIdClaim, Guid.NewGuid().ToString()),
             new Claim(LocalTokenService.SystemAdminClaim, "true"));
+
+        await middleware.InvokeAsync(context);
+
+        Assert.True(nextCalled);
+        Assert.NotEqual(StatusCodes.Status403Forbidden, context.Response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Oidc_access_token_carrying_its_own_jti_is_unaffected()
+    {
+        // Standard OIDC access tokens (e.g. Entra ID) commonly carry their own unrelated "jti"
+        // claim. MCP PATs are exclusively a Local-mode feature (McpTokensController 400s outside
+        // Local, since it requires ITenantAccessService.CurrentUserId), so the restriction must
+        // not apply under Oidc mode even when the caller's token happens to carry "jti".
+        var nextCalled = false;
+        var middleware = new McpPatEndpointRestrictionMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        }, new AuthModeInfo(AuthModeInfo.Oidc));
+        var context = CreateAuthenticatedContext("/api/workflows/mfa-reset/remediate",
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()));
 
         await middleware.InvokeAsync(context);
 
