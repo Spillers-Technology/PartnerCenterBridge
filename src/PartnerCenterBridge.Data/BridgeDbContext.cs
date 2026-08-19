@@ -46,6 +46,7 @@ public class BridgeDbContext : DbContext
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ConfigSnapshotRun> ConfigSnapshotRuns => Set<ConfigSnapshotRun>();
     public DbSet<ConfigSnapshotSection> ConfigSnapshotSections => Set<ConfigSnapshotSection>();
+    public DbSet<PendingAction> PendingActions => Set<PendingAction>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -145,6 +146,13 @@ public class BridgeDbContext : DbContext
             e.Property(s => s.ContentJson).HasColumnType("jsonb");
             e.HasOne(s => s.Run).WithMany(r => r.Sections)
                 .HasForeignKey(s => s.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<PendingAction>(e =>
+        {
+            e.HasIndex(p => new { p.TenantId, p.Status });
+            e.HasOne(p => p.Tenant).WithMany()
+                .HasForeignKey(p => p.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<TenantAccessGrant>(e =>

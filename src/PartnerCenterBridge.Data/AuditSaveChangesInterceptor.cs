@@ -23,7 +23,8 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
     private static readonly HashSet<Type> AuditedTypes = new()
     {
         typeof(AppUser), typeof(TenantAccessGrant), typeof(Tenant),
-        typeof(Contract), typeof(AppTemplate), typeof(Deployment), typeof(PasskeyCredential)
+        typeof(Contract), typeof(AppTemplate), typeof(Deployment), typeof(PasskeyCredential),
+        typeof(PendingAction)
     };
 
     private readonly ICurrentActor _actor;
