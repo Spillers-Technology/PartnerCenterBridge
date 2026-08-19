@@ -9,6 +9,7 @@ vi.mock("../api", () => ({ api: { auth: { register: vi.fn() } } }));
 vi.mock("../session", () => ({ setLocalToken: vi.fn() }));
 
 import { api } from "../api";
+import { setLocalToken } from "../session";
 
 function renderRegister() {
   const onAuthenticated = vi.fn();
@@ -34,6 +35,7 @@ describe("Register", () => {
     await user.click(screen.getByRole("button", { name: "Create account" }));
 
     expect(api.auth.register).toHaveBeenCalledWith("maya@contoso.com", "correct-horse-battery", "Maya Chen");
+    expect(setLocalToken).toHaveBeenCalledWith("tok");
     expect(onAuthenticated).toHaveBeenCalledWith({ accessToken: "tok", user: { id: "u1" } });
   });
 
