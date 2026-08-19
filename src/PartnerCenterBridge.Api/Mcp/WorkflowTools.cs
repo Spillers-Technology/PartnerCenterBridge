@@ -16,13 +16,15 @@ public class WorkflowTools
 {
     private readonly WorkflowCatalog _catalog;
     private readonly BridgeDbContext _db;
+    private readonly IRunNotifier _notifier;
     private readonly ITenantAccessService _access;
     private readonly ICurrentActor _actor;
 
-    public WorkflowTools(WorkflowCatalog catalog, BridgeDbContext db, ITenantAccessService access, ICurrentActor actor)
+    public WorkflowTools(WorkflowCatalog catalog, BridgeDbContext db, IRunNotifier notifier, ITenantAccessService access, ICurrentActor actor)
     {
         _catalog = catalog;
         _db = db;
+        _notifier = notifier;
         _access = access;
         _actor = actor;
     }
@@ -70,6 +72,7 @@ public class WorkflowTools
             run.DurationMs = sw.ElapsedMilliseconds;
             _db.WorkflowRuns.Add(run);
             await _db.SaveChangesAsync(CancellationToken.None);
+            await _notifier.NotifyAsync(run, CancellationToken.None);
         }
     }
 }
