@@ -18,9 +18,11 @@ public class PendingActionServiceTests
 
         var action = await svc.StageAsync(tenant.Id, "test.action", userId, new { note = "x" }, "does a thing", CancellationToken.None);
 
-        Assert.Equal(PendingActionStatus.Pending, action.Status);
-        Assert.Equal(tenant.Id, action.TenantId);
-        Assert.Contains("\"note\"", action.PayloadJson);
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(PendingActionStatus.Pending, persisted!.Status);
+        Assert.Equal(tenant.Id, persisted.TenantId);
+        Assert.Contains("\"note\"", persisted.PayloadJson);
     }
 
     [Fact]
@@ -36,9 +38,13 @@ public class PendingActionServiceTests
 
         var result = await svc.ApproveAsync(action.Id, Guid.NewGuid(), _ => { executed = true; return Task.CompletedTask; }, CancellationToken.None);
 
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
         Assert.True(executed);
         Assert.Equal(PendingActionStatus.Executed, result.Status);
         Assert.NotNull(result.ExecutedAt);
+        Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
+        Assert.NotNull(persisted.ExecutedAt);
     }
 
     [Fact]
@@ -51,11 +57,13 @@ public class PendingActionServiceTests
         var svc = new PendingActionService(db.Context);
         var action = await svc.StageAsync(tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             svc.ApproveAsync(action.Id, Guid.NewGuid(), _ => throw new InvalidOperationException("boom"), CancellationToken.None));
 
-        var reloaded = await db.Context.PendingActions.FindAsync(action.Id);
-        Assert.Equal("boom", reloaded!.ExecutionError);
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal("boom", exception.Message);
+        Assert.Equal("boom", persisted!.ExecutionError);
     }
 
     [Fact]
@@ -70,7 +78,10 @@ public class PendingActionServiceTests
 
         var result = await svc.RejectAsync(action.Id, Guid.NewGuid(), CancellationToken.None);
 
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
         Assert.Equal(PendingActionStatus.Rejected, result.Status);
+        Assert.Equal(PendingActionStatus.Rejected, persisted!.Status);
     }
 
     [Fact]
@@ -86,6 +97,10 @@ public class PendingActionServiceTests
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             svc.ApproveAsync(action.Id, Guid.NewGuid(), _ => Task.CompletedTask, CancellationToken.None));
+
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
     }
 
     [Fact]
@@ -102,6 +117,57 @@ public class PendingActionServiceTests
 
         var reloaded = await svc.GetAsync(action.Id, CancellationToken.None);
 
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
         Assert.Equal(PendingActionStatus.Expired, reloaded!.Status);
+        Assert.Equal(PendingActionStatus.Expired, persisted!.Status);
+    }
+
+    [Fact]
+    public async Task Concurrent_approvals_claim_once_and_execute_once()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var action = await new PendingActionService(db.Context).StageAsync(
+            tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+        using var firstContext = db.CreateContext();
+        using var secondContext = db.CreateContext();
+        var firstService = new PendingActionService(firstContext);
+        var secondService = new PendingActionService(secondContext);
+        var firstExecutionStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirstExecution = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executionCount = 0;
+
+        async Task Execute(PendingAction _)
+        {
+            if (Interlocked.Increment(ref executionCount) == 1)
+            {
+                firstExecutionStarted.TrySetResult();
+                await releaseFirstExecution.Task;
+            }
+        }
+
+        var firstApproval = firstService.ApproveAsync(
+            action.Id, Guid.NewGuid(), Execute, CancellationToken.None);
+        await firstExecutionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                secondService.ApproveAsync(action.Id, Guid.NewGuid(), Execute, CancellationToken.None));
+        }
+        finally
+        {
+            releaseFirstExecution.TrySetResult();
+        }
+
+        await firstApproval;
+
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(1, executionCount);
+        Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
     }
 }

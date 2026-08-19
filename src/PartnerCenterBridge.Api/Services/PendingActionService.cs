@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Data;
@@ -28,7 +29,7 @@ public class PendingActionService
     }
 
     public async Task<PendingAction?> GetAsync(Guid id, CancellationToken ct) =>
-        await ExpireIfStaleAsync(await _db.PendingActions.FindAsync([id], ct), ct);
+        await GetWithAtomicExpiryAsync(id, ct);
 
     /// <summary>
     /// Marks Approved, runs <paramref name="execute"/>, then marks Executed -- or records
@@ -38,54 +39,88 @@ public class PendingActionService
     /// </summary>
     public async Task<PendingAction> ApproveAsync(Guid id, Guid decidedByUserId, Func<PendingAction, Task> execute, CancellationToken ct)
     {
-        var action = await RequireActionableAsync(id, ct);
-        action.Status = PendingActionStatus.Approved;
-        action.DecidedByUserId = decidedByUserId;
-        action.DecidedAt = DateTimeOffset.UtcNow;
+        var decidedAt = DateTimeOffset.UtcNow;
+        var claimed = await ClaimAsync(
+            id, PendingActionStatus.Approved, decidedByUserId, decidedAt, ct);
+
+        if (claimed == 0)
+            await ThrowNotActionableAsync(id, ct);
+
+        // Database-side updates bypass the change tracker. Reload without tracking both to get
+        // the claimed values and to avoid returning a stale instance left over from StageAsync.
+        var action = await _db.PendingActions.AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
         try
         {
             await execute(action);
-            action.Status = PendingActionStatus.Executed;
-            action.ExecutedAt = DateTimeOffset.UtcNow;
         }
         catch (Exception ex)
         {
+            await _db.PendingActions
+                .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None);
             action.ExecutionError = ex.Message;
             throw;
         }
-        finally
-        {
-            await _db.SaveChangesAsync(CancellationToken.None);
-        }
+
+        var executedAt = DateTimeOffset.UtcNow;
+        await _db.PendingActions
+            .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.Status, PendingActionStatus.Executed)
+                .SetProperty(candidate => candidate.ExecutedAt, executedAt), CancellationToken.None);
+        action.Status = PendingActionStatus.Executed;
+        action.ExecutedAt = executedAt;
         return action;
     }
 
     public async Task<PendingAction> RejectAsync(Guid id, Guid decidedByUserId, CancellationToken ct)
     {
-        var action = await RequireActionableAsync(id, ct);
-        action.Status = PendingActionStatus.Rejected;
-        action.DecidedByUserId = decidedByUserId;
-        action.DecidedAt = DateTimeOffset.UtcNow;
-        await _db.SaveChangesAsync(ct);
-        return action;
+        var decidedAt = DateTimeOffset.UtcNow;
+        var claimed = await ClaimAsync(
+            id, PendingActionStatus.Rejected, decidedByUserId, decidedAt, ct);
+
+        if (claimed == 0)
+            await ThrowNotActionableAsync(id, ct);
+
+        return await _db.PendingActions.AsNoTracking()
+            .SingleAsync(action => action.Id == id, CancellationToken.None);
     }
 
-    private async Task<PendingAction> RequireActionableAsync(Guid id, CancellationToken ct)
+    private async Task ThrowNotActionableAsync(Guid id, CancellationToken ct)
     {
-        var action = await ExpireIfStaleAsync(await _db.PendingActions.FindAsync([id], ct), ct)
+        var action = await GetWithAtomicExpiryAsync(id, ct)
             ?? throw new InvalidOperationException("Pending action not found.");
-        if (action.Status != PendingActionStatus.Pending)
-            throw new InvalidOperationException($"Pending action is {action.Status}, not Pending.");
-        return action;
+        throw new InvalidOperationException($"Pending action is {action.Status}, not Pending.");
     }
 
-    private async Task<PendingAction?> ExpireIfStaleAsync(PendingAction? action, CancellationToken ct)
+    private async Task<PendingAction?> GetWithAtomicExpiryAsync(Guid id, CancellationToken ct)
     {
-        if (action is { Status: PendingActionStatus.Pending } && action.ExpiresAt < DateTimeOffset.UtcNow)
-        {
-            action.Status = PendingActionStatus.Expired;
-            await _db.SaveChangesAsync(ct);
-        }
-        return action;
+        var now = DateTimeOffset.UtcNow;
+        await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE ""PendingActions""
+            SET ""Status"" = {(int)PendingActionStatus.Expired}
+            WHERE ""Id"" = {id}
+              AND ""Status"" = {(int)PendingActionStatus.Pending}
+              AND ""ExpiresAt"" < {now}", ct);
+
+        return await _db.PendingActions.AsNoTracking()
+            .SingleOrDefaultAsync(action => action.Id == id, ct);
     }
+
+    private Task<int> ClaimAsync(
+        Guid id,
+        PendingActionStatus claimedStatus,
+        Guid decidedByUserId,
+        DateTimeOffset decidedAt,
+        CancellationToken ct) =>
+        _db.Database.ExecuteSqlInterpolatedAsync($@"
+            UPDATE ""PendingActions""
+            SET ""Status"" = {(int)claimedStatus},
+                ""DecidedByUserId"" = {decidedByUserId},
+                ""DecidedAt"" = {decidedAt}
+            WHERE ""Id"" = {id}
+              AND ""Status"" = {(int)PendingActionStatus.Pending}
+              AND ""ExpiresAt"" >= {decidedAt}", ct);
 }

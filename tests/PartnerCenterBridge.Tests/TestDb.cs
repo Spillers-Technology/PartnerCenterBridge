@@ -13,18 +13,21 @@ namespace PartnerCenterBridge.Tests;
 public sealed class TestDb : IDisposable
 {
     private readonly SqliteConnection _connection;
+    private readonly DbContextOptions<BridgeDbContext> _options;
     public BridgeDbContext Context { get; }
 
     public TestDb()
     {
         _connection = new SqliteConnection("DataSource=:memory:");
         _connection.Open();
-        var options = new DbContextOptionsBuilder<BridgeDbContext>()
+        _options = new DbContextOptionsBuilder<BridgeDbContext>()
             .UseSqlite(_connection)
             .Options;
-        Context = new BridgeDbContext(options);
+        Context = new BridgeDbContext(_options);
         Context.Database.EnsureCreated();
     }
+
+    public BridgeDbContext CreateContext() => new(_options);
 
     public void Dispose()
     {
