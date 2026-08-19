@@ -143,17 +143,11 @@ switch (authMode)
                 {
                     OnTokenValidated = async context =>
                     {
-                        var jti = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);
-                        if (jti is null) return; // a normal login token, not an MCP PAT -- nothing to check.
                         var db = context.HttpContext.RequestServices.GetRequiredService<BridgeDbContext>();
-                        var token = await db.McpTokens.FindAsync(Guid.Parse(jti));
-                        if (token is null || token.RevokedAt is not null)
+                        if (!await McpTokenValidator.ValidateAsync(context.Principal, db, context.HttpContext.RequestAborted))
                         {
                             context.Fail("MCP token has been revoked.");
-                            return;
                         }
-                        token.LastUsedAt = DateTimeOffset.UtcNow;
-                        await db.SaveChangesAsync();
                     }
                 };
             });

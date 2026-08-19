@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.IdentityModel.Tokens.Jwt;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Data;
@@ -35,6 +36,7 @@ public class McpTokensController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<McpTokenDto>>> List(CancellationToken ct)
     {
+        if (User.HasClaim(c => c.Type == JwtRegisteredClaimNames.Jti)) return ForbidMcpTokenManagement();
         if (_access.CurrentUserId is not { } userId) return BadRequest("Not a local account.");
         return Ok(await _db.McpTokens.AsNoTracking()
             .Where(t => t.UserId == userId && t.RevokedAt == null)
@@ -47,6 +49,7 @@ public class McpTokensController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<CreatedMcpTokenDto>> Create(CreateMcpTokenRequest req, CancellationToken ct)
     {
+        if (User.HasClaim(c => c.Type == JwtRegisteredClaimNames.Jti)) return ForbidMcpTokenManagement();
         if (_access.CurrentUserId is not { } userId) return BadRequest("Not a local account.");
         if (string.IsNullOrWhiteSpace(req.Name)) return BadRequest("Name is required.");
 
@@ -64,11 +67,19 @@ public class McpTokensController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Revoke(Guid id, CancellationToken ct)
     {
+        if (User.HasClaim(c => c.Type == JwtRegisteredClaimNames.Jti)) return ForbidMcpTokenManagement();
         if (_access.CurrentUserId is not { } userId) return BadRequest("Not a local account.");
         var token = await _db.McpTokens.FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId, ct);
         if (token is null) return NotFound();
         token.RevokedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
         return NoContent();
+    }
+
+    private ForbidResult ForbidMcpTokenManagement()
+    {
+        Response.Headers["X-PartnerCenterBridge-Reason"] =
+            "MCP token management requires an interactive login token.";
+        return Forbid();
     }
 }
