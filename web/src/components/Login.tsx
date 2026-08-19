@@ -20,6 +20,7 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [mfaTicket, setMfaTicket] = useState("");
+  const [lastAttempt, setLastAttempt] = useState<"passkey" | "password" | "mfa" | null>(null);
 
   const finish = (r: AuthResponse) => {
     setLocalToken(r.accessToken);
@@ -47,7 +48,11 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
   });
 
   const busy = passkeyAction.busy || passwordAction.busy || mfaAction.busy;
-  const error = passkeyAction.error ?? passwordAction.error ?? mfaAction.error;
+  const error =
+    lastAttempt === "passkey" ? passkeyAction.error :
+    lastAttempt === "password" ? passwordAction.error :
+    lastAttempt === "mfa" ? mfaAction.error :
+    null;
 
   if (step === "mfa") {
     return (
@@ -58,6 +63,7 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
           sx={{ width: "100%", maxWidth: 360 }}
           onSubmit={(ev) => {
             ev.preventDefault();
+            setLastAttempt("mfa");
             void mfaAction.run();
           }}
         >
@@ -72,7 +78,7 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
             onChange={(e) => setCode(e.target.value)}
           />
           <Button type="submit" variant="contained" disabled={busy}>
-            {mfaAction.busy ? "Verifying…" : "Verify"}
+            {mfaAction.busy ? "Verifying..." : "Verify"}
           </Button>
           {error && <Alert severity="error">{error}</Alert>}
         </Stack>
@@ -89,8 +95,8 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
 
         {passkeysSupported && (
           <>
-            <Button variant="contained" onClick={() => void passkeyAction.run()} disabled={busy}>
-              {passkeyAction.busy ? "Waiting for passkey…" : "Sign in with a passkey"}
+            <Button variant="contained" onClick={() => { setLastAttempt("passkey"); void passkeyAction.run(); }} disabled={busy}>
+              {passkeyAction.busy ? "Waiting for passkey..." : "Sign in with a passkey"}
             </Button>
             <Typography variant="body2" color="text.secondary">
               or use your password
@@ -103,6 +109,7 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
           spacing={2}
           onSubmit={(ev) => {
             ev.preventDefault();
+            setLastAttempt("password");
             void passwordAction.run();
           }}
         >
@@ -115,7 +122,7 @@ export function Login({ onAuthenticated, onGoRegister }: { onAuthenticated: (r: 
             onChange={(e) => setPassword(e.target.value)}
           />
           <Button type="submit" variant="contained" disabled={busy}>
-            {passwordAction.busy ? "Signing in…" : "Sign in"}
+            {passwordAction.busy ? "Signing in..." : "Sign in"}
           </Button>
         </Stack>
 
