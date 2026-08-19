@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { api } from "../api";
 import { createPasskey, type RegisterOptionsWire } from "../webauthn";
-import type { MeProfile, PasskeyInfo } from "../types";
+import type { McpTokenInfo, MeProfile, PasskeyInfo } from "../types";
 
 export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileChanged: () => void }) {
   const [passkeys, setPasskeys] = useState<PasskeyInfo[]>([]);
+  const [mcpTokens, setMcpTokens] = useState<McpTokenInfo[]>([]);
+  const [newTokenName, setNewTokenName] = useState("");
+  const [issuedJwt, setIssuedJwt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -18,6 +21,29 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
 
   const load = () => api.passkey.list().then(setPasskeys).catch((e) => setError(String(e)));
   useEffect(() => { load(); }, []);
+
+  const loadMcpTokens = () => api.mcpTokens.list().then(setMcpTokens).catch((e) => setError(String(e)));
+  useEffect(() => { loadMcpTokens(); }, []);
+
+  const createMcpToken = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    setBusy(true); setError(null);
+    try {
+      const r = await api.mcpTokens.create(newTokenName);
+      setIssuedJwt(r.jwt);
+      setNewTokenName("");
+      await loadMcpTokens();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revokeMcpToken = async (id: string) => {
+    await api.mcpTokens.revoke(id);
+    await loadMcpTokens();
+  };
 
   const startTotpEnroll = async () => {
     setError(null);
@@ -138,6 +164,42 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
         ) : (
           <button onClick={startTotpEnroll}>Enable 2FA</button>
         )}
+      </fieldset>
+
+      <fieldset>
+        <legend>MCP access tokens</legend>
+        <p className="muted">
+          For headless/scripted MCP clients that can't do an interactive login. Each token has the
+          same access as your account -- revoke one immediately if a client using it is
+          decommissioned or compromised.
+        </p>
+        {issuedJwt ? (
+          <div className="password">
+            <p><strong>Copy this token now -- it will not be shown again.</strong></p>
+            <p className="mono">{issuedJwt}</p>
+            <button onClick={() => setIssuedJwt(null)}>I've copied it</button>
+          </div>
+        ) : (
+          <form className="field" onSubmit={createMcpToken}>
+            <label>Name this token (e.g. "Claude Desktop")</label>
+            <input value={newTokenName} onChange={(e) => setNewTokenName(e.target.value)} />
+            <button disabled={busy || !newTokenName.trim()}>{busy ? "Creating..." : "Create token"}</button>
+          </form>
+        )}
+        <table>
+          <thead><tr><th>Name</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+          <tbody>
+            {mcpTokens.map((t) => (
+              <tr key={t.id}>
+                <td>{t.name}</td>
+                <td>{new Date(t.createdAt).toLocaleDateString()}</td>
+                <td>{t.lastUsedAt ? new Date(t.lastUsedAt).toLocaleDateString() : "never"}</td>
+                <td><button onClick={() => revokeMcpToken(t.id)}>Revoke</button></td>
+              </tr>
+            ))}
+            {mcpTokens.length === 0 && <tr><td colSpan={4} className="muted">No MCP tokens yet.</td></tr>}
+          </tbody>
+        </table>
       </fieldset>
     </section>
   );

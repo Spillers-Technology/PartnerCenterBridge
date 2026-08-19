@@ -203,6 +203,13 @@ export interface TotpEnrollResponse { pendingKey: string; secret: string; otpAut
 export interface TotpVerifyEnrollResponse { recoveryCodes: string[] }
 
 export interface PasskeyInfo { id: string; nickname?: string; createdAt: string; lastUsedAt?: string }
+export interface McpTokenInfo {
+  id: string;
+  name: string;
+  createdAt: string;
+  expiresAt: string | null;
+  lastUsedAt: string | null;
+}
 
 // --- Config snapshots: backup + diff -----------------------------------------------------------
 export interface ConfigSection { id: string; name: string; category: string }

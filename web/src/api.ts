@@ -3,7 +3,7 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
+  McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
   TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
@@ -172,6 +172,13 @@ export const api = {
       }),
     list: () => request<PasskeyInfo[]>("/api/auth/passkey"),
     remove: (id: string) => request<void>(`/api/auth/passkey/${id}`, { method: "DELETE" })
+  },
+
+  mcpTokens: {
+    list: () => request<McpTokenInfo[]>("/api/mcp-tokens"),
+    create: (name: string) =>
+      request<{ id: string; name: string; jwt: string }>("/api/mcp-tokens", { method: "POST", body: JSON.stringify({ name }) }),
+    revoke: (id: string) => request<void>(`/api/mcp-tokens/${id}`, { method: "DELETE" }),
   },
 
   configSnapshots: {
