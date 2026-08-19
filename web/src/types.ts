@@ -160,6 +160,20 @@ export interface WorkflowSummary {
   inputs: WorkflowInput[];
 }
 
+export type PendingActionStatus = "Pending" | "Approved" | "Rejected" | "Executed" | "Expired";
+
+export interface PendingAction {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  actionType: string;
+  previewSummary: string;
+  status: PendingActionStatus;
+  createdAt: string;
+  expiresAt: string;
+  executionError: string | null;
+}
+
 // --- Auth:Mode=Local: accounts, TOTP, passkeys, tenant sharing --------------------------------
 export type AuthMode = "Oidc" | "Local" | "Dev";
 

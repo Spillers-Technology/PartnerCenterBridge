@@ -11,6 +11,7 @@ import { Deployments } from "./components/Deployments";
 import { NewHire } from "./components/NewHire";
 import { Offboard } from "./components/Offboard";
 import { Workflows } from "./components/Workflows";
+import { Approvals } from "./components/Approvals";
 import { Dashboard } from "./components/Dashboard";
 import { UserSearch, type WorkflowLaunch } from "./components/UserSearch";
 import { Login } from "./components/Login";
@@ -18,7 +19,7 @@ import { Register } from "./components/Register";
 import { Security } from "./components/Security";
 import { ConfigSnapshots } from "./components/ConfigSnapshots";
 
-type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows" | "snapshots" | "security";
+type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows" | "approvals" | "snapshots" | "security";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -31,6 +32,7 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "newhire", label: "New Hire" },
   { key: "offboard", label: "Offboard" },
   { key: "workflows", label: "Workflows" },
+  { key: "approvals", label: "Approvals" },
   { key: "snapshots", label: "Config Snapshots" }
 ];
 
@@ -122,6 +124,7 @@ export function App() {
         {tab === "newhire" && <NewHire />}
         {tab === "offboard" && <Offboard />}
         {tab === "workflows" && <Workflows prefill={wfLaunch} />}
+        {tab === "approvals" && <Approvals />}
         {tab === "snapshots" && <ConfigSnapshots me={me} />}
         {tab === "security" && me && <Security me={me} onProfileChanged={refreshMe} />}
       </main>

@@ -3,7 +3,7 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  PasskeyInfo, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
+  PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
   TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
@@ -128,6 +128,13 @@ export const api = {
       request<WorkflowRunResult>(`/api/workflows/${id}/remediate`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })
       })
+  },
+
+  pendingActions: {
+    list: () => request<PendingAction[]>("/api/pending-actions"),
+    approve: (id: string) => request<void>(`/api/pending-actions/${id}/approve`, { method: "POST" }),
+    reject: (id: string) => request<void>(`/api/pending-actions/${id}/reject`, { method: "POST" }),
+    retry: (id: string) => request<void>(`/api/pending-actions/${id}/retry`, { method: "POST" })
   },
 
   auth: {
