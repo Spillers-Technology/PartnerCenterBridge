@@ -15,32 +15,32 @@ const ToastContext = createContext<ToastFn | null>(null);
 let nextToastId = 1;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [queue, setQueue] = useState<ToastMessage[]>([]);
+  const current = queue[0] ?? null;
 
   const showToast = useCallback<ToastFn>((message, severity = "info") => {
     const id = nextToastId++;
-    setToasts((prev) => [...prev, { id, message, severity }]);
+    setQueue((prev) => [...prev, { id, message, severity }]);
   }, []);
 
-  const close = (id: number) => setToasts((prev) => prev.filter((t) => t.id !== id));
+  const close = (id: number) => setQueue((prev) => prev.filter((t) => t.id !== id));
 
   return (
     <ToastContext.Provider value={showToast}>
       {children}
-      {toasts.map((t, i) => (
+      {current && (
         <Snackbar
-          key={t.id}
+          key={current.id}
           open
           autoHideDuration={5000}
-          onClose={() => close(t.id)}
+          onClose={() => close(current.id)}
           anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
-          sx={{ bottom: `${i * 56 + 16}px !important` }}
         >
-          <Alert onClose={() => close(t.id)} severity={t.severity} variant="filled" sx={{ width: "100%" }}>
-            {t.message}
+          <Alert onClose={() => close(current.id)} severity={current.severity} variant="filled" sx={{ width: "100%" }}>
+            {current.message}
           </Alert>
         </Snackbar>
-      ))}
+      )}
     </ToastContext.Provider>
   );
 }

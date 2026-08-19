@@ -28,7 +28,7 @@ describe("useToast / ToastProvider", () => {
     await waitForElementToBeRemoved(() => screen.queryByText("Deployment succeeded"));
   });
 
-  it("stacks two independent toasts", async () => {
+  it("queues a second toast behind the first, showing them one at a time", async () => {
     const user = userEvent.setup();
 
     function TwoHarness() {
@@ -51,7 +51,11 @@ describe("useToast / ToastProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "One" }));
     await user.click(screen.getByRole("button", { name: "Two" }));
+
     expect(await screen.findByText("First")).toBeInTheDocument();
+    expect(screen.queryByText("Second")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /close/i }));
     expect(await screen.findByText("Second")).toBeInTheDocument();
   });
 
