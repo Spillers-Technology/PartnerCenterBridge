@@ -26,6 +26,7 @@ interface PendingConfirm {
 
 export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<PendingConfirm[]>([]);
+  const [closing, setClosing] = useState(false);
   const pending = queue[0] ?? null;
   const isPhone = useIsPhone();
 
@@ -36,13 +37,23 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
 
   const close = (value: boolean) => {
     pending?.resolve(value);
+    setClosing(true);
+  };
+
+  const handleExited = () => {
     setQueue((q) => q.slice(1));
+    setClosing(false);
   };
 
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
-      <Dialog open={pending !== null} onClose={() => close(false)} fullScreen={isPhone}>
+      <Dialog
+        open={pending !== null && !closing}
+        onClose={() => close(false)}
+        fullScreen={isPhone}
+        slotProps={{ transition: { onExited: handleExited } }}
+      >
         <DialogTitle>{pending?.options.title}</DialogTitle>
         <DialogContent>
           <DialogContentText>{pending?.options.message}</DialogContentText>

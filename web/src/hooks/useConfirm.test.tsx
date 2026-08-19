@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "../theme";
@@ -121,5 +121,48 @@ describe("useConfirm / ConfirmDialogProvider", () => {
 
     await user.click(screen.getByRole("button", { name: "No2" }));
     expect(results).toEqual([true, false]);
+  });
+
+  it("prevents rapid double-click on first dialog from landing on second dialog", async () => {
+    const user = userEvent.setup();
+    const results: boolean[] = [];
+
+    function ConcurrentHarness() {
+      const confirm = useConfirm();
+      return (
+        <button
+          onClick={async () => {
+            const first = confirm({ title: "First?", message: "First message.", confirmLabel: "Yes1" });
+            const second = confirm({ title: "Second?", message: "Second message.", confirmLabel: "Yes2" });
+            results.push(await first);
+            results.push(await second);
+          }}
+        >
+          Ask Both
+        </button>
+      );
+    }
+
+    render(
+      <ThemeProvider theme={theme}>
+        <ConfirmDialogProvider>
+          <ConcurrentHarness />
+        </ConfirmDialogProvider>
+      </ThemeProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ask Both" }));
+    expect(await screen.findByText("First?")).toBeInTheDocument();
+    expect(screen.queryByText("Second?")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Yes1" }));
+
+    expect(screen.queryByText("Second?")).not.toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByText("Second?")).toBeInTheDocument());
+    expect(screen.queryByText("First?")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Yes2" }));
+    expect(results).toEqual([true, true]);
   });
 });

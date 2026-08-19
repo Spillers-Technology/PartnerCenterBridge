@@ -27,6 +27,7 @@ describe("Dashboard", () => {
     renderDashboard();
 
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
+    expect(screen.getByText("Loading dashboard...")).toBeInTheDocument();
     expect(screen.queryByText("5")).not.toBeInTheDocument();
 
     resolveDashboard({
@@ -36,6 +37,7 @@ describe("Dashboard", () => {
     });
 
     expect(await screen.findByText("5")).toBeInTheDocument();
+    expect(screen.queryByText("Loading dashboard...")).not.toBeInTheDocument();
   });
 
   it("renders stats and tables once data loads", async () => {
@@ -77,9 +79,6 @@ describe("Dashboard", () => {
   it("shows an error alert with the bare message, no 'Error:' prefix", async () => {
     vi.mocked(api.dashboard).mockRejectedValue(new Error("500 Internal Server Error"));
     renderDashboard();
-    // Exact match on purpose: the current Dashboard does setError(String(e)), which stringifies to
-    // "Error: 500 Internal Server Error" (with the prefix) -- this must NOT match until the
-    // rewrite switches to `e instanceof Error ? e.message : String(e)`.
     expect(await screen.findByText("500 Internal Server Error")).toBeInTheDocument();
   });
 });

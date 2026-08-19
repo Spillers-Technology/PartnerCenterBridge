@@ -12,6 +12,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
+import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
 import type { Dashboard as DashboardData } from "../types";
 
@@ -53,10 +54,11 @@ export function Dashboard() {
 
   if (!data) {
     return (
-      <Box>
+      <Box aria-busy="true">
         <Typography variant="h5" component="h2" gutterBottom>
           Dashboard
         </Typography>
+        <Box component="span" sx={visuallyHidden}>Loading dashboard...</Box>
         <Skeleton variant="rounded" height={96} sx={{ mb: 2 }} />
         <Skeleton variant="rounded" height={200} />
       </Box>

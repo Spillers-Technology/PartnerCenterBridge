@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import AppBar from "@mui/material/AppBar";
 import Box from "@mui/material/Box";
 import Drawer from "@mui/material/Drawer";
@@ -40,6 +40,10 @@ export function AppShell({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
 
+  useEffect(() => {
+    if (!isPhone) setDrawerOpen(false);
+  }, [isPhone]);
+
   const selectTab = (key: string) => {
     onSelectTab(key);
     setDrawerOpen(false);
@@ -59,6 +63,7 @@ export function AppShell({
           </Typography>
           {!isPhone && (
             <Tabs
+              aria-label="Main navigation"
               value={activeTab}
               onChange={(_, key: string) => selectTab(key)}
               variant="scrollable"
@@ -66,11 +71,22 @@ export function AppShell({
               sx={{ flexGrow: 1, minWidth: 0 }}
             >
               {tabs.map((t) => (
-                <Tab key={t.key} value={t.key} label={t.label} />
+                <Tab
+                  key={t.key}
+                  value={t.key}
+                  label={t.label}
+                  aria-current={t.key === activeTab ? "page" : undefined}
+                />
               ))}
             </Tabs>
           )}
-          <IconButton aria-label="Account menu" onClick={(e) => setMenuAnchor(e.currentTarget)} sx={{ ml: 1 }}>
+          <IconButton
+            aria-label="Account menu"
+            aria-haspopup="true"
+            aria-expanded={menuAnchor !== null}
+            onClick={(e) => setMenuAnchor(e.currentTarget)}
+            sx={{ ml: 1 }}
+          >
             <AccountCircle />
           </IconButton>
           <Menu anchorEl={menuAnchor} open={menuAnchor !== null} onClose={() => setMenuAnchor(null)}>
@@ -92,7 +108,12 @@ export function AppShell({
       <Drawer anchor="left" open={isPhone && drawerOpen} onClose={() => setDrawerOpen(false)}>
         <List sx={{ width: 260 }}>
           {tabs.map((t) => (
-            <ListItemButton key={t.key} selected={t.key === activeTab} onClick={() => selectTab(t.key)}>
+            <ListItemButton
+              key={t.key}
+              selected={t.key === activeTab}
+              onClick={() => selectTab(t.key)}
+              aria-current={t.key === activeTab ? "page" : undefined}
+            >
               <ListItemText primary={t.label} />
             </ListItemButton>
           ))}

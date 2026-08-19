@@ -38,4 +38,35 @@ describe("useAsyncAction", () => {
     await act(async () => { await result.current.run(); });
     expect(result.current.error).toBe("plain string");
   });
+
+  it("enforces single-flight: second overlapping call returns undefined", async () => {
+    let resolveFirst!: (value: number) => void;
+
+    const { result } = renderHook(() =>
+      useAsyncAction(
+        (which: string) =>
+          which === "first"
+            ? new Promise<number>((resolve) => { resolveFirst = resolve; })
+            : Promise.resolve(99)
+      )
+    );
+
+    let firstResult: number | undefined = undefined;
+    let secondResult: number | undefined = undefined;
+
+    act(() => {
+      result.current.run("first").then((r: number | undefined) => { firstResult = r; });
+      result.current.run("second").then((r: number | undefined) => { secondResult = r; });
+    });
+
+    expect(secondResult).toBeUndefined();
+    expect(result.current.status).toBe("busy");
+
+    act(() => { resolveFirst(42); });
+    await waitFor(() => expect(result.current.status).toBe("success"));
+
+    expect(firstResult).toBe(42);
+    expect(secondResult).toBeUndefined();
+    expect(result.current.result).toBe(42);
+  });
 });
