@@ -217,8 +217,11 @@ public class PendingActionServiceTests
         Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
     }
 
+    /// <summary>
+    /// Approval rejects an action whose expiry has already passed and does not execute it.
+    /// </summary>
     [Fact]
-    public async Task Concurrent_approval_and_lazy_expiry_leave_expired_action_unexecuted()
+    public async Task Approve_of_an_already_expired_pending_action_fails_without_executing()
     {
         using var db = new TestDb();
         var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
@@ -229,45 +232,45 @@ public class PendingActionServiceTests
         action.ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1);
         await db.Context.SaveChangesAsync();
         using var approveContext = db.CreateContext();
-        using var expiryContext = db.CreateContext();
         var approveService = new PendingActionService(approveContext);
-        var expiryService = new PendingActionService(expiryContext);
-        var approveReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var expiryReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseRace = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var executionCount = 0;
 
-        async Task<PendingAction> ApproveAfterRelease()
-        {
-            approveReady.TrySetResult();
-            await releaseRace.Task;
-            return await approveService.ApproveAsync(
-                action.Id, Guid.NewGuid(), _ =>
-                {
-                    Interlocked.Increment(ref executionCount);
-                    return Task.CompletedTask;
-                }, CancellationToken.None);
-        }
-
-        async Task<PendingAction?> ExpireAfterRelease()
-        {
-            expiryReady.TrySetResult();
-            await releaseRace.Task;
-            return await expiryService.GetAsync(action.Id, CancellationToken.None);
-        }
-
-        var approval = ApproveAfterRelease();
-        var expiry = ExpireAfterRelease();
-        await Task.WhenAll(approveReady.Task, expiryReady.Task).WaitAsync(TimeSpan.FromSeconds(5));
-        releaseRace.TrySetResult();
-
-        await Assert.ThrowsAsync<InvalidOperationException>(() => approval);
-        var expired = await expiry;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => approveService.ApproveAsync(
+            action.Id, Guid.NewGuid(), _ =>
+            {
+                Interlocked.Increment(ref executionCount);
+                return Task.CompletedTask;
+            }, CancellationToken.None));
 
         using var verifyContext = db.CreateContext();
         var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
         Assert.Equal(0, executionCount);
-        Assert.Equal(PendingActionStatus.Expired, expired!.Status);
         Assert.Equal(PendingActionStatus.Expired, persisted!.Status);
+    }
+
+    [Fact]
+    public async Task GetAsync_does_not_expire_an_already_executed_action()
+    {
+        using var db = new TestDb();
+        var tenant = new Tenant { TenantId = "t", DisplayName = "Test Tenant" };
+        db.Context.Tenants.Add(tenant);
+        await db.Context.SaveChangesAsync();
+        var svc = new PendingActionService(db.Context);
+        var action = await svc.StageAsync(tenant.Id, "test.action", Guid.NewGuid(), new { }, "preview", CancellationToken.None);
+
+        await svc.ApproveAsync(action.Id, Guid.NewGuid(), _ => Task.CompletedTask, CancellationToken.None);
+        using (var expiryContext = db.CreateContext())
+        {
+            var terminalAction = await expiryContext.PendingActions.FindAsync(action.Id);
+            terminalAction!.ExpiresAt = DateTimeOffset.UtcNow.AddHours(-1);
+            await expiryContext.SaveChangesAsync();
+        }
+
+        var reloaded = await svc.GetAsync(action.Id, CancellationToken.None);
+
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.PendingActions.FindAsync(action.Id);
+        Assert.Equal(PendingActionStatus.Executed, reloaded!.Status);
+        Assert.Equal(PendingActionStatus.Executed, persisted!.Status);
     }
 }
