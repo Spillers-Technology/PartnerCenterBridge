@@ -213,6 +213,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseCors();
 app.UseAuthentication();
+app.UseMiddleware<McpPatEndpointRestrictionMiddleware>();
 app.UseAuthorization();
 
 app.MapControllers();

@@ -63,6 +63,7 @@ public class WorkflowToolsTests
         Assert.Equal(tenant.Id, action.TenantId);
         Assert.Equal("workflow.remediate", action.ActionType);
         Assert.Equal(PendingActionStatus.Pending, action.Status);
+        Assert.Contains("item=license", action.PreviewSummary);
     }
 
     [Fact]

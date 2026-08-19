@@ -16,7 +16,7 @@ public class DiagnosticsTools
 
     public DiagnosticsTools(ITenantAccessService access) => _access = access;
 
-    [McpServerTool, Description("Returns the identity this MCP server resolved for the caller of this tool call.")]
+    [McpServerTool(ReadOnly = true, Destructive = false), Description("Returns the identity this MCP server resolved for the caller of this tool call.")]
     public string WhoAmI() =>
         _access.CurrentUserId is { } id
             ? $"userId={id}, isSystemAdmin={_access.IsSystemAdmin}"

@@ -34,7 +34,7 @@ public class PendingActionsController : ControllerBase
         PendingActionStatus Status, DateTimeOffset CreatedAt, DateTimeOffset ExpiresAt,
         string? ExecutionError);
 
-    /// <summary>Pending and retryable items across every tenant the caller holds Operator+ access to (unrestricted for a system admin, same convention as WorkflowsController.Runs).</summary>
+    /// <summary>Pending and retryable items across every tenant the caller holds Operator+ access to.</summary>
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<PendingActionDto>>> List(CancellationToken ct)
     {
@@ -42,14 +42,17 @@ public class PendingActionsController : ControllerBase
             .Where(a => a.Status == PendingActionStatus.Pending
                      || (a.Status == PendingActionStatus.Approved && a.ExecutionError != null));
 
-        if (!_access.IsSystemAdmin)
+        if (_access.CurrentUserId is { } userId)
         {
-            var allowed = await _db.TenantAccessGrants.AsNoTracking()
-                .Where(g => g.UserId == _access.CurrentUserId && g.Role >= TenantRole.Operator
-                         && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
-                .Select(g => g.TenantId).ToListAsync(ct);
+            var now = DateTimeOffset.UtcNow;
+            var grants = await _db.TenantAccessGrants.AsNoTracking()
+                .Where(g => g.UserId == userId && g.Role >= TenantRole.Operator)
+                .Select(g => new { g.TenantId, g.ExpiresAt }).ToListAsync(ct);
+            var allowed = grants
+                .Where(g => g.ExpiresAt == null || g.ExpiresAt > now)
+                .Select(g => g.TenantId).ToList();
             query = query.Where(a => allowed.Contains(a.TenantId));
-        }
+        } // else: OIDC/dev-auth caller, unrestricted (unchanged operator-plane behavior).
 
         var items = await query
             .Select(a => new PendingActionDto(

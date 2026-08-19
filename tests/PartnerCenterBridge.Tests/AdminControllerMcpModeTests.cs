@@ -64,8 +64,13 @@ public class FakeSamTokenStore : PartnerCenterBridge.Core.Abstractions.ISamToken
 public class FakeTenantAccessService : PartnerCenterBridge.Api.Auth.ITenantAccessService
 {
     private readonly bool _isSystemAdmin;
-    public FakeTenantAccessService(bool isSystemAdmin) => _isSystemAdmin = isSystemAdmin;
+    public FakeTenantAccessService(bool isSystemAdmin) : this(isSystemAdmin, Guid.NewGuid()) { }
+    public FakeTenantAccessService(bool isSystemAdmin, Guid? currentUserId)
+    {
+        _isSystemAdmin = isSystemAdmin;
+        CurrentUserId = currentUserId;
+    }
     public bool IsSystemAdmin => _isSystemAdmin;
-    public Guid? CurrentUserId => Guid.NewGuid();
+    public Guid? CurrentUserId { get; }
     public Task<bool> HasRoleAsync(Guid tenantId, TenantRole minimum, CancellationToken ct) => Task.FromResult(true);
 }

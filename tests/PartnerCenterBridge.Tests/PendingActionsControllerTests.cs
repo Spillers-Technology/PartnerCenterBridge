@@ -121,12 +121,53 @@ public class PendingActionsControllerTests
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             pending.ApproveAsync(failedAction.Id, Guid.NewGuid(), _ => throw new InvalidOperationException("boom"), CancellationToken.None));
 
-        var controller = new PendingActionsController(db.Context, pending, new FakeTenantAccessService(isSystemAdmin: true), Array.Empty<IPendingActionExecutor>());
+        var controller = new PendingActionsController(
+            db.Context, pending, new FakeTenantAccessService(isSystemAdmin: true, currentUserId: null),
+            Array.Empty<IPendingActionExecutor>());
         var result = await controller.List(CancellationToken.None);
 
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var items = Assert.IsAssignableFrom<IReadOnlyList<PendingActionsController.PendingActionDto>>(ok.Value);
         Assert.Contains(items, item => item.Id == pendingAction.Id && item.ExecutionError is null);
         Assert.Contains(items, item => item.Id == failedAction.Id && item.ExecutionError == "boom");
+    }
+
+    [Fact]
+    public async Task List_scopes_system_admin_to_real_operator_grants()
+    {
+        using var db = new TestDb();
+        var user = new AppUser
+        {
+            Email = "admin@example.com",
+            DisplayName = "Admin",
+            PasswordHash = "hash",
+            IsSystemAdmin = true
+        };
+        var grantedTenant = new Tenant { TenantId = "granted", DisplayName = "Granted Tenant" };
+        var ungrantedTenant = new Tenant { TenantId = "ungranted", DisplayName = "Ungranted Tenant" };
+        db.Context.AddRange(user, grantedTenant, ungrantedTenant);
+        db.Context.TenantAccessGrants.Add(new TenantAccessGrant
+        {
+            UserId = user.Id,
+            TenantId = grantedTenant.Id,
+            Role = TenantRole.Operator,
+            GrantedByUserId = user.Id
+        });
+        await db.Context.SaveChangesAsync();
+        var pending = new PendingActionService(db.Context, new FakeCurrentActor());
+        var visible = await pending.StageAsync(
+            grantedTenant.Id, "test.action", user.Id, new { }, "visible", CancellationToken.None);
+        var hidden = await pending.StageAsync(
+            ungrantedTenant.Id, "test.action", user.Id, new { }, "hidden", CancellationToken.None);
+        var access = new FakeTenantAccessService(isSystemAdmin: true, currentUserId: user.Id);
+        var controller = new PendingActionsController(
+            db.Context, pending, access, Array.Empty<IPendingActionExecutor>());
+
+        var result = await controller.List(CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var items = Assert.IsAssignableFrom<IReadOnlyList<PendingActionsController.PendingActionDto>>(ok.Value);
+        Assert.Contains(items, item => item.Id == visible.Id);
+        Assert.DoesNotContain(items, item => item.Id == hidden.Id);
     }
 }

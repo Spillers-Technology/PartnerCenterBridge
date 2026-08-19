@@ -77,6 +77,7 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             Tenant t => t.Id,
             TenantAccessGrant g => g.TenantId,
             Deployment d => d.TenantId,
+            PendingAction p => p.TenantId,
             _ => null
         };
 

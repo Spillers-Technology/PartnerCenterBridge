@@ -12,6 +12,6 @@ public class DashboardTools
 
     public DashboardTools(BridgeDbContext db) => _dashboard = new DashboardController(db);
 
-    [McpServerTool, Description("Landing-page stats and the operator triage list: failed deployments, tenants missing GDAP delegation, and recent failed workflow runs.")]
+    [McpServerTool(ReadOnly = true, Destructive = false), Description("Landing-page stats and the operator triage list: failed deployments, tenants missing GDAP delegation, and recent failed workflow runs.")]
     public async Task<DashboardDto> GetDashboard(CancellationToken ct) => await _dashboard.Get(ct);
 }

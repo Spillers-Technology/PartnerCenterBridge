@@ -48,59 +48,49 @@ public class PendingActionService
     public async Task<PendingAction> ApproveAsync(Guid id, Guid decidedByUserId, Func<PendingAction, Task> execute, CancellationToken ct)
     {
         var decidedAt = DateTimeOffset.UtcNow;
-        var claimed = await ClaimAsync(
-            id, PendingActionStatus.Approved, decidedByUserId, decidedAt, ct);
+        var action = await UpdateAndAuditAsync(id,
+            () => ClaimAsync(id, PendingActionStatus.Approved, decidedByUserId, decidedAt, ct),
+            "approved", ct);
 
-        if (claimed == 0)
+        if (action is null)
             await ThrowNotActionableAsync(id, ct);
 
-        // Database-side updates bypass the change tracker. Reload without tracking both to get
-        // the claimed values and to avoid returning a stale instance left over from StageAsync.
-        var action = await _db.PendingActions.AsNoTracking()
-            .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "approved");
         try
         {
-            await execute(action);
+            await execute(action!);
         }
         catch (Exception ex)
         {
-            var updated = await _db.PendingActions
-                .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None);
-            action.ExecutionError = ex.Message;
-            if (updated != 0)
-                await AuditTransitionAsync(action, $"execution failed: {ex.Message}");
+            action = await UpdateAndAuditAsync(id,
+                () => _db.PendingActions
+                    .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None),
+                $"execution failed: {ex.Message}", CancellationToken.None) ?? action;
             throw;
         }
 
         var executedAt = DateTimeOffset.UtcNow;
-        var executed = await _db.PendingActions
-            .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(candidate => candidate.Status, PendingActionStatus.Executed)
-                .SetProperty(candidate => candidate.ExecutedAt, executedAt), CancellationToken.None);
-        action.Status = PendingActionStatus.Executed;
-        action.ExecutedAt = executedAt;
-        if (executed != 0)
-            await AuditTransitionAsync(action, "executed");
-        return action;
+        action = await UpdateAndAuditAsync(id,
+            () => _db.PendingActions
+                .Where(candidate => candidate.Id == id && candidate.Status == PendingActionStatus.Approved)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(candidate => candidate.Status, PendingActionStatus.Executed)
+                    .SetProperty(candidate => candidate.ExecutedAt, executedAt), CancellationToken.None),
+            "executed", CancellationToken.None) ?? action;
+        return action!;
     }
 
     public async Task<PendingAction> RejectAsync(Guid id, Guid decidedByUserId, CancellationToken ct)
     {
         var decidedAt = DateTimeOffset.UtcNow;
-        var claimed = await ClaimAsync(
-            id, PendingActionStatus.Rejected, decidedByUserId, decidedAt, ct);
+        var action = await UpdateAndAuditAsync(id,
+            () => ClaimAsync(id, PendingActionStatus.Rejected, decidedByUserId, decidedAt, ct),
+            "rejected", ct);
 
-        if (claimed == 0)
+        if (action is null)
             await ThrowNotActionableAsync(id, ct);
-
-        var action = await _db.PendingActions.AsNoTracking()
-            .SingleAsync(action => action.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "rejected");
-        return action;
+        return action!;
     }
 
     /// <summary>
@@ -110,50 +100,46 @@ public class PendingActionService
     /// </summary>
     public async Task<PendingAction> RetryAsync(Guid id, Func<PendingAction, Task> execute, CancellationToken ct)
     {
-        var claimed = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE ""PendingActions""
-            SET ""ExecutionError"" = NULL
-            WHERE ""Id"" = {id}
-              AND ""Status"" = {(int)PendingActionStatus.Approved}
-              AND ""ExecutionError"" IS NOT NULL", ct);
+        var action = await UpdateAndAuditAsync(id,
+            () => _db.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE ""PendingActions""
+                SET ""ExecutionError"" = NULL
+                WHERE ""Id"" = {id}
+                  AND ""Status"" = {(int)PendingActionStatus.Approved}
+                  AND ""ExecutionError"" IS NOT NULL", ct),
+            "retried", ct);
 
-        if (claimed == 0)
+        if (action is null)
             await ThrowNotRetryableAsync(id, ct);
 
-        var action = await _db.PendingActions.AsNoTracking()
-            .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
-        await AuditTransitionAsync(action, "retried");
         try
         {
-            await execute(action);
+            await execute(action!);
         }
         catch (Exception ex)
         {
-            var updated = await _db.PendingActions
-                .Where(candidate => candidate.Id == id
-                                    && candidate.Status == PendingActionStatus.Approved
-                                    && candidate.ExecutionError == null)
-                .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None);
-            action.ExecutionError = ex.Message;
-            if (updated != 0)
-                await AuditTransitionAsync(action, $"retried, failed again: {ex.Message}");
+            action = await UpdateAndAuditAsync(id,
+                () => _db.PendingActions
+                    .Where(candidate => candidate.Id == id
+                                        && candidate.Status == PendingActionStatus.Approved
+                                        && candidate.ExecutionError == null)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(candidate => candidate.ExecutionError, ex.Message), CancellationToken.None),
+                $"retried, failed again: {ex.Message}", CancellationToken.None) ?? action;
             throw;
         }
 
         var executedAt = DateTimeOffset.UtcNow;
-        var executed = await _db.PendingActions
-            .Where(candidate => candidate.Id == id
-                                && candidate.Status == PendingActionStatus.Approved
-                                && candidate.ExecutionError == null)
-            .ExecuteUpdateAsync(setters => setters
-                .SetProperty(candidate => candidate.Status, PendingActionStatus.Executed)
-                .SetProperty(candidate => candidate.ExecutedAt, executedAt), CancellationToken.None);
-        action.Status = PendingActionStatus.Executed;
-        action.ExecutedAt = executedAt;
-        if (executed != 0)
-            await AuditTransitionAsync(action, "retried, succeeded");
-        return action;
+        action = await UpdateAndAuditAsync(id,
+            () => _db.PendingActions
+                .Where(candidate => candidate.Id == id
+                                    && candidate.Status == PendingActionStatus.Approved
+                                    && candidate.ExecutionError == null)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(candidate => candidate.Status, PendingActionStatus.Executed)
+                    .SetProperty(candidate => candidate.ExecutedAt, executedAt), CancellationToken.None),
+            "retried, succeeded", CancellationToken.None) ?? action;
+        return action!;
     }
 
     private async Task ThrowNotActionableAsync(Guid id, CancellationToken ct)
@@ -175,17 +161,38 @@ public class PendingActionService
     private async Task<PendingAction?> GetWithAtomicExpiryAsync(Guid id, CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
-        var expired = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE ""PendingActions""
-            SET ""Status"" = {(int)PendingActionStatus.Expired}
-            WHERE ""Id"" = {id}
-              AND ""Status"" = {(int)PendingActionStatus.Pending}
-              AND ""ExpiresAt"" < {now}", CancellationToken.None);
+        var expiredAction = await UpdateAndAuditAsync(id,
+            () => _db.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE ""PendingActions""
+                SET ""Status"" = {(int)PendingActionStatus.Expired}
+                WHERE ""Id"" = {id}
+                  AND ""Status"" = {(int)PendingActionStatus.Pending}
+                  AND ""ExpiresAt"" < {now}", CancellationToken.None),
+            "expired", CancellationToken.None);
 
-        var action = await _db.PendingActions.AsNoTracking()
+        return expiredAction ?? await _db.PendingActions.AsNoTracking()
             .SingleOrDefaultAsync(action => action.Id == id, CancellationToken.None);
-        if (expired != 0 && action is not null)
-            await AuditTransitionAsync(action, "expired");
+    }
+
+    /// <summary>
+    /// Commits a database-side state transition and its explicit audit event as one unit. Callers
+    /// invoke this only for the short database pairs before or after external execution, never
+    /// around the executor itself.
+    /// </summary>
+    private async Task<PendingAction?> UpdateAndAuditAsync(
+        Guid id, Func<Task<int>> update, string detail, CancellationToken ct)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
+        var updated = await update();
+        if (updated == 0)
+            return null;
+
+        // Database-side updates bypass the change tracker. Reload without tracking both to get
+        // the transitioned values and to avoid stale instances left over from StageAsync.
+        var action = await _db.PendingActions.AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == id, CancellationToken.None);
+        await AuditTransitionAsync(action, detail);
+        await transaction.CommitAsync(CancellationToken.None);
         return action;
     }
 

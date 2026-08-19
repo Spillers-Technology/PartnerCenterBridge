@@ -32,13 +32,13 @@ public class WorkflowTools
         _pending = pending;
     }
 
-    [McpServerTool, Description("Lists the known-fix workflow catalog (MFA reset, password reset, license repair, mailbox archive, etc.) with their required inputs.")]
+    [McpServerTool(ReadOnly = true, Destructive = false), Description("Lists the known-fix workflow catalog (MFA reset, password reset, license repair, mailbox archive, etc.) with their required inputs.")]
     public IReadOnlyList<WorkflowSummaryDto> ListWorkflows() =>
         _catalog.All.OrderBy(w => w.Category).ThenBy(w => w.Name)
             .Select(w => new WorkflowSummaryDto(w.Id, w.Name, w.Description, w.Category, w.Inputs))
             .ToList();
 
-    [McpServerTool, Description("Runs a workflow's read-only diagnosis against a tenant. Never mutates anything -- safe to call regardless of the tenant's MCP approval mode.")]
+    [McpServerTool(ReadOnly = true, Destructive = false), Description("Runs a workflow's read-only diagnosis against a tenant. Never mutates anything -- safe to call regardless of the tenant's MCP approval mode.")]
     public async Task<DiagnosisResult> DiagnoseWorkflow(string workflowId, Guid tenantId, Dictionary<string, string> inputs, CancellationToken ct)
     {
         var workflow = _catalog.Find(workflowId) ?? throw new InvalidOperationException($"Unknown workflow '{workflowId}'.");
@@ -79,7 +79,7 @@ public class WorkflowTools
         }
     }
 
-    [McpServerTool, Description(
+    [McpServerTool(ReadOnly = false, Destructive = true), Description(
         "Runs a workflow's fix. If the tenant is in Queue approval mode (the default), this stages " +
         "the fix for a human to approve in the Approvals tab and returns its pending-action id " +
         "instead of running anything -- call check_pending_action with that id to see whether it " +
@@ -135,6 +135,9 @@ public class WorkflowTools
         var diagnosis = await workflow.DiagnoseAsync(tenant, inputs, ct);
         var preview = $"Remediate '{workflow.Name}' on {tenant.DisplayName}. Current diagnosis: " +
             string.Join("; ", diagnosis.Findings.Select(f => $"{f.Name}={f.Status}"));
+        if (inputs.Count > 0)
+            preview += " Inputs: " + string.Join(", ", inputs.OrderBy(pair => pair.Key)
+                .Select(pair => $"{pair.Key}={pair.Value}")) + ".";
         // Interim restriction: Queue mode has no safe approval-time channel for this workflow's one-time value.
         if (workflow.Id == "password-reset")
             throw new InvalidOperationException("This workflow produces a one-time value that Queue-mode staging cannot safely deliver yet. Use ClientTrust mode or the SPA directly for this workflow until a proper approval-time secret-delivery design exists.");
