@@ -113,7 +113,7 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
               <td>{t.hasPackage ? <span className="badge succeeded">uploaded</span> : <span className="badge pending">none</span>}</td>
               <td>
                 <input type="file" accept=".intunewin"
-                  ref={(el) => (fileInputs.current[t.id] = el)}
+                  ref={(el) => { fileInputs.current[t.id] = el; }}
                   onChange={(e) => upload(t.id, e.target.files?.[0])} />
               </td>
               {canManage && (
