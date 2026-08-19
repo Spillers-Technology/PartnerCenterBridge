@@ -67,6 +67,9 @@ export const api = {
     list: () => request<AppTemplate[]>("/api/apptemplates"),
     create: (body: Record<string, unknown>) =>
       request<AppTemplate>("/api/apptemplates", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: Record<string, unknown>) =>
+      request<AppTemplate>(`/api/apptemplates/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (id: string) => request<void>(`/api/apptemplates/${id}`, { method: "DELETE" }),
     uploadPackage: (id: string, file: File) => {
       const fd = new FormData();
       fd.append("file", file);

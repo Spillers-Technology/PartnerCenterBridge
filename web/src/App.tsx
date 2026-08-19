@@ -118,7 +118,7 @@ export function App() {
         {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
         {tab === "tenants" && <Tenants me={me} onProfileChanged={refreshMe} />}
         {tab === "contracts" && <Contracts />}
-        {tab === "templates" && <AppTemplates />}
+        {tab === "templates" && <AppTemplates me={me} />}
         {tab === "deploy" && <DeployWizard />}
         {tab === "history" && <Deployments />}
         {tab === "newhire" && <NewHire />}

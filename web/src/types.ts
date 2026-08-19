@@ -20,7 +20,10 @@ export interface Contract {
 export interface AppTemplate {
   id: string;
   displayName: string;
+  description?: string;
   publisher?: string;
+  installCommandLine: string;
+  uninstallCommandLine: string;
   contentVersion: number;
   hasPackage: boolean;
   contractId?: string;

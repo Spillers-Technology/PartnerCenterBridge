@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
 using PartnerCenterBridge.Api.Orchestration;
 using PartnerCenterBridge.Core.Abstractions;
@@ -15,8 +16,13 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class AppTemplatesController : ControllerBase
 {
     private readonly BridgeDbContext _db;
+    private readonly ITenantAccessService _access;
 
-    public AppTemplatesController(BridgeDbContext db) => _db = db;
+    public AppTemplatesController(BridgeDbContext db, ITenantAccessService access)
+    {
+        _db = db;
+        _access = access;
+    }
 
     [HttpGet]
     public async Task<IReadOnlyList<AppTemplateDto>> List(CancellationToken ct) =>
@@ -39,6 +45,52 @@ public class AppTemplatesController : ControllerBase
         _db.AppTemplates.Add(template);
         await _db.SaveChangesAsync(ct);
         return CreatedAtAction(nameof(List), AppTemplateDto.From(template));
+    }
+
+    /// <summary>
+    /// Edits a template's authoring metadata. Deliberately excludes DetectionRules/Assignments/
+    /// ContractId -- those aren't editable through this endpoint yet -- and never touches
+    /// ContentVersion, which tracks the uploaded .intunewin package, not metadata.
+    /// </summary>
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<AppTemplateDto>> Update(Guid id, UpdateAppTemplateRequest req, CancellationToken ct)
+    {
+        if (!_access.IsSystemAdmin) return Forbid();
+
+        var template = await _db.AppTemplates.FindAsync([id], ct);
+        if (template is null) return NotFound();
+
+        template.DisplayName = req.DisplayName;
+        template.Description = req.Description;
+        template.Publisher = req.Publisher;
+        template.InstallCommandLine = req.InstallCommandLine;
+        template.UninstallCommandLine = req.UninstallCommandLine;
+        template.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return Ok(AppTemplateDto.From(template));
+    }
+
+    /// <summary>
+    /// Deletes a template. Refuses when any Deployment still references it -- the FK is
+    /// DeleteBehavior.Cascade at the database level, so an unguarded delete would silently wipe
+    /// that tenant's deployment history rather than actually protecting it.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    {
+        if (!_access.IsSystemAdmin) return Forbid();
+
+        var template = await _db.AppTemplates.FindAsync([id], ct);
+        if (template is null) return NotFound();
+
+        var deploymentCount = await _db.Deployments.CountAsync(d => d.AppTemplateId == id, ct);
+        if (deploymentCount > 0)
+            return Conflict($"Cannot delete: {deploymentCount} deployment(s) still reference this template.");
+
+        _db.AppTemplates.Remove(template);
+        await _db.SaveChangesAsync(ct);
+        return NoContent();
     }
 
     /// <summary>
