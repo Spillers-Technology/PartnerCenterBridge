@@ -121,3 +121,6 @@ dist
 
 # TernJS port file
 .tern-port
+
+# Mobile capture-matrix working artifacts -- not part of the shipped repo
+docs/assets/screenshots/mobile/
