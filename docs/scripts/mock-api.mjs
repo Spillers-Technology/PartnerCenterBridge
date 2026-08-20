@@ -360,7 +360,7 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   if (method === "GET" && apiPath === "/auth/mode") return json(route, { mode: authModeOverride || "Dev" });
   if (method === "POST" && apiPath === "/auth/login") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
   if (method === "POST" && apiPath === "/auth/register") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
-  if (method === "GET" && apiPath === "/auth/me") return json(route, meProfile);
+  if (method === "GET" && apiPath === "/auth/me") return authenticated ? json(route, meProfile) : json(route, {}, 401);
   if (method === "POST" && apiPath === "/auth/logout") return json(route, {}, 204);
   if (method === "GET" && apiPath === "/auth/passkey") return json(route, passkeys);
   if (method === "GET" && apiPath === "/mcp-tokens") return json(route, mcpTokens);
