@@ -181,7 +181,7 @@ async function main() {
   if (deviceFilter && DEVICES.length === 0) {
     throw new Error(`PCBRIDGE_CAPTURE_DEVICES=${deviceFilter.join(",")} matched no known device`);
   }
-  if (viewFilter && views.length === 0) {
+  if (viewFilter && views.length === 0 && !["login", "register", "security"].some((view) => viewFilter.includes(view))) {
     throw new Error(`PCBRIDGE_CAPTURE_VIEWS=${viewFilter.join(",")} matched no known view`);
   }
 
@@ -208,6 +208,9 @@ async function main() {
         await captureView(page, device, viewName);
       }
       await page.close();
+      if (!viewFilter || ["login", "register", "security"].some((view) => viewFilter.includes(view))) {
+        await captureAuthViews(browser, device);
+      }
     }
   } finally {
     if (browser) await browser.close();
@@ -224,3 +227,31 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
+async function captureAuthViews(browser, device) {
+  console.log(`  [auth] Login/Register/Security on ${device.name}...`);
+
+  const loginPage = await browser.newPage({ ...device });
+  await installApiMock(loginPage, { authenticated: false, authModeOverride: "Local" });
+  await loginPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await freezeAnimations(loginPage);
+  await loginPage.getByRole("button", { name: "Sign in with a passkey" }).waitFor({ timeout: 20_000 });
+  await captureView(loginPage, device, "login");
+
+  await loginPage.getByRole("button", { name: "Register", exact: true }).click();
+  await loginPage.getByText("Create an account", { exact: true }).waitFor({ timeout: 20_000 });
+  await captureView(loginPage, device, "register");
+  await loginPage.close();
+
+  const securedPage = await browser.newPage({ ...device });
+  await installApiMock(securedPage, { authModeOverride: "Local" });
+  await securedPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+  await freezeAnimations(securedPage);
+  await securedPage.locator("input[type=email]").fill("jspillers@example.com");
+  await securedPage.locator("input[type=password]").fill("correct-horse-battery-staple-1");
+  await securedPage.getByRole("button", { name: "Sign in", exact: true }).click();
+  await gotoTab(securedPage, "Security");
+  await securedPage.getByText("YubiKey 5C", { exact: false }).waitFor({ timeout: 20_000 });
+  await captureView(securedPage, device, "security");
+  await securedPage.close();
+}
