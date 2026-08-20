@@ -4,11 +4,11 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
 
 ## Mobile UX testing
 
-Right now nothing in this repo catches mobile rendering regressions (text cutoff, overflow, tap
-target sizing) before a human notices them live. Want the same assurance `anchordesk` is aiming
-for: Playwright with device emulation (viewport + user-agent presets for common phones/tablets) as
-a first-class part of the test suite, not an afterthought -- run alongside the existing `npm run
-build` check, not just invoked manually.
+The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all 15 current
+views across five touch device profiles (Galaxy/iPhone/Pixel/folded-foldable/unfolded-foldable) and
+asserts no page-level horizontal overflow at each -- see `docs/mobile.md`. Still open: this only
+runs manually today, not as a first-class part of the test suite alongside `npm run build`/`npx
+vitest run` -- wiring it into CI (or at least a pre-PR automated gate) is the remaining piece.
 
 ## Config Snapshots v2
 
