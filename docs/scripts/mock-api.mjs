@@ -223,11 +223,69 @@ const provisioningTemplate = {
 // original (auth-disabled "Dev") screens unchanged while a later page in this same run asks for
 // "Local" mode to exercise Login/Register/Security.
 
+const meProfile = {
+  id: "u1", email: "jspillers@example.com", displayName: "jspillers",
+  isSystemAdmin: true, totpEnabled: true,
+  tenantAccess: [{ tenantId: tenants[0].id, tenantName: "Contoso Ltd", role: "Owner" }],
+};
+
+const passkeys = [
+  { id: "pk1", nickname: "YubiKey 5C", createdAt: minutesAgo(43200), lastUsedAt: minutesAgo(62) },
+];
+
+const mcpTokens = [
+  { id: "mt1", name: "Claude Desktop", createdAt: minutesAgo(20160), expiresAt: null, lastUsedAt: minutesAgo(12) },
+];
+
+const configSections = [
+  { id: "conditional-access-policies", name: "Conditional Access Policies", category: "Identity" },
+  { id: "named-locations", name: "Named Locations", category: "Identity" },
+  { id: "device-compliance-policies", name: "Device Compliance Policies", category: "Devices" },
+];
+
+const snapshotRuns = [
+  {
+    id: "run1", tenantId: tenants[0].id, operator: "jspillers",
+    startedAt: minutesAgo(2880), completedAt: minutesAgo(2880), succeeded: true, imported: false,
+    gitCommitSha: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+    sections: [
+      { sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies", itemCount: 6, failed: false },
+      { sectionId: "named-locations", sectionName: "Named Locations", itemCount: 2, failed: false },
+      { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", itemCount: 4, failed: false },
+    ],
+  },
+  {
+    id: "run2", tenantId: tenants[0].id, operator: "jspillers",
+    startedAt: minutesAgo(30), completedAt: minutesAgo(30), succeeded: true, imported: false,
+    gitCommitSha: "f9e8d7c6b5a4938271605f4e3d2c1b0a9988776a",
+    sections: [
+      { sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies", itemCount: 7, failed: false },
+      { sectionId: "named-locations", sectionName: "Named Locations", itemCount: 1, failed: false },
+      { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", itemCount: 4, failed: false },
+    ],
+  },
+];
+
+const snapshotDiff = [
+  {
+    sectionId: "conditional-access-policies", sectionName: "Conditional Access Policies",
+    changes: [
+      { kind: "Modified", itemId: "1", label: "Require MFA for admins", fieldChanges: [{ field: "state", before: '"enabledForReportingButNotEnforced"', after: '"enabled"' }] },
+      { kind: "Added", itemId: "7", label: "Block legacy authentication", fieldChanges: [] },
+    ],
+  },
+  {
+    sectionId: "named-locations", sectionName: "Named Locations",
+    changes: [{ kind: "Removed", itemId: "loc2", label: "Old branch office", fieldChanges: [] }],
+  },
+  { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", changes: [] },
+];
 
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
 
+const debugCapture = process.env.PCBRIDGE_CAPTURE_DEBUG === "1";
 
 export function installApiMock(page, { authenticated = true, authModeOverride = null } = {}) {
   async function handleApi(route) {

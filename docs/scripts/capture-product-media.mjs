@@ -19,7 +19,10 @@ const outDir = path.join(repoRoot, "docs", "assets", "screenshots");
 const baseUrl = process.env.PCBRIDGE_CAPTURE_BASE_URL || "http://127.0.0.1:5173";
 const debugCapture = process.env.PCBRIDGE_CAPTURE_DEBUG === "1";
 async function gotoTab(page, label) {
-  await page.locator("header nav button", { hasText: new RegExp(`^${label}$`) }).click();
+  // The app shell's flat <nav><button> markup was replaced by MUI Tabs (role="tab") when the
+  // responsive AppShell landed (PR #20) -- this selector went stale then and nothing had run the
+  // script since to notice.
+  await page.getByRole("tab", { name: label, exact: true }).click();
 }
 
 async function main() {
@@ -29,7 +32,7 @@ async function main() {
   let browser;
   try {
     console.log(`Using Partner Center Bridge SPA at ${baseUrl}...`);
-    await waitForServer();
+    await waitForServer(baseUrl);
     console.log("Launching Chromium...");
     browser = await chromium.launch({ headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
@@ -84,8 +87,8 @@ async function main() {
 
     // --- Auth:Mode=Local screens: Login (passkey-primary), Register, Security, Config Snapshots.
     // Separate pages/contexts because these need their own unauthenticated -> authenticated
-    // lifecycle, distinct from the auth-disabled "Dev" mode the screens above ran under.
-    authModeOverride = "Local";
+    // lifecycle, distinct from the auth-disabled "Dev" mode the screens above ran under -- each
+    // gets its own installApiMock({ authModeOverride: "Local" }) call below.
 
     console.log("Rendering Login (passkey-primary)...");
     const loginPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
@@ -109,8 +112,8 @@ async function main() {
     await securedPage.locator("input[type=email]").fill("jspillers@example.com");
     await securedPage.locator("input[type=password]").fill("correct-horse-battery-staple-1");
     await securedPage.getByRole("button", { name: "Sign in", exact: true }).click();
-    await securedPage.locator("header nav button", { hasText: /^Security$/ }).waitFor({ timeout: 20_000 });
-    await securedPage.locator("header nav button", { hasText: /^Security$/ }).click();
+    await securedPage.getByRole("tab", { name: "Security", exact: true }).waitFor({ timeout: 20_000 });
+    await securedPage.getByRole("tab", { name: "Security", exact: true }).click();
     await securedPage.getByText("YubiKey 5C", { exact: false }).waitFor({ timeout: 20_000 });
     await securedPage.screenshot({ path: path.join(outDir, "pcbridge-security.jpg"), type: "jpeg", quality: 92 });
 
