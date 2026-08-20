@@ -101,13 +101,20 @@ async function gotoTab(page, label) {
   const isDrawerVisible = await navButton.isVisible({ timeout: 1000 }).catch(() => false);
   
   if (isDrawerVisible) {
-    // Mobile drawer: open it and click the nav item
+    // Mobile drawer: open it and click the nav item. Selecting an item closes the drawer
+    // (AppShell's selectTab calls setDrawerOpen(false)), but MUI's Drawer unmounts its
+    // backdrop/panel on close rather than just hiding it -- if the NEXT gotoTab call starts
+    // before that close transition finishes, its own drawer-open click can race the still-
+    // exiting previous instance and grab a list-item element that gets detached mid-click
+    // (reproduced directly: a fixed-timing version without this wait threw exactly that
+    // "element was detached from the DOM" error on the second navigation in a run). Wait for
+    // the backdrop to actually leave the DOM instead of guessing a fixed delay.
     await navButton.click({ force: true });
-    await page.waitForTimeout(500);
-    // Click the nav item by text (works with MUI ListItem which renders clickable list items)
     await page.locator("a, button, [role=button], [role=menuitem]").filter({ hasText: new RegExp(`^${label}$`, "i") }).first().click({ timeout: 10000 });
-    await navButton.click({ force: true });
-    await page.waitForTimeout(500);
+    // Wait for the drawer's backdrop to actually leave the DOM (selecting an item closes it)
+    // before returning, so the NEXT gotoTab call's own drawer-open click can't race a still-
+    // exiting previous instance.
+    await page.locator(".MuiBackdrop-root").waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
   } else {
     // Desktop Tabs: click the tab directly
     await page.getByRole("tab", { name: label, exact: true }).click({ timeout: 10000 });
