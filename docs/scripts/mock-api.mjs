@@ -287,6 +287,11 @@ function json(route, body, status = 200) {
 
 const debugCapture = process.env.PCBRIDGE_CAPTURE_DEBUG === "1";
 
+let unmatchedRouteCount = 0;
+export function getUnmatchedRouteCount() {
+  return unmatchedRouteCount;
+}
+
 export function installApiMock(page, { authenticated = true, authModeOverride = null } = {}) {
   async function handleApi(route) {
   const request = route.request();
@@ -371,6 +376,12 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots\/diff$/);
   if (method === "GET" && match) return json(route, snapshotDiff);
 
+  // An unmocked/mistyped route silently succeeding with an empty 200 can make the app render a
+  // broken or empty state that happens not to overflow -- a false-clean result for exactly the
+  // reason this whole matrix exists. Track it and warn immediately rather than staying silent;
+  // callers can check getUnmatchedRouteCount() to fail the run explicitly.
+  unmatchedRouteCount++;
+  console.warn(`  MOCK MISS: ${method} ${apiPath} -- not mocked, returning empty 200`);
   return json(route, {});
 }
 

@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { installApiMock, freezeAnimations, loadPlaywright, waitForServer } from "./mock-api.mjs";
+import { installApiMock, freezeAnimations, loadPlaywright, waitForServer, getUnmatchedRouteCount } from "./mock-api.mjs";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)), "..");
 const outDir = process.env.PCBRIDGE_CAPTURE_OUT || path.join(repoRoot, "docs", "assets", "screenshots", "mobile");
@@ -137,28 +137,50 @@ const AUTHENTICATED_VIEWS = {
     await page.getByPlaceholder(/Name or UPN/).waitFor({ timeout: 20_000 });
   },
   approvals: async (page) => {
+    // "Mutating actions requested through MCP" is Approvals' static subtitle, present on mount
+    // regardless of whether the pendingActions fetch has resolved -- a slow response could pass
+    // this wait while the table (and its real overflow risk) hasn't rendered yet. Wait for
+    // "workflow.remediate" instead, the actionType column value that only exists once the mocked
+    // pendingActions data has actually loaded into the table.
     await gotoTab(page, "Approvals");
-    await page.getByText("Mutating actions requested through MCP", { exact: false }).waitFor({ timeout: 20_000 });
+    await page.getByText("workflow.remediate", { exact: false }).first().waitFor({ timeout: 20_000 });
   },
   contracts: async (page) => {
     await gotoTab(page, "Contracts");
     await page.getByText("Managed Workstations", { exact: false }).waitFor({ timeout: 20_000 });
   },
   deploy: async (page) => {
+    // "Deploy a template" is DeployWizard's static heading, present before the templates/tenants
+    // fetch resolves. Wait for a real template <option> instead -- only rendered once the
+    // templates fetch has populated the select.
     await gotoTab(page, "Deploy");
-    await page.getByText("Deploy a template", { exact: true }).waitFor({ timeout: 20_000 });
+    // A closed <select>'s <option> children are never "visible" per Playwright's own visibility
+    // model even once genuinely populated (confirmed directly: the locator found 43 matching,
+    // correctly-populated option elements and still reported them "hidden") -- "attached" is the
+    // achievable, correct signal for option elements specifically.
+    await page.locator("select option", { hasText: "7-Zip 24.08" }).first().waitFor({ state: "attached", timeout: 20_000 });
   },
   history: async (page) => {
+    // "Deployment history" is Deployments' static heading, present before the deployments fetch
+    // resolves. Wait for a real status badge value instead -- only rendered once the mocked
+    // deployments data has actually loaded into the table.
     await gotoTab(page, "History");
-    await page.getByText("Deployment history", { exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByText("UpdateAvailable", { exact: false }).first().waitFor({ timeout: 20_000 });
   },
   newhire: async (page) => {
+    // NewHire's own wide content (SKU/group checkboxes) is gated behind manually selecting a
+    // tenant, which this capture never does -- the static "New hire" heading IS the view's
+    // actual resting state here, not a false-clean risk like approvals/deploy/history above.
     await gotoTab(page, "New Hire");
     await page.getByText("New hire", { exact: true }).waitFor({ timeout: 20_000 });
   },
   offboard: async (page) => {
+    // Same resting-state reasoning as newhire above. Scoped to the heading role specifically
+    // (not a plain getByText().first()) because the nav tab's own label text is the identical
+    // string "Offboard" -- an unscoped .first() would resolve against whichever of the two DOM
+    // order happens to put first, proving nothing about the page content having rendered.
     await gotoTab(page, "Offboard");
-    await page.getByText("Offboard", { exact: true }).first().waitFor({ timeout: 20_000 });
+    await page.getByRole("heading", { name: "Offboard", exact: true }).waitFor({ timeout: 20_000 });
   },
   templates: async (page) => {
     await gotoTab(page, "App Templates");
@@ -185,14 +207,26 @@ async function main() {
   const { chromium, devices } = loadPlaywright();
   const DEVICES = buildDevices(devices).filter((d) => !deviceFilter || deviceFilter.includes(d.name));
   const views = Object.entries(AUTHENTICATED_VIEWS).filter(([name]) => !viewFilter || viewFilter.includes(name));
+  const AUTH_VIEW_NAMES = ["login", "register", "security"];
 
-  // A typo'd PCBRIDGE_CAPTURE_DEVICES/PCBRIDGE_CAPTURE_VIEWS value silently filters everything
-  // out, which would otherwise exit 0 having captured and verified nothing -- fail loudly instead.
-  if (deviceFilter && DEVICES.length === 0) {
-    throw new Error(`PCBRIDGE_CAPTURE_DEVICES=${deviceFilter.join(",")} matched no known device`);
+  // A typo'd token in PCBRIDGE_CAPTURE_DEVICES/PCBRIDGE_CAPTURE_VIEWS must not silently drop just
+  // that one entry while the rest of the run reports success -- validate every requested token
+  // against the full known-name set, not just check whether the overall filtered result is
+  // non-empty (a filter of "dashboard,tennants" would otherwise capture dashboard alone and exit
+  // 0, quietly skipping the Tenants coverage the caller actually asked for).
+  if (deviceFilter) {
+    const knownDeviceNames = buildDevices(devices).map((d) => d.name);
+    const unknown = deviceFilter.filter((name) => !knownDeviceNames.includes(name));
+    if (unknown.length > 0) {
+      throw new Error(`PCBRIDGE_CAPTURE_DEVICES has unknown device(s): ${unknown.join(",")} (known: ${knownDeviceNames.join(",")})`);
+    }
   }
-  if (viewFilter && views.length === 0 && !["login", "register", "security"].some((view) => viewFilter.includes(view))) {
-    throw new Error(`PCBRIDGE_CAPTURE_VIEWS=${viewFilter.join(",")} matched no known view`);
+  if (viewFilter) {
+    const knownViewNames = [...Object.keys(AUTHENTICATED_VIEWS), ...AUTH_VIEW_NAMES];
+    const unknown = viewFilter.filter((name) => !knownViewNames.includes(name));
+    if (unknown.length > 0) {
+      throw new Error(`PCBRIDGE_CAPTURE_VIEWS has unknown view(s): ${unknown.join(",")} (known: ${knownViewNames.join(",")})`);
+    }
   }
 
   console.log(`Using Partner Center Bridge SPA at ${baseUrl}...`);
@@ -218,7 +252,7 @@ async function main() {
         await captureView(page, device, viewName);
       }
       await page.close();
-      if (!viewFilter || ["login", "register", "security"].some((view) => viewFilter.includes(view))) {
+      if (!viewFilter || AUTH_VIEW_NAMES.some((view) => viewFilter.includes(view))) {
         await captureAuthViews(browser, device);
       }
     }
@@ -229,6 +263,11 @@ async function main() {
   console.log(`\nCaptured screenshots in ${path.relative(repoRoot, outDir)}`);
   if (overflowFailures > 0) {
     console.error(`\n${overflowFailures} view/device pair(s) had page-level horizontal overflow -- see OVERFLOW lines above.`);
+    process.exitCode = 1;
+  }
+  const unmatchedRoutes = getUnmatchedRouteCount();
+  if (unmatchedRoutes > 0) {
+    console.error(`\n${unmatchedRoutes} API call(s) had no mock match (returned an empty 200) -- see MOCK MISS lines above. A view relying on that data may have rendered broken or empty and falsely passed the overflow check.`);
     process.exitCode = 1;
   }
 }
@@ -260,6 +299,13 @@ async function captureAuthViews(browser, device) {
   await securedPage.locator("input[type=email]").fill("jspillers@example.com");
   await securedPage.locator("input[type=password]").fill("correct-horse-battery-staple-1");
   await securedPage.getByRole("button", { name: "Sign in", exact: true }).click();
+  // gotoTab's own drawer-vs-tabs detection uses isVisible(), which checks current state rather
+  // than genuinely waiting -- calling it immediately after the sign-in click risks racing the
+  // authenticated AppShell's own mount (React re-rendering from the Login screen to the app
+  // shell isn't synchronous with the click resolving). Wait for something that only exists once
+  // the authenticated shell has actually mounted, in both its mobile and desktop forms, before
+  // handing off to gotoTab's own state check.
+  await securedPage.getByLabel("Account menu").waitFor({ timeout: 20_000 });
   await gotoTab(securedPage, "Security");
   await securedPage.getByText("YubiKey 5C", { exact: false }).waitFor({ timeout: 20_000 });
   await captureView(securedPage, device, "security");

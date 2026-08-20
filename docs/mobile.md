@@ -7,7 +7,7 @@ Partner Center Bridge's web client is being brought up to mobile-usable standard
 
 | Class | Widths | Representative devices | What must hold |
 |---|---|---|---|
-| Phones | 360-430px | Galaxy S9+ (360), iPhone 15 (393), Pixel 7 (412) | No horizontal page scroll; dialogs full-screen |
+| Phones | 320-430px | Galaxy S9+ (320), iPhone 15 (393), Pixel 7 (412) | No horizontal page scroll; dialogs full-screen |
 | Folded foldables | 344px | Galaxy Z Fold cover screen | Same as phones -- narrowest supported viewport |
 | Unfolded foldables / small tablets | 600-900px | Z Fold open, iPad Mini | Windowed dialogs; two-column layouts where they fit |
 | Desktop | 900px+ | -- | Unchanged |

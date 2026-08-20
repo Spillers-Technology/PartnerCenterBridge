@@ -93,8 +93,8 @@ async function main() {
     console.log("Rendering Login (passkey-primary)...");
     const loginPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
     await installApiMock(loginPage, { authModeOverride: "Local" });
-    await freezeAnimations(loginPage);
     await loginPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await freezeAnimations(loginPage);
     await loginPage.getByRole("button", { name: "Sign in with a passkey" }).waitFor({ timeout: 20_000 });
     await loginPage.screenshot({ path: path.join(outDir, "pcbridge-login.jpg"), type: "jpeg", quality: 92 });
 
@@ -107,8 +107,8 @@ async function main() {
     console.log("Signing in (mocked) to render Security...");
     const securedPage = await browser.newPage({ viewport: { width: 1440, height: 960 }, deviceScaleFactor: 1 });
     await installApiMock(securedPage, { authModeOverride: "Local" });
-    await freezeAnimations(securedPage);
     await securedPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
+    await freezeAnimations(securedPage);
     await securedPage.locator("input[type=email]").fill("jspillers@example.com");
     await securedPage.locator("input[type=password]").fill("correct-horse-battery-staple-1");
     await securedPage.getByRole("button", { name: "Sign in", exact: true }).click();
