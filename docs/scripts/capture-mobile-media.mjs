@@ -168,6 +168,16 @@ const AUTHENTICATED_VIEWS = {
     await gotoTab(page, "Workflows");
     await page.getByRole("button", { name: "Mailbox archive repair", exact: true }).waitFor({ timeout: 20_000 });
   },
+  snapshots: async (page) => {
+    // Was missing from this plan's original view list entirely (a real gap, not an
+    // implementer omission) -- Config Snapshots is a regular, always-visible tab in every
+    // auth mode, so it belongs here alongside the other 11, not in the Local-mode-only
+    // captureAuthViews set. "jspillers" (the operator name on the mocked snapshot runs)
+    // proves the tenant-scoped data fetch resolved, matching the desktop script's own
+    // already-verified wait marker for this exact view.
+    await gotoTab(page, "Config Snapshots");
+    await page.getByText("jspillers", { exact: false }).first().waitFor({ timeout: 20_000 });
+  },
 };
 
 async function main() {
