@@ -134,7 +134,10 @@ const AUTHENTICATED_VIEWS = {
   },
   finduser: async (page) => {
     await gotoTab(page, "Find User");
-    await page.getByPlaceholder(/Name or UPN/).waitFor({ timeout: 20_000 });
+    // UserSearch's MUI migration associates the query field via a proper <label> (no
+    // placeholder) instead of the pre-migration bare <input placeholder=...>, so wait on the
+    // label text instead of a placeholder that no longer exists.
+    await page.getByLabel(/Name or UPN/).waitFor({ timeout: 20_000 });
   },
   approvals: async (page) => {
     // "Mutating actions requested through MCP" is Approvals' static subtitle, present on mount
