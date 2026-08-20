@@ -56,19 +56,20 @@ function buildDevices(playwrightDevices) {
 let overflowFailures = 0;
 
 // Compares scrollWidth against the device's CONFIGURED width, never the live window.innerWidth.
-// Real mobile browsers (and Chromium's mobile emulation, correctly) auto-widen the reported
-// layout viewport to fit content that doesn't fit the device's actual width, rather than
-// clipping it -- so scrollWidth and window.innerWidth silently converge to the same (wrong)
-// number exactly in the overflow case this check exists to catch. Confirmed directly: Tenants at
-// a 320px-wide device reports window.innerWidth === scrollWidth === 650 after the browser
-// widened its own reported viewport to fit the overflowing table -- comparing against the fixed,
-// intended device width (320) correctly flags this; comparing against window.innerWidth does not.
+// Mobile Chromium emulation can auto-widen its own reported layout viewport to fit content that
+// doesn't fit the device's actual width, rather than clipping it -- so scrollWidth and
+// window.innerWidth can silently converge to the same (wrong) number exactly in the overflow case
+// this check exists to catch. Confirmed directly: Tenants at a 320px-wide device reports
+// window.innerWidth === scrollWidth === 650 after Chromium widened its own reported viewport to
+// fit the overflowing table -- comparing against the fixed, intended device width (320) correctly
+// flags this; comparing against window.innerWidth does not.
 // A small tolerance absorbs harmless sub-pixel rounding between Playwright's declared
 // device.viewport.width and what the browser actually reports as the resting (no-overflow)
-// scrollWidth at high deviceScaleFactor (confirmed: Galaxy S9+ at a clean, non-overflowing
-// Dashboard render settles 1px above its declared 320px width; real overflow in this matrix
-// measures in the hundreds of pixels, far outside this tolerance).
-const OVERFLOW_TOLERANCE_PX = 2;
+// scrollWidth at high deviceScaleFactor -- confirmed directly (not assumed): Galaxy S9+ at a
+// clean, non-overflowing Dashboard render measured exactly 1px above its declared 320px width, so
+// the tolerance is set to that exact observed value, not a rounder/looser guess. Real overflow in
+// this matrix measures in the hundreds of pixels, far outside this tolerance.
+const OVERFLOW_TOLERANCE_PX = 1;
 
 async function assertNoOverflow(page, label, expectedWidth) {
   const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -129,6 +130,15 @@ async function main() {
   const { chromium, devices } = loadPlaywright();
   const DEVICES = buildDevices(devices).filter((d) => !deviceFilter || deviceFilter.includes(d.name));
   const views = Object.entries(AUTHENTICATED_VIEWS).filter(([name]) => !viewFilter || viewFilter.includes(name));
+
+  // A typo'd PCBRIDGE_CAPTURE_DEVICES/PCBRIDGE_CAPTURE_VIEWS value silently filters everything
+  // out, which would otherwise exit 0 having captured and verified nothing -- fail loudly instead.
+  if (deviceFilter && DEVICES.length === 0) {
+    throw new Error(`PCBRIDGE_CAPTURE_DEVICES=${deviceFilter.join(",")} matched no known device`);
+  }
+  if (viewFilter && views.length === 0) {
+    throw new Error(`PCBRIDGE_CAPTURE_VIEWS=${viewFilter.join(",")} matched no known view`);
+  }
 
   console.log(`Using Partner Center Bridge SPA at ${baseUrl}...`);
   await waitForServer(baseUrl);
