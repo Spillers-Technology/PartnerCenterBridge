@@ -55,21 +55,33 @@ function buildDevices(playwrightDevices) {
 
 let overflowFailures = 0;
 
-async function assertNoOverflow(page, label) {
-  const { scrollWidth, innerWidth } = await page.evaluate(() => ({
-    scrollWidth: document.documentElement.scrollWidth,
-    innerWidth: window.innerWidth,
-  }));
-  if (scrollWidth > innerWidth) {
+// Compares scrollWidth against the device's CONFIGURED width, never the live window.innerWidth.
+// Real mobile browsers (and Chromium's mobile emulation, correctly) auto-widen the reported
+// layout viewport to fit content that doesn't fit the device's actual width, rather than
+// clipping it -- so scrollWidth and window.innerWidth silently converge to the same (wrong)
+// number exactly in the overflow case this check exists to catch. Confirmed directly: Tenants at
+// a 320px-wide device reports window.innerWidth === scrollWidth === 650 after the browser
+// widened its own reported viewport to fit the overflowing table -- comparing against the fixed,
+// intended device width (320) correctly flags this; comparing against window.innerWidth does not.
+// A small tolerance absorbs harmless sub-pixel rounding between Playwright's declared
+// device.viewport.width and what the browser actually reports as the resting (no-overflow)
+// scrollWidth at high deviceScaleFactor (confirmed: Galaxy S9+ at a clean, non-overflowing
+// Dashboard render settles 1px above its declared 320px width; real overflow in this matrix
+// measures in the hundreds of pixels, far outside this tolerance).
+const OVERFLOW_TOLERANCE_PX = 2;
+
+async function assertNoOverflow(page, label, expectedWidth) {
+  const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
+  if (scrollWidth > expectedWidth + OVERFLOW_TOLERANCE_PX) {
     overflowFailures++;
-    console.error(`  OVERFLOW: ${label} -- content ${scrollWidth}px wide in a ${innerWidth}px viewport`);
+    console.error(`  OVERFLOW: ${label} -- content ${scrollWidth}px wide, device is ${expectedWidth}px`);
   } else if (debugCapture) {
-    console.log(`  ok: ${label} (${scrollWidth}px in ${innerWidth}px)`);
+    console.log(`  ok: ${label} (${scrollWidth}px in ${expectedWidth}px)`);
   }
 }
 
 async function captureView(page, device, viewName) {
-  await assertNoOverflow(page, `${viewName}-${device.name}`);
+  await assertNoOverflow(page, `${viewName}-${device.name}`, device.viewport.width);
   await page.screenshot({ path: path.join(outDir, `${viewName}-${device.name}.jpg`), type: "jpeg", quality: 92 });
 }
 
