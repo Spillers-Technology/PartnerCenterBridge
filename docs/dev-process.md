@@ -22,6 +22,62 @@ project's `dev-process.md`; kept here going forward for PartnerCenterBridge spec
 
 These are starting priors, not fixed law — revise whichever rule the log below stops supporting.
 
+## Routing variance: Codex CLI account-wide outage, 2026-08-20
+
+While running workstream 2 of the 0.6.0 MUI migration (four parallel component-group PRs: Operate,
+Deploy pipeline, Manage, Account), the Account group's first `codex-terra` dispatch
+(`ConfigSnapshots.tsx`) failed immediately with `ERROR: You've hit your usage limit ... try again at
+Aug 21st, 2026 8:57 AM`. The group-controller subagent verified this itself, directly and
+unsandboxed (not just trusting the dispatcher's own report, per this log's own standing rule below)
+with a minimal `codex exec -m gpt-5.6-luna ... "PING-OK"` call that failed identically — confirming
+an account-wide lockout, not a Terra-tier or dispatcher-specific issue. The Deploy pipeline group
+independently hit the exact same error (same reset timestamp) on its own first `codex-terra`
+dispatch (`AppTemplates.tsx`), corroborating it.
+
+Correct behavior on discovery: the Account group's controller stopped and reported up rather than
+silently substituting itself as implementer — this repo's own log already documents that exact
+anti-pattern ("Second tooling bug" below) as something to avoid. The Deploy pipeline group's
+controller, by contrast, hit the same failure moments earlier and had already self-implemented
+`AppTemplates.tsx` directly (no Codex, no dispatch) before the "stop and report" instruction
+reached it — an honest deviation under the same pressure, disclosed rather than hidden, but not the
+process this repo runs.
+
+**User's ruling (2026-08-20):** rather than wait out the ~12-hour reset or pause all four groups,
+switch the *implementer and reviewer* roles from Codex CLI to dispatched Claude subagents for the
+remainder of this workstream, mirroring the existing Luna/Terra/Sol structure one rung over onto
+Claude's own model tiers instead of inventing a new policy — "do it smart for token spend," per the
+user's own framing. Explicitly logged as an opportunity to compare Claude-subagent output against
+this log's existing Codex-routed units, not just a stopgap — hence this section.
+
+**Revised routing for the duration of the outage** (each Claude tier fills the role its Codex
+counterpart played, at the same trigger conditions already defined above):
+
+| Codex tier | Claude equivalent | Same trigger as |
+|---|---|---|
+| Luna | **Haiku 4.5** subagent | mechanical, tightly-specified, an established pattern to mirror exactly, no destructive action or error-handling gap in scope. Never ship unreviewed, same as Luna. |
+| Terra / Terra-high | **Sonnet** subagent | default implementer and default adversarial reviewer for anything Haiku- or Claude-authored — the routing's floor for any component with real judgment calls (which destructive actions need `useConfirm`, closing a flagged zero-error-handling gap, resolving an actual overflow). |
+| Sol-high | **Opus** subagent | `Security.tsx` specifically (auth-pipeline-sensitive, regardless of diff size — unchanged from the Codex-era rule), and any component where a Sonnet review flags something structurally significant enough that Sol/high would have been the Codex escalation. |
+
+Dispatch mechanics stay identical to the Codex tiers: one focused task per dispatch, full context in
+the brief (the subagent has no memory of this conversation), a fresh subagent per component, never
+two implementer dispatches live at once in the same worktree. Use the `model` parameter on the
+`Agent` tool call to pin the tier explicitly — an unpinned dispatch silently inherits a more
+expensive default, which defeats the point of this table.
+
+Already-self-implemented work done before this ruling (Deploy pipeline's `AppTemplates.tsx`,
+written directly by that group's own controller before the "stop and report" instruction reached
+it) is kept rather than redone from scratch, but still routed through an independent Sonnet
+reviewer before it commits — closing the implementer/reviewer split that was skipped the first
+time, without discarding real, working output.
+
+Revert to the Luna/Terra/Sol Codex routing once the account-wide limit resets (~Aug 21 2026
+8:57 AM) for any workstream-2 tasks not yet started at that point.
+
+**What to compare, once this workstream's units are logged below:** defect rate and category
+(spec-compliance misses vs. quality nits vs. real bugs) and token/turn cost for Haiku/Sonnet/Opus-
+implemented units against the Luna/Terra/Sol-implemented units already in this log's table, and
+whether the reviewer tier changes what gets caught for comparable diff sizes.
+
 ## Standing rules carried over
 
 - **A green suite is evidence about the tests, not the code.** Ask reviewers to grade the tests
