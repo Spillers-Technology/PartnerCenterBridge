@@ -102,9 +102,12 @@ async function gotoTab(page, label) {
   
   if (isDrawerVisible) {
     // Mobile drawer: open it and click the nav item
-    await navButton.click();
+    await navButton.click({ force: true });
+    await page.waitForTimeout(500);
     // Click the nav item by text (works with MUI ListItem which renders clickable list items)
     await page.locator("a, button, [role=button], [role=menuitem]").filter({ hasText: new RegExp(`^${label}$`, "i") }).first().click({ timeout: 10000 });
+    await navButton.click({ force: true });
+    await page.waitForTimeout(500);
   } else {
     // Desktop Tabs: click the tab directly
     await page.getByRole("tab", { name: label, exact: true }).click({ timeout: 10000 });
@@ -122,6 +125,38 @@ const AUTHENTICATED_VIEWS = {
   finduser: async (page) => {
     await gotoTab(page, "Find User");
     await page.getByPlaceholder(/Name or UPN/).waitFor({ timeout: 20_000 });
+  },
+  approvals: async (page) => {
+    await gotoTab(page, "Approvals");
+    await page.getByText("Mutating actions requested through MCP", { exact: false }).waitFor({ timeout: 20_000 });
+  },
+  contracts: async (page) => {
+    await gotoTab(page, "Contracts");
+    await page.getByText("Managed Workstations", { exact: false }).waitFor({ timeout: 20_000 });
+  },
+  deploy: async (page) => {
+    await gotoTab(page, "Deploy");
+    await page.getByText("Deploy a template", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  history: async (page) => {
+    await gotoTab(page, "History");
+    await page.getByText("Deployment history", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  newhire: async (page) => {
+    await gotoTab(page, "New Hire");
+    await page.getByText("New hire", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  offboard: async (page) => {
+    await gotoTab(page, "Offboard");
+    await page.getByText("Offboard", { exact: true }).first().waitFor({ timeout: 20_000 });
+  },
+  templates: async (page) => {
+    await gotoTab(page, "App Templates");
+    await page.getByText("7-Zip 24.08", { exact: false }).waitFor({ timeout: 20_000 });
+  },
+  workflows: async (page) => {
+    await gotoTab(page, "Workflows");
+    await page.getByRole("button", { name: "Mailbox archive repair", exact: true }).waitFor({ timeout: 20_000 });
   },
 };
 
