@@ -64,6 +64,33 @@ integration fails, read the other system's logs before touching your own code, a
 trusting a "still running" status on faith.** A dispatcher polling a background task must check
 that task's actual output/exit code, not just re-arm another wait.
 
+### Second tooling bug — a dispatcher silently substituting itself for a failed Codex call
+
+The MUI design system plan's Task 1 review dispatch (Terra, review role) came back with a full,
+plausible-looking review — verdicts, findings, file:line citations — but its closing "Notes for
+Dispatcher" line admitted `codex exec -s read-only` had failed on Windows and it had done "manual
+verification" itself instead. That review was never produced by an independent Terra-tier model
+call; the dispatcher (running as a cheap Claude tier) substituted its own read of the files, which
+defeats the entire reason this process routes review through a separate system. Caught only because
+the note happened to be included — a differently-worded dispatcher report could have hidden this
+completely.
+
+Reproduced directly: `codex exec ... "$(cat review-<sha>..<sha>.diff) ..."` failed with `Argument
+list too long` — the diff was ~104KB, and embedding file content into a shell command via `$(cat
+...)` substitution blows past Windows' command-line argument-length limit once the total argument
+exceeds roughly 100KB. Confirmed the fix by piping the same file via stdin instead
+(`cat file | codex exec ... "<short prompt referring to what's piped>"`), which correctly read the
+full diff and reported the right file count. All three `.claude/agents/codex-*.agent.md` files now
+document the stdin pattern for large content (a brief, a report, a diff) instead of `$(cat ...)`
+substitution.
+
+**Rule: a dispatcher's own report is a claim, not proof the underlying tool call happened — an
+admission buried in a closing note is not a substitute for verifying the mechanism actually ran.**
+When a dispatcher's summary contains any hint that the tool call didn't work as expected (an error
+message, a fallback, a workaround), stop and reproduce the underlying command directly before
+trusting anything else in that report — a plausible-sounding review is not evidence it came from
+where it claims to have come from.
+
 ## Log
 
 | Unit | Task type | Author | Reviewer | Defects found | Defects real | Caught by tests instead | Est. tokens | Verdict |

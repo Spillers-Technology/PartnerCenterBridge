@@ -17,6 +17,7 @@ import { UserSearch, type WorkflowLaunch } from "./components/UserSearch";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
 import { Security } from "./components/Security";
+import { AppShell } from "./components/AppShell";
 import { ConfigSnapshots } from "./components/ConfigSnapshots";
 
 type Tab = "dashboard" | "finduser" | "tenants" | "contracts" | "templates" | "deploy" | "history" | "newhire" | "offboard" | "workflows" | "approvals" | "snapshots" | "security";
@@ -96,38 +97,30 @@ export function App() {
   const displayName = me?.displayName ?? user;
   const allTabs = authMode === "Local" ? [...TABS, { key: "security" as Tab, label: "Security" }] : TABS;
 
+  const showSignOut = authMode === "Local" || (authMode === "Oidc" && authEnabled);
+  const handleSignOut = authMode === "Local" ? signOutLocal : logout;
+
   return (
-    <div className="app">
-      <header>
-        <h1>Partner Center Bridge</h1>
-        <nav>
-          {allTabs.map((t) => (
-            <button key={t.key} className={tab === t.key ? "active" : ""} onClick={() => setTab(t.key)}>
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        <div className="user">
-          <span>{displayName}</span>
-          {authMode === "Local" && <button onClick={signOutLocal}>Sign out</button>}
-          {authMode === "Oidc" && authEnabled && <button onClick={logout}>Sign out</button>}
-        </div>
-      </header>
-      <main>
-        {tab === "dashboard" && <Dashboard />}
-        {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
-        {tab === "tenants" && <Tenants me={me} onProfileChanged={refreshMe} />}
-        {tab === "contracts" && <Contracts />}
-        {tab === "templates" && <AppTemplates me={me} />}
-        {tab === "deploy" && <DeployWizard />}
-        {tab === "history" && <Deployments />}
-        {tab === "newhire" && <NewHire />}
-        {tab === "offboard" && <Offboard />}
-        {tab === "workflows" && <Workflows prefill={wfLaunch} />}
-        {tab === "approvals" && <Approvals />}
-        {tab === "snapshots" && <ConfigSnapshots me={me} />}
-        {tab === "security" && me && <Security me={me} onProfileChanged={refreshMe} />}
-      </main>
-    </div>
+    <AppShell
+      tabs={allTabs}
+      activeTab={tab}
+      onSelectTab={(key) => setTab(key as Tab)}
+      displayName={displayName ?? null}
+      onSignOut={showSignOut ? handleSignOut : undefined}
+    >
+      {tab === "dashboard" && <Dashboard />}
+      {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
+      {tab === "tenants" && <Tenants me={me} onProfileChanged={refreshMe} />}
+      {tab === "contracts" && <Contracts />}
+      {tab === "templates" && <AppTemplates me={me} />}
+      {tab === "deploy" && <DeployWizard />}
+      {tab === "history" && <Deployments />}
+      {tab === "newhire" && <NewHire />}
+      {tab === "offboard" && <Offboard />}
+      {tab === "workflows" && <Workflows prefill={wfLaunch} />}
+      {tab === "approvals" && <Approvals />}
+      {tab === "snapshots" && <ConfigSnapshots me={me} />}
+      {tab === "security" && me && <Security me={me} onProfileChanged={refreshMe} />}
+    </AppShell>
   );
 }

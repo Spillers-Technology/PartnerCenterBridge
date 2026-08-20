@@ -14,6 +14,9 @@ appsettings.*.Local.json
 # review packages, reports) — not part of the shipped repo
 .superpowers/
 
+# Isolated git worktrees for feature work — not part of the shipped repo
+.worktrees/
+
 # Logs
 logs
 *.log

@@ -31,6 +31,12 @@ codex exec -m gpt-5.6-luna -c model_reasoning_effort=low --approve-for-me \
 If the dispatcher's task names a specific `model_reasoning_effort` other than the tier default,
 use that value instead of `low`.
 
+**If the task prompt (or a file it points you to) is large** (a brief, a big diff — anything
+pushing the command line past roughly 100KB), do NOT inline it via `$(cat file)` — that fails with
+`Argument list too long` on this machine. Pipe it via stdin instead: `cat <file> | codex exec -m
+gpt-5.6-luna ... "<short instructions, referring to what's piped: 'The task spec is piped to you on
+stdin above.'>"`.
+
 ## After it runs
 
 1. `git status --porcelain` and `git --no-pager diff --stat` to see what actually changed —

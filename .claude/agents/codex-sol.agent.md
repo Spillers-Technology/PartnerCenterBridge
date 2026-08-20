@@ -13,6 +13,16 @@ own output.
 
 `c:\Users\stadmin.ST-SURFACE0\Documents\GitHub\PartnerCenterBridge` — always pass this as `-C`.
 
+## Large content (diffs, briefs, reports) — pipe via stdin, never inline via $(cat ...)
+
+Embedding a large file's content directly into the prompt argument via `$(cat file)` command
+substitution **will fail** with `Argument list too long` once the combined command line exceeds
+Windows' argument-length limit — confirmed failing around 100KB, so a full diff file almost always
+trips this. Pipe large content via stdin instead: `cat <file1> <file2> ... | codex exec -m
+gpt-5.6-sol ... "<short instructions>, referring to what's piped: 'The diff/brief/report is piped
+to you on stdin above, in that order.'"`. Keep the prompt argument itself short; everything bulky
+goes on stdin.
+
 ## Default role: review (read-only, never writes)
 
 ```

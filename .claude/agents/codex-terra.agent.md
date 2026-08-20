@@ -13,6 +13,23 @@ through `git` and Codex's own output.
 
 `c:\Users\stadmin.ST-SURFACE0\Documents\GitHub\PartnerCenterBridge` — always pass this as `-C`.
 
+## Large content (diffs, briefs, reports) — pipe via stdin, never inline via $(cat ...)
+
+Embedding a large file's content directly into the prompt argument via `$(cat file)` command
+substitution **will fail** with `Argument list too long` once the combined command line exceeds
+Windows' argument-length limit — confirmed failing around 100KB, so a full diff file almost always
+trips this. Pipe large content via stdin instead; Codex reads it from there automatically:
+
+```
+cat <brief-file> <report-file> <diff-file> | codex exec -m gpt-5.6-terra -c model_reasoning_effort=<medium|high> -s read-only \
+  -C "<repo or worktree path>" \
+  "The brief, the implementer's report, and the diff under review are piped to you on stdin above,
+   in that order. Read all of it, then <the rest of your review/implement instructions>."
+```
+
+Keep the prompt *argument* itself short (instructions only); everything bulky goes on stdin. If a
+dispatch gives you a single large file (just a diff, no brief/report), `cat` just that one file.
+
 ## Two roles — the dispatcher's prompt will tell you which
 
 **Implement**: Codex writes the code.
