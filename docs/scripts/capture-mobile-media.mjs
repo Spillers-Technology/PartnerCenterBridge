@@ -113,8 +113,11 @@ async function gotoTab(page, label) {
     await page.locator("a, button, [role=button], [role=menuitem]").filter({ hasText: new RegExp(`^${label}$`, "i") }).first().click({ timeout: 10000 });
     // Wait for the drawer's backdrop to actually leave the DOM (selecting an item closes it)
     // before returning, so the NEXT gotoTab call's own drawer-open click can't race a still-
-    // exiting previous instance.
-    await page.locator(".MuiBackdrop-root").waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
+    // exiting previous instance. Deliberately NOT swallowed: if the backdrop is still there
+    // after 2s, the drawer is genuinely stuck -- that's a real bug worth failing loudly on, not
+    // silently proceeding into the exact "detached from the DOM" race this wait exists to
+    // prevent (three repeated full 55-capture runs never came close to this timeout).
+    await page.locator(".MuiBackdrop-root").waitFor({ state: "hidden", timeout: 2000 });
   } else {
     // Desktop Tabs: click the tab directly
     await page.getByRole("tab", { name: label, exact: true }).click({ timeout: 10000 });
