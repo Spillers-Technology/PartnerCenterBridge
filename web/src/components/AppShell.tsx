@@ -68,7 +68,14 @@ export function AppShell({
               onChange={(_, key: string) => selectTab(key)}
               variant="scrollable"
               scrollButtons="auto"
-              sx={{ flexGrow: 1, minWidth: 0 }}
+              sx={{
+                flexGrow: 1,
+                minWidth: 0,
+                "& .MuiTabs-scroller": {
+                  maskImage: "linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)",
+                  WebkitMaskImage: "linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)"
+                }
+              }}
             >
               {tabs.map((t) => (
                 <Tab
