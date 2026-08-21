@@ -52,13 +52,14 @@ Review shots for: no horizontal page scroll, visible touch affordances, nothing 
 right edge. A non-zero exit code means at least one (view, device) pair overflowed -- the console
 output names exactly which.
 
-## Current baseline (as of the mobile capture-matrix foundation landing)
+## Current baseline (updated as the 0.6.0 MUI migration lands, group by group)
 
-The matrix produces 75 captures (15 views x 5 devices). Seven views pass cleanly at every device:
-Dashboard, Find User, Deploy, New Hire, Offboard, Login, and Register. Eight views show the known
-pre-migration overflow baseline: Tenants, Approvals, Contracts, History, App Templates, Workflows,
-Config Snapshots, and Security. This is 31 overflowing view/device pairs, tracked work rather than
-a regression.
+The matrix produces 75 captures (15 views x 5 devices). Nine views now pass cleanly at every
+device: Dashboard, Find User, Deploy, New Hire, Offboard, Login, Register, **Tenants**, and
+**Contracts** (the last two migrated to MUI by the Manage group's PR -- see
+`docs/superpowers/specs/2026-08-20-mui-workstream2-component-migration-design.md`). Six views
+remain in the pre-migration overflow baseline, tracked work rather than a regression: Approvals,
+History, App Templates, Workflows, Config Snapshots, and Security.
 
 ## Rules for future views
 
