@@ -151,14 +151,14 @@ const AUTHENTICATED_VIEWS = {
   },
   deploy: async (page) => {
     // "Deploy a template" is DeployWizard's static heading, present before the templates/tenants
-    // fetch resolves. Wait for a real template <option> instead -- only rendered once the
-    // templates fetch has populated the select.
+    // fetch resolves. Since its MUI migration, the template picker is an MUI Select, whose
+    // MenuItems aren't in the DOM at rest (only mounted once the dropdown is opened, which this
+    // resting-state capture deliberately never does) -- a plain <select><option> locator no longer
+    // applies. Wait for a real tenant checkbox label instead: the tenant fieldset renders
+    // unconditionally once the tenants fetch resolves, in the same resting view, and is exactly
+    // the wide/overflow-prone content this capture needs to have actually rendered.
     await gotoTab(page, "Deploy");
-    // A closed <select>'s <option> children are never "visible" per Playwright's own visibility
-    // model even once genuinely populated (confirmed directly: the locator found 43 matching,
-    // correctly-populated option elements and still reported them "hidden") -- "attached" is the
-    // achievable, correct signal for option elements specifically.
-    await page.locator("select option", { hasText: "7-Zip 24.08" }).first().waitFor({ state: "attached", timeout: 20_000 });
+    await page.getByText("Contoso Ltd", { exact: false }).first().waitFor({ timeout: 20_000 });
   },
   history: async (page) => {
     // "Deployment history" is Deployments' static heading, present before the deployments fetch
