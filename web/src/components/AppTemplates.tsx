@@ -17,6 +17,7 @@ import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
+import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
@@ -59,6 +60,7 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   const [templates, setTemplates] = useState<AppTemplate[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<TemplateForm>(emptyForm);
+  const [newPackage, setNewPackage] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<TemplateForm>(emptyForm);
   const canManage = !me || me.isSystemAdmin;
@@ -73,10 +75,14 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   useEffect(() => { void load(); }, []);
 
   const createAction = useAsyncAction(async () => {
-    await api.templates.create({ ...form });
+    const created = await api.templates.create({ ...form });
+    if (newPackage) {
+      await api.templates.uploadPackage(created.id, newPackage);
+    }
     await load();
     setForm(emptyForm);
-    showToast("Template created.", "success");
+    setNewPackage(null);
+    showToast(newPackage ? "Template created and package uploaded." : "Template created.", "success");
   });
 
   const updateAction = useAsyncAction(async (id: string, next: TemplateForm) => {
@@ -146,8 +152,22 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
           }}
         >
           <TemplateFields form={form} onChange={setForm} />
+          <Button
+            component="label"
+            variant="outlined"
+            startIcon={<UploadFileIcon />}
+            sx={{ alignSelf: "flex-start" }}
+          >
+            {newPackage ? newPackage.name : "Attach package (.intunewin, optional)"}
+            <input
+              type="file"
+              accept=".intunewin"
+              hidden
+              onChange={(e) => setNewPackage(e.target.files?.[0] ?? null)}
+            />
+          </Button>
           <Button type="submit" variant="contained" disabled={createAction.busy || !isFormValid(form)} sx={{ alignSelf: "flex-start" }}>
-            {createAction.busy ? "Creating..." : "Create template"}
+            {createAction.busy ? (newPackage ? "Creating and uploading..." : "Creating...") : "Create template"}
           </Button>
           {createAction.error && <Alert severity="error">{createAction.error}</Alert>}
         </Stack>
@@ -198,31 +218,37 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
                   {canManage && (
                     <TableCell>
                       <Stack direction="row" spacing={0.5} sx={{ alignItems: "center" }}>
-                        <IconButton aria-label={`Edit ${t.displayName}`} size="small" onClick={() => startEdit(t)}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          aria-label={`Delete ${t.displayName}`}
-                          size="small"
-                          onClick={() => void remove(t)}
-                          disabled={removeAction.busy}
-                        >
-                          <DeleteIcon fontSize="small" />
-                        </IconButton>
-                        <IconButton
-                          aria-label={`Upload package for ${t.displayName}`}
-                          size="small"
-                          component="label"
-                          disabled={uploadAction.busy}
-                        >
-                          <UploadFileIcon fontSize="small" />
-                          <input
-                            type="file"
-                            accept=".intunewin"
-                            hidden
-                            onChange={(e) => { upload(t.id, e.target.files?.[0]); e.target.value = ""; }}
-                          />
-                        </IconButton>
+                        <Tooltip title="Edit">
+                          <IconButton aria-label={`Edit ${t.displayName}`} size="small" onClick={() => startEdit(t)}>
+                            <EditIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Delete">
+                          <IconButton
+                            aria-label={`Delete ${t.displayName}`}
+                            size="small"
+                            onClick={() => void remove(t)}
+                            disabled={removeAction.busy}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title={t.hasPackage ? "Replace package" : "Upload package"}>
+                          <IconButton
+                            aria-label={`Upload package for ${t.displayName}`}
+                            size="small"
+                            component="label"
+                            disabled={uploadAction.busy}
+                          >
+                            <UploadFileIcon fontSize="small" />
+                            <input
+                              type="file"
+                              accept=".intunewin"
+                              hidden
+                              onChange={(e) => { upload(t.id, e.target.files?.[0]); e.target.value = ""; }}
+                            />
+                          </IconButton>
+                        </Tooltip>
                       </Stack>
                     </TableCell>
                   )}

@@ -157,15 +157,40 @@ describe("AppTemplates", () => {
     vi.mocked(api.templates.list).mockResolvedValue([template]);
     vi.mocked(api.templates.uploadPackage).mockResolvedValue({ ...template, hasPackage: true });
     const user = userEvent.setup();
-    const { container } = renderComponent();
+    renderComponent();
 
     await screen.findByText("Company Portal");
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const fileInput = screen.getByLabelText("Upload package for Company Portal") as HTMLInputElement;
     const file = new File(["binary"], "package.intunewin");
     await user.upload(fileInput, file);
 
     expect(api.templates.uploadPackage).toHaveBeenCalledWith("t1", file);
     expect(await screen.findByText("Package uploaded.")).toBeInTheDocument();
+  });
+
+  it("creates a template with an attached package and uploads it in the same step", async () => {
+    vi.mocked(api.templates.list).mockResolvedValue([]);
+    vi.mocked(api.templates.create).mockResolvedValue(template);
+    vi.mocked(api.templates.uploadPackage).mockResolvedValue({ ...template, hasPackage: true });
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText("No templates yet.");
+    vi.mocked(api.templates.list).mockResolvedValue([{ ...template, hasPackage: true }]);
+
+    await user.type(screen.getByLabelText("Display name"), "Company Portal");
+    await user.type(screen.getByLabelText("Install command line"), "install.exe");
+    await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
+    const file = new File(["binary"], "package.intunewin");
+    await user.upload(screen.getByLabelText("Attach package (.intunewin, optional)"), file);
+    expect(await screen.findByText("package.intunewin")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create template" }));
+
+    expect(api.templates.create).toHaveBeenCalledWith(
+      expect.objectContaining({ displayName: "Company Portal" })
+    );
+    expect(api.templates.uploadPackage).toHaveBeenCalledWith("t1", file);
+    expect(await screen.findByText("Template created and package uploaded.")).toBeInTheDocument();
   });
 
   it("hides the create form and actions column for non-admin users", async () => {
