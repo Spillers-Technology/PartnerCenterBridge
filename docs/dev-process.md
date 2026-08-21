@@ -22,6 +22,129 @@ project's `dev-process.md`; kept here going forward for PartnerCenterBridge spec
 
 These are starting priors, not fixed law — revise whichever rule the log below stops supporting.
 
+## Routing variance: Codex CLI account-wide outage, 2026-08-20
+
+While running workstream 2 of the 0.6.0 MUI migration (four parallel component-group PRs: Operate,
+Deploy pipeline, Manage, Account), the Account group's first `codex-terra` dispatch
+(`ConfigSnapshots.tsx`) failed immediately with `ERROR: You've hit your usage limit ... try again at
+Aug 21st, 2026 8:57 AM`. The group-controller subagent verified this itself, directly and
+unsandboxed (not just trusting the dispatcher's own report, per this log's own standing rule below)
+with a minimal `codex exec -m gpt-5.6-luna ... "PING-OK"` call that failed identically — confirming
+an account-wide lockout, not a Terra-tier or dispatcher-specific issue. The Deploy pipeline group
+independently hit the exact same error (same reset timestamp) on its own first `codex-terra`
+dispatch (`AppTemplates.tsx`), corroborating it.
+
+Correct behavior on discovery: the Account group's controller stopped and reported up rather than
+silently substituting itself as implementer — this repo's own log already documents that exact
+anti-pattern ("Second tooling bug" below) as something to avoid. The Deploy pipeline group's
+controller, by contrast, hit the same failure moments earlier and had already self-implemented
+`AppTemplates.tsx` directly (no Codex, no dispatch) before the "stop and report" instruction
+reached it — an honest deviation under the same pressure, disclosed rather than hidden, but not the
+process this repo runs.
+
+**User's ruling (2026-08-20):** rather than wait out the ~12-hour reset or pause all four groups,
+switch the *implementer and reviewer* roles from Codex CLI to dispatched Claude subagents for the
+remainder of this workstream, mirroring the existing Luna/Terra/Sol structure one rung over onto
+Claude's own model tiers instead of inventing a new policy — "do it smart for token spend," per the
+user's own framing. Explicitly logged as an opportunity to compare Claude-subagent output against
+this log's existing Codex-routed units, not just a stopgap — hence this section.
+
+**Revised routing for the duration of the outage** (each Claude tier fills the role its Codex
+counterpart played, at the same trigger conditions already defined above):
+
+| Codex tier | Claude equivalent | Same trigger as |
+|---|---|---|
+| Luna | **Haiku 4.5** subagent | mechanical, tightly-specified, an established pattern to mirror exactly, no destructive action or error-handling gap in scope. Never ship unreviewed, same as Luna. |
+| Terra / Terra-high | **Sonnet** subagent | default implementer and default adversarial reviewer for anything Haiku- or Claude-authored — the routing's floor for any component with real judgment calls (which destructive actions need `useConfirm`, closing a flagged zero-error-handling gap, resolving an actual overflow). |
+| Sol-high | **Opus** subagent | `Security.tsx` specifically (auth-pipeline-sensitive, regardless of diff size — unchanged from the Codex-era rule), and any component where a Sonnet review flags something structurally significant enough that Sol/high would have been the Codex escalation. |
+
+Dispatch mechanics stay identical to the Codex tiers: one focused task per dispatch, full context in
+the brief (the subagent has no memory of this conversation), a fresh subagent per component, never
+two implementer dispatches live at once in the same worktree. Use the `model` parameter on the
+`Agent` tool call to pin the tier explicitly — an unpinned dispatch silently inherits a more
+expensive default, which defeats the point of this table.
+
+Already-self-implemented work done before this ruling (Deploy pipeline's `AppTemplates.tsx`,
+written directly by that group's own controller before the "stop and report" instruction reached
+it) is kept rather than redone from scratch, but still routed through an independent Sonnet
+reviewer before it commits — closing the implementer/reviewer split that was skipped the first
+time, without discarding real, working output.
+
+Revert to the Luna/Terra/Sol Codex routing once the account-wide limit resets (~Aug 21 2026
+8:57 AM) for any workstream-2 tasks not yet started at that point.
+
+**What to compare, once this workstream's units are logged below:** defect rate and category
+(spec-compliance misses vs. quality nits vs. real bugs) and token/turn cost for Haiku/Sonnet/Opus-
+implemented units against the Luna/Terra/Sol-implemented units already in this log's table, and
+whether the reviewer tier changes what gets caught for comparable diff sizes.
+
+### Results, paused for a controller context reset (2026-08-21)
+
+A second, unrelated outage hit partway through: the *controller session's own* Claude usage limit
+(not Codex) was hit twice more (resets 8:50am, then 2:40pm America/New_York), stalling all three
+still-running group-controller subagents mid-task each time. Both resets were confirmed by checking
+wall-clock time directly before resuming rather than assumed. Separately, the user confirmed the
+original Codex CLI account-wide limit itself had also reset by 2026-08-21. Rather than resume
+everything and switch tiers again this deep into one session, the user chose to stop here, write up
+what the Sonnet/Opus routing produced so far, and pick up Codex routing plus the remaining
+components in a fresh session — this subsection is that handoff.
+
+**Operate group — complete, PR #22, fully Claude-subagent-routed (Sonnet implementer/reviewer,
+no Codex involved at any point for Approvals.tsx; UserSearch.tsx/Workflows.tsx were self-implemented
+by the group-controller before the routing ruling landed, then independently Sonnet-reviewed
+after).** Verified directly by the controller (not just trusted from the report): `npm run build`
+clean, `npx vitest run` 55/55 passing across 12 files, capture matrix zero-overflow across all 5
+device profiles for `finduser,workflows,approvals`. Real defects the Sonnet review layer actually
+caught, unprompted:
+- **Critical** in `Approvals.tsx`: a single shared `useAsyncAction` instance across every row of the
+  approvals table meant a second row's confirmed Approve/Reject/Retry would silently no-op while an
+  earlier row's mutation was still in flight — a genuine concurrency-shaped bug, the same class of
+  finding this log's Codex-Terra/Sol reviews have caught before (see Unit 4, Unit 8 above), caught
+  here by a Sonnet-tier reviewer without any Opus/Sol-equivalent escalation. Fixed by giving each
+  row its own subcomponent and thus its own action-state instance; a new test proves two pending
+  rows resolve independently.
+- Two Important/Minor findings in `Workflows.tsx` (an unwrapped shared `StepList.tsx` result table,
+  an unbounded ephemeral-secret string) plus a missed test for a diagnose-then-fix stale-error
+  sequence — all real, all fixed before commit.
+- A genuinely useful *tooling* bug outside either component: `docs/scripts/capture-mobile-media.mjs`'s
+  `finduser` wait condition targeted a `placeholder` attribute the MUI migration removed in favor of
+  a proper `<label>` — would have hung/timed out silently in CI. Fixed the wait condition itself.
+
+**Early read:** a Sonnet-tier implementer+reviewer pair, working from the same kind of precise brief
+this log's Codex dispatches get, caught at least one bug in the same severity/category Sol-tier
+Codex review has historically been needed for — on this sample, tier-for-tier substitution held up.
+Too small a sample (one group) to revise the routing priors at the top of this file; treat as a
+data point, not a conclusion, until the other three groups' results are in.
+
+**State of the other three groups at the moment of pausing** (all mid-task, none broken — every
+worktree below is exactly where its last successful step left it, safe to resume as-is):
+
+- **Deploy pipeline** (`.claude/worktrees/agent-a4beb0625b4b285c4`, branch
+  `feat/mui-deploy-pipeline-migration`): 3 commits done — `AppTemplates.tsx` (Sonnet-implemented
+  pre-ruling, Sonnet-reviewed post-ruling, the dropped-`.catch()` bug from that review fixed),
+  `DeployWizard.tsx`, `Deployments.tsx` (both Sonnet-implemented). Uncommitted at pause: a
+  `docs/scripts/capture-mobile-media.mjs` fix and the shared `docs/dev-process.md`/spec files
+  (leave those two out of this branch's own commit — see note above, they already landed via
+  PR #22). Last action before the pause was re-running the capture matrix for
+  `templates,deploy,history` — needs that confirmed clean, `docs/mobile.md` baseline updated, then
+  PR opened (not merged).
+- **Account** (`.claude/worktrees/agent-af793d065db1ab737`, branch `feat/mui-account-migration`):
+  1 commit done — `ConfigSnapshots.tsx` (Sonnet-implemented). `Security.tsx` is modified but
+  **uncommitted**, with a new untracked `Security.test.tsx` — mid-verification when paused (the
+  controller's last line was "let me verify this directly rather than trusting the report alone").
+  Per the routing table, `Security.tsx`'s review must be an Opus subagent, not Sonnet — confirm that
+  actually happened before this commits, don't assume it from the implementer's own say-so.
+- **Manage** (`.worktrees/feat-mui-manage`, branch `feat/mui-manage-migration`): 0 commits yet.
+  `Tenants.tsx` is modified with a new untracked `Tenants.test.tsx` — mid-implementation when
+  paused. Still has `Contracts.tsx`, `NewHire.tsx`, `Offboard.tsx` entirely untouched after that.
+  Furthest from done of the four groups.
+
+**Handoff instruction for the next session:** the user wants to revert to Luna/Terra/Sol Codex
+routing (confirmed available again as of 2026-08-21) for whatever's left in these three groups,
+rather than continuing the Sonnet/Opus substitution — the outage that motivated the substitution is
+over. Verify Codex is actually reachable with a throwaway ping before trusting it, the same way its
+outage was originally confirmed, rather than assuming a stated reset time held.
+
 ## Standing rules carried over
 
 - **A green suite is evidence about the tests, not the code.** Ask reviewers to grade the tests

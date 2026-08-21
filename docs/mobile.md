@@ -52,14 +52,21 @@ Review shots for: no horizontal page scroll, visible touch affordances, nothing 
 right edge. A non-zero exit code means at least one (view, device) pair overflowed -- the console
 output names exactly which.
 
-## Current baseline (updated as the 0.6.0 MUI migration lands, group by group)
+## Current baseline
 
-The matrix produces 75 captures (15 views x 5 devices). Nine views now pass cleanly at every
-device: Dashboard, Find User, Deploy, New Hire, Offboard, Login, Register, **Tenants**, and
-**Contracts** (the last two migrated to MUI by the Manage group's PR -- see
-`docs/superpowers/specs/2026-08-20-mui-workstream2-component-migration-design.md`). Six views
-remain in the pre-migration overflow baseline, tracked work rather than a regression: Approvals,
-History, App Templates, Workflows, Config Snapshots, and Security.
+The matrix produces 75 captures (15 views x 5 devices). **All fifteen views now pass cleanly at
+every device** -- Dashboard, Find User, Deploy, New Hire, Offboard, Login, Register, Workflows,
+Approvals, App Templates, History, Config Snapshots, Security, **Tenants**, and **Contracts**. The
+last two are newly migrated (Manage group, the final workstream-2 sub-project of the 0.6.0 MUI
+migration) -- both were in the original pre-migration overflow baseline and now pass the full
+5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=tenants,contracts,newhire,offboard`, zero-overflow
+exit code), confirmed directly, not assumed. Workflows/Approvals (Operate group), App
+Templates/History (Deploy pipeline group), and Config Snapshots/Security (Account group) were each
+migrated and verified the same way in the three sibling PRs merged just before this one.
+
+The original pre-migration baseline was 31 overflowing view/device pairs across 8 views (Tenants,
+Approvals, Contracts, History, App Templates, Workflows, Config Snapshots, Security). Workstream 2's
+four parallel sub-projects (Operate, Deploy pipeline, Account, Manage) closed all of them.
 
 ## Rules for future views
 
