@@ -1,21 +1,54 @@
 import { useEffect, useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import Chip from "@mui/material/Chip";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
+import FormLabel from "@mui/material/FormLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Skeleton from "@mui/material/Skeleton";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
-import type { AppTemplate, Deployment, Tenant } from "../types";
+import { useAsyncAction } from "../hooks/useAsyncAction";
+import { useConfirm } from "../hooks/useConfirm";
+import { useToast } from "../hooks/useToast";
+import type { AppTemplate, DeploymentStatus, Tenant } from "../types";
+
+function statusColor(status: DeploymentStatus): "default" | "success" | "error" | "warning" {
+  if (status === "Succeeded") return "success";
+  if (status === "Failed") return "error";
+  if (status === "UpdateAvailable") return "warning";
+  return "default";
+}
 
 export function DeployWizard() {
-  const [templates, setTemplates] = useState<AppTemplate[]>([]);
-  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [templates, setTemplates] = useState<AppTemplate[] | null>(null);
+  const [tenants, setTenants] = useState<Tenant[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [running, setRunning] = useState(false);
-  const [results, setResults] = useState<Deployment[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
+  const showToast = useToast();
 
   useEffect(() => {
     Promise.all([api.templates.list(), api.tenants.list()])
       .then(([tpl, tn]) => { setTemplates(tpl); setTenants(tn); })
-      .catch((e) => setError(String(e)));
+      .catch((e) => setLoadError(e instanceof Error ? e.message : String(e)));
   }, []);
+
+  const deployAction = useAsyncAction(() => api.deployments.deploy(templateId, [...selected]));
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -23,65 +56,139 @@ export function DeployWizard() {
     setSelected(next);
   };
 
+  const chosen = templates?.find((t) => t.id === templateId);
+
   const deploy = async () => {
-    if (!templateId || selected.size === 0) return;
-    setRunning(true); setError(null); setResults(null);
-    try { setResults(await api.deployments.deploy(templateId, [...selected])); }
-    catch (e) { setError(String(e)); }
-    finally { setRunning(false); }
+    if (!chosen?.hasPackage || selected.size === 0) return;
+    const ok = await confirm({
+      title: "Deploy template?",
+      message: `Deploy "${chosen.displayName}" to ${selected.size} tenant(s)?`,
+      confirmLabel: "Deploy",
+      destructive: true
+    });
+    if (!ok) return;
+
+    const results = await deployAction.run();
+    if (!results) return;
+
+    const failed = results.filter((r) => r.status === "Failed").length;
+    if (failed === 0) {
+      showToast(`Deployed to ${results.length} tenant(s).`, "success");
+    } else {
+      showToast(`Deployed to ${results.length - failed} of ${results.length} tenant(s) - ${failed} failed.`, "warning");
+    }
   };
 
-  const chosen = templates.find((t) => t.id === templateId);
+  if (loadError) {
+    return (
+      <Box>
+        <Typography variant="h5" component="h2" gutterBottom>
+          Deploy a template
+        </Typography>
+        <Alert severity="error">{loadError}</Alert>
+      </Box>
+    );
+  }
+
+  if (!templates || !tenants) {
+    return (
+      <Box aria-busy="true">
+        <Typography variant="h5" component="h2" gutterBottom>
+          Deploy a template
+        </Typography>
+        <Box component="span" sx={visuallyHidden}>Loading deploy wizard...</Box>
+        <Skeleton variant="rounded" height={200} />
+      </Box>
+    );
+  }
 
   return (
-    <section>
-      <h2>Deploy a template</h2>
-      <label className="field">
-        Template
-        <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-          <option value="">— choose —</option>
+    <Box>
+      <Typography variant="h5" component="h2" gutterBottom>
+        Deploy a template
+      </Typography>
+
+      <Stack spacing={3} sx={{ maxWidth: 480 }}>
+        <TextField
+          select
+          label="Template"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+        >
+          <MenuItem value="">
+            <em>Choose a template</em>
+          </MenuItem>
           {templates.map((t) => (
-            <option key={t.id} value={t.id} disabled={!t.hasPackage}>
+            <MenuItem key={t.id} value={t.id} disabled={!t.hasPackage}>
               {t.displayName} v{t.contentVersion}{t.hasPackage ? "" : " (no package)"}
-            </option>
+            </MenuItem>
           ))}
-        </select>
-      </label>
+        </TextField>
 
-      <fieldset>
-        <legend>Target tenants</legend>
-        {tenants.map((t) => (
-          <label key={t.id} className="check">
-            <input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
-            {t.displayName}
-          </label>
-        ))}
-        {tenants.length === 0 && <p className="muted">No tenants. Sync first.</p>}
-      </fieldset>
+        <FormControl component="fieldset" variant="standard">
+          <FormLabel component="legend">Target tenants</FormLabel>
+          {tenants.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              No tenants. Sync first.
+            </Typography>
+          ) : (
+            <FormGroup>
+              {tenants.map((t) => (
+                <FormControlLabel
+                  key={t.id}
+                  control={<Checkbox checked={selected.has(t.id)} onChange={() => toggle(t.id)} />}
+                  label={t.displayName}
+                />
+              ))}
+            </FormGroup>
+          )}
+        </FormControl>
 
-      <button onClick={deploy} disabled={running || !chosen?.hasPackage || selected.size === 0}>
-        {running ? "Deploying…" : `Deploy to ${selected.size} tenant(s)`}
-      </button>
-      {error && <p className="error">{error}</p>}
+        <Button
+          variant="contained"
+          onClick={() => void deploy()}
+          disabled={deployAction.busy || !chosen?.hasPackage || selected.size === 0}
+          sx={{ alignSelf: "flex-start" }}
+        >
+          {deployAction.busy ? "Deploying..." : `Deploy to ${selected.size} tenant(s)`}
+        </Button>
 
-      {results && (
-        <table>
-          <thead><tr><th>Tenant</th><th>Status</th><th>Intune app id</th><th>Error</th></tr></thead>
-          <tbody>
-            {results.map((r) => {
-              const t = tenants.find((x) => x.id === r.tenantId);
-              return (
-                <tr key={r.id}>
-                  <td>{t?.displayName ?? r.tenantId}</td>
-                  <td><span className={`badge ${r.status.toLowerCase()}`}>{r.status}</span></td>
-                  <td className="mono">{r.intuneAppId ?? "—"}</td>
-                  <td className="error">{r.lastError ?? ""}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {deployAction.error && <Alert severity="error">{deployAction.error}</Alert>}
+      </Stack>
+
+      {deployAction.result && (
+        <TableContainer sx={{ mt: 3, overflowX: "auto" }}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Tenant</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Intune app id</TableCell>
+                <TableCell>Error</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {deployAction.result.map((r) => {
+                const t = tenants.find((x) => x.id === r.tenantId);
+                return (
+                  <TableRow key={r.id}>
+                    <TableCell>{t?.displayName ?? r.tenantId}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={r.status} color={statusColor(r.status)} />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                        {r.intuneAppId ?? "-"}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{r.lastError ?? ""}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
       )}
-    </section>
+    </Box>
   );
 }
