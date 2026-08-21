@@ -56,17 +56,18 @@ output names exactly which.
 
 The matrix produces 75 captures (15 views x 5 devices).
 
-Eleven views pass cleanly at every device: Dashboard, Find User, Deploy, New Hire, Offboard, Login,
-Register, **Workflows**, **Approvals**, **App Templates**, and **History**. The last four are newly
-migrated (Operate group and Deploy pipeline group, workstream 2 of the 0.6.0 MUI migration) -- all
-were in the original pre-migration overflow baseline and now pass the full 5-device matrix cleanly
-(`PCBRIDGE_CAPTURE_VIEWS=workflows,approvals` and `PCBRIDGE_CAPTURE_VIEWS=templates,history`
-respectively, both zero-overflow exit codes), confirmed directly, not assumed. Deploy itself was
-migrated as part of the Deploy pipeline group and continues to pass, as before.
+Thirteen views pass cleanly at every device: Dashboard, Find User, Deploy, New Hire, Offboard,
+Login, Register, Workflows, Approvals, App Templates, History, **Config Snapshots**, and
+**Security**. The last two are newly migrated (Account group, workstream 2 of the 0.6.0 MUI
+migration) -- both were in the original pre-migration overflow baseline and now pass the full
+5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=snapshots,security`, zero-overflow exit code),
+confirmed directly, not assumed. Workflows/Approvals (Operate group) and App Templates/History
+(Deploy pipeline group) were migrated and verified the same way in the two sibling PRs merged
+just before this one.
 
-Four views still show the known pre-migration overflow baseline, tracked work rather than a
-regression, owned by the two remaining workstream-2 sub-projects running in parallel: Tenants,
-Contracts, Config Snapshots, and Security.
+Two views still show the known pre-migration overflow baseline, tracked work rather than a
+regression, owned by the one remaining workstream-2 sub-project (Manage): Tenants and Contracts.
+This is 10 overflowing view/device pairs, down from the original 31.
 
 ## Rules for future views
 
