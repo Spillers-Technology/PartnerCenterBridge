@@ -54,20 +54,19 @@ output names exactly which.
 
 ## Current baseline
 
-The matrix produces 75 captures (15 views x 5 devices).
-
-Thirteen views pass cleanly at every device: Dashboard, Find User, Deploy, New Hire, Offboard,
-Login, Register, Workflows, Approvals, App Templates, History, **Config Snapshots**, and
-**Security**. The last two are newly migrated (Account group, workstream 2 of the 0.6.0 MUI
+The matrix produces 75 captures (15 views x 5 devices). **All fifteen views now pass cleanly at
+every device** -- Dashboard, Find User, Deploy, New Hire, Offboard, Login, Register, Workflows,
+Approvals, App Templates, History, Config Snapshots, Security, **Tenants**, and **Contracts**. The
+last two are newly migrated (Manage group, the final workstream-2 sub-project of the 0.6.0 MUI
 migration) -- both were in the original pre-migration overflow baseline and now pass the full
-5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=snapshots,security`, zero-overflow exit code),
-confirmed directly, not assumed. Workflows/Approvals (Operate group) and App Templates/History
-(Deploy pipeline group) were migrated and verified the same way in the two sibling PRs merged
-just before this one.
+5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=tenants,contracts,newhire,offboard`, zero-overflow
+exit code), confirmed directly, not assumed. Workflows/Approvals (Operate group), App
+Templates/History (Deploy pipeline group), and Config Snapshots/Security (Account group) were each
+migrated and verified the same way in the three sibling PRs merged just before this one.
 
-Two views still show the known pre-migration overflow baseline, tracked work rather than a
-regression, owned by the one remaining workstream-2 sub-project (Manage): Tenants and Contracts.
-This is 10 overflowing view/device pairs, down from the original 31.
+The original pre-migration baseline was 31 overflowing view/device pairs across 8 views (Tenants,
+Approvals, Contracts, History, App Templates, Workflows, Config Snapshots, Security). Workstream 2's
+four parallel sub-projects (Operate, Deploy pipeline, Account, Manage) closed all of them.
 
 ## Rules for future views
 

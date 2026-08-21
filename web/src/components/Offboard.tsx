@@ -1,7 +1,31 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Checkbox from "@mui/material/Checkbox";
+import FormControl from "@mui/material/FormControl";
+import FormControlLabel from "@mui/material/FormControlLabel";
+import FormGroup from "@mui/material/FormGroup";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
+import Stack from "@mui/material/Stack";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { useAsyncAction } from "../hooks/useAsyncAction";
+import { useConfirm } from "../hooks/useConfirm";
+import { useToast } from "../hooks/useToast";
 import type { DirectoryObject, ProvisioningResult, Tenant } from "../types";
 import { StepList } from "./StepList";
+
+const ACTIONS = [
+  ["blockSignIn", "Block sign-in"],
+  ["revokeSessions", "Revoke sessions"],
+  ["removeLicenses", "Remove licenses"],
+  ["removeFromGroups", "Remove from groups"],
+  ["convertMailboxToShared", "Convert mailbox to shared (Exchange Online)"]
+] as const;
 
 export function Offboard() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -12,87 +36,139 @@ export function Offboard() {
   const [opts, setOpts] = useState({ blockSignIn: true, revokeSessions: true, removeLicenses: true, removeFromGroups: true, convertMailboxToShared: false });
   const [forwardingSmtpAddress, setForwardingSmtpAddress] = useState("");
   const [result, setResult] = useState<ProvisioningResult | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<"tenants" | "search" | "submit" | null>(null);
+  // useAsyncAction's own busy flag only turns on once the terminate call actually starts, which
+  // leaves a window open while the confirm dialog is awaited: a second click during that window
+  // could queue a second confirm request (useConfirm queues rather than rejecting a second call)
+  // and, if the user confirms it after the first terminate has already finished, fire a duplicate
+  // destructive submission. This local guard covers that whole window, not just the API call.
+  const [confirming, setConfirming] = useState(false);
+  const currentTenantRef = useRef("");
+  const confirm = useConfirm();
+  const toast = useToast();
 
-  useEffect(() => { api.tenants.list().then(setTenants).catch((e) => setError(String(e))); }, []);
+  const tenantsAction = useAsyncAction(async () => {
+    setTenants(await api.tenants.list());
+  });
 
-  const find = async () => {
+  const searchAction = useAsyncAction(async (id: string, query: string) => {
+    const loadedUsers = await api.directory.users(id, query || undefined);
+    if (currentTenantRef.current !== id) return;
+    setUsers(loadedUsers);
+  });
+
+  const selectedUser = users.find((user) => user.id === userId);
+
+  const submitAction = useAsyncAction(async () => {
+    const offboardResult = await api.provisioning.terminate(tenantId, {
+      userId, ...opts,
+      forwardingSmtpAddress: forwardingSmtpAddress || undefined
+    });
+    setResult(offboardResult);
+    if (offboardResult.succeeded) toast(`${selectedUser?.displayName ?? "User"} offboarded`, "success");
+  });
+
+  useEffect(() => {
+    setLastAction("tenants");
+    void tenantsAction.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const error =
+    lastAction === "tenants" ? tenantsAction.error :
+    lastAction === "search" ? searchAction.error :
+    lastAction === "submit" ? submitAction.error :
+    null;
+
+  const find = () => {
     if (!tenantId) return;
-    setError(null);
-    try { setUsers(await api.directory.users(tenantId, search || undefined)); }
-    catch (e) { setError(String(e)); }
+    setLastAction("search");
+    void searchAction.run(tenantId, search);
   };
 
   const submit = async () => {
-    if (!tenantId || !userId) return;
-    setBusy(true); setError(null); setResult(null);
+    if (!tenantId || !userId || confirming) return;
+    setConfirming(true);
     try {
-      setResult(await api.provisioning.terminate(tenantId, {
-        userId, ...opts,
-        forwardingSmtpAddress: forwardingSmtpAddress || undefined
-      }));
+      const enabledActions = ACTIONS.filter(([key]) => opts[key]).map(([, label]) => label.toLowerCase());
+      const ok = await confirm({
+        title: "Offboard this user?",
+        message: `${selectedUser?.displayName ?? "This user"} will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.`,
+        confirmLabel: "Offboard",
+        destructive: true
+      });
+      if (!ok) return;
+      setResult(null);
+      setLastAction("submit");
+      await submitAction.run();
+    } finally {
+      setConfirming(false);
     }
-    catch (e) { setError(String(e)); }
-    finally { setBusy(false); }
   };
 
   return (
-    <section>
-      <h2>Offboard</h2>
-      <label className="field">
-        Tenant
-        <select value={tenantId} onChange={(e) => { setTenantId(e.target.value); setUsers([]); setUserId(""); }}>
-          <option value="">— choose —</option>
-          {tenants.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}
-        </select>
-      </label>
+    <Box component="section">
+      <Typography variant="h5" component="h2" gutterBottom>
+        Offboard
+      </Typography>
+      <FormControl fullWidth sx={{ maxWidth: 360, mb: 2 }}>
+        <InputLabel id="offboard-tenant-label">Tenant</InputLabel>
+        <Select
+          labelId="offboard-tenant-label"
+          label="Tenant"
+          value={tenantId}
+          displayEmpty
+          onChange={(e) => {
+            const id = e.target.value;
+            currentTenantRef.current = id;
+            setTenantId(id);
+            setUsers([]);
+            setUserId("");
+          }}
+        >
+          <MenuItem value="">-- choose --</MenuItem>
+          {tenants.map((tenant) => <MenuItem key={tenant.id} value={tenant.id}>{tenant.displayName}</MenuItem>)}
+        </Select>
+      </FormControl>
 
       {tenantId && (
-        <>
-          <div className="row">
-            <input placeholder="Search name or UPN" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <button onClick={find}>Search users</button>
-          </div>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ alignItems: { sm: "flex-start" } }}>
+            <TextField fullWidth label="Search name or UPN" value={search} onChange={(e) => setSearch(e.target.value)} />
+            <Button variant="contained" onClick={find} disabled={searchAction.busy}>Search users</Button>
+          </Stack>
           {users.length > 0 && (
-            <label className="field">
-              User
-              <select value={userId} onChange={(e) => setUserId(e.target.value)}>
-                <option value="">— choose —</option>
-                {users.map((u) => <option key={u.id} value={u.id}>{u.displayName} ({u.userPrincipalName})</option>)}
-              </select>
-            </label>
+            <FormControl fullWidth sx={{ maxWidth: 560 }}>
+              <InputLabel id="offboard-user-label">User</InputLabel>
+              <Select labelId="offboard-user-label" label="User" value={userId} displayEmpty onChange={(e) => setUserId(e.target.value)}>
+                <MenuItem value="">-- choose --</MenuItem>
+                {users.map((user) => <MenuItem key={user.id} value={user.id}>{user.displayName} ({user.userPrincipalName})</MenuItem>)}
+              </Select>
+            </FormControl>
           )}
 
-          <fieldset>
-            <legend>Actions</legend>
-            {([
-              ["blockSignIn", "Block sign-in"],
-              ["revokeSessions", "Revoke sessions"],
-              ["removeLicenses", "Remove licenses"],
-              ["removeFromGroups", "Remove from groups"],
-              ["convertMailboxToShared", "Convert mailbox to shared (Exchange Online)"]
-            ] as const).map(([key, label]) => (
-              <label key={key} className="check">
-                <input type="checkbox" checked={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: e.target.checked })} />
-                {label}
-              </label>
-            ))}
-          </fieldset>
+          <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+            <Typography component="legend" variant="subtitle1">Actions</Typography>
+            <FormGroup>
+              {ACTIONS.map(([key, label]) => (
+                <FormControlLabel key={key} control={<Checkbox checked={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: e.target.checked })} />} label={label} />
+              ))}
+            </FormGroup>
+          </Box>
 
           {opts.convertMailboxToShared && (
-            <label className="field">
-              Forward mailbox to (optional SMTP)
-              <input placeholder="manager@contoso.com" value={forwardingSmtpAddress}
-                onChange={(e) => setForwardingSmtpAddress(e.target.value)} />
-            </label>
+            <TextField fullWidth label="Forward mailbox to (optional SMTP)" placeholder="manager@contoso.com" value={forwardingSmtpAddress} onChange={(e) => setForwardingSmtpAddress(e.target.value)} />
           )}
 
-          <button onClick={submit} disabled={busy || !userId}>{busy ? "Offboarding…" : "Offboard user"}</button>
-        </>
+          <Box>
+            <Button variant="contained" color="error" onClick={() => void submit()} disabled={submitAction.busy || confirming || !userId}>
+              {submitAction.busy ? "Offboarding..." : "Offboard user"}
+            </Button>
+          </Box>
+        </Stack>
       )}
-      {error && <p className="error">{error}</p>}
+      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
       {result && <StepList result={result} />}
-    </section>
+    </Box>
   );
 }

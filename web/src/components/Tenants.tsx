@@ -1,110 +1,239 @@
 import { Fragment, useEffect, useState } from "react";
+import Alert from "@mui/material/Alert";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import Chip from "@mui/material/Chip";
+import FormControl from "@mui/material/FormControl";
+import InputLabel from "@mui/material/InputLabel";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
+import Stack from "@mui/material/Stack";
+import Table from "@mui/material/Table";
+import TableBody from "@mui/material/TableBody";
+import TableCell from "@mui/material/TableCell";
+import TableContainer from "@mui/material/TableContainer";
+import TableHead from "@mui/material/TableHead";
+import TableRow from "@mui/material/TableRow";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
 import { api } from "../api";
-import type { Contract, MeProfile, Tenant, TenantGrant, TenantRole } from "../types";
+import { useAsyncAction } from "../hooks/useAsyncAction";
+import { useConfirm } from "../hooks/useConfirm";
+import { useToast } from "../hooks/useToast";
+import type { Contract, MeProfile, Tenant, TenantGrant, TenantRole, TenantStatus } from "../types";
 
 const ROLES: TenantRole[] = ["Viewer", "Operator", "Owner"];
+
+const STATUS_COLOR: Record<TenantStatus, "success" | "warning" | "error"> = {
+  Active: "success",
+  Suspended: "warning",
+  NoDelegation: "warning",
+  Removed: "error"
+};
 
 function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
   const [grants, setGrants] = useState<TenantGrant[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TenantRole>("Operator");
-  const [error, setError] = useState<string | null>(null);
+  const [lastAction, setLastAction] = useState<"load" | "grant" | "revoke" | null>(null);
+  const confirm = useConfirm();
+  const toast = useToast();
 
-  const load = () => api.tenantAccess.list(tenant.id).then(setGrants).catch((e) => setError(String(e)));
-  useEffect(() => { load(); }, [tenant.id]);
+  const loadAction = useAsyncAction(async () => {
+    const g = await api.tenantAccess.list(tenant.id);
+    setGrants(g);
+  });
 
-  const grant = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    setError(null);
-    try {
-      await api.tenantAccess.grant(tenant.id, email, role);
-      setEmail("");
-      await load();
-      onChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  useEffect(() => {
+    setLastAction("load");
+    void loadAction.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenant.id]);
 
-  const revoke = async (userId: string) => {
-    await api.tenantAccess.revoke(tenant.id, userId);
-    await load();
+  const grantAction = useAsyncAction(async () => {
+    const grantedEmail = email;
+    await api.tenantAccess.grant(tenant.id, email, role);
+    setEmail("");
+    await loadAction.run();
     onChanged();
+    toast(`${grantedEmail} now has ${role} access to ${tenant.displayName}`, "success");
+  });
+
+  const revokeAction = useAsyncAction(async (userId: string, grantEmail: string) => {
+    await api.tenantAccess.revoke(tenant.id, userId);
+    await loadAction.run();
+    onChanged();
+    toast(`Access revoked for ${grantEmail}`, "success");
+  });
+
+  const handleRevoke = async (userId: string, grantEmail: string) => {
+    const ok = await confirm({
+      title: "Revoke access?",
+      message: `${grantEmail} will lose access to ${tenant.displayName}.`,
+      confirmLabel: "Revoke",
+      destructive: true
+    });
+    if (!ok) return;
+    setLastAction("revoke");
+    await revokeAction.run(userId, grantEmail);
   };
+
+  // Each async action's error is shown only while it is the most recently attempted one -- this
+  // mirrors Login.tsx's lastAttempt pattern and avoids a stale error from one action masking (or
+  // outliving) a more recent success/failure from an unrelated action.
+  const error =
+    lastAction === "load" ? loadAction.error :
+    lastAction === "grant" ? grantAction.error :
+    lastAction === "revoke" ? revokeAction.error :
+    null;
 
   return (
-    <tr>
-      <td colSpan={5}>
-        <div className="password">
-          <strong>Who has access to {tenant.displayName}</strong>
-          {error && <p className="error">{error}</p>}
-          <table>
-            <thead><tr><th>Email</th><th>Role</th><th>Granted</th><th></th></tr></thead>
-            <tbody>
-              {grants.map((g) => (
-                <tr key={g.userId}>
-                  <td>{g.email}</td>
-                  <td>{g.role}</td>
-                  <td>{new Date(g.grantedAt).toLocaleDateString()}</td>
-                  <td><button onClick={() => revoke(g.userId)}>Revoke</button></td>
-                </tr>
-              ))}
-              {grants.length === 0 && <tr><td colSpan={4} className="muted">Only you have access so far.</td></tr>}
-            </tbody>
-          </table>
-          <form className="row" onSubmit={grant}>
-            <input placeholder="teammate@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <select value={role} onChange={(e) => setRole(e.target.value as TenantRole)}>
-              {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <button>Share</button>
-          </form>
-          <p className="muted">They need to already have a registered account. Viewer = read-only, Operator = can run workflows/deploy, Owner = can also share/revoke.</p>
-        </div>
-      </td>
-    </tr>
+    <TableRow>
+      <TableCell colSpan={5} sx={{ bgcolor: "action.hover" }}>
+        <Box sx={{ p: 1 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Who has access to {tenant.displayName}
+          </Typography>
+          {error && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {error}
+            </Alert>
+          )}
+
+          <TableContainer sx={{ mb: 2, overflowX: "auto" }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Role</TableCell>
+                  <TableCell>Granted</TableCell>
+                  <TableCell></TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {grants.map((g) => (
+                  <TableRow key={g.userId}>
+                    <TableCell>{g.email}</TableCell>
+                    <TableCell>{g.role}</TableCell>
+                    <TableCell>{new Date(g.grantedAt).toLocaleDateString()}</TableCell>
+                    <TableCell>
+                      <Button
+                        size="small"
+                        color="error"
+                        onClick={() => void handleRevoke(g.userId, g.email)}
+                        disabled={revokeAction.busy}
+                      >
+                        Revoke
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {grants.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4}>
+                      <Typography variant="body2" color="text.secondary">
+                        Only you have access so far.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+
+          <Stack
+            component="form"
+            direction={{ xs: "column", sm: "row" }}
+            spacing={1}
+            sx={{ alignItems: { sm: "flex-start" } }}
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              setLastAction("grant");
+              void grantAction.run();
+            }}
+          >
+            <TextField
+              size="small"
+              label="Email"
+              placeholder="teammate@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+            <FormControl size="small" sx={{ minWidth: 140 }}>
+              <InputLabel id={`share-role-${tenant.id}`}>Role</InputLabel>
+              <Select
+                labelId={`share-role-${tenant.id}`}
+                label="Role"
+                value={role}
+                onChange={(e) => setRole(e.target.value as TenantRole)}
+              >
+                {ROLES.map((r) => (
+                  <MenuItem key={r} value={r}>
+                    {r}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            <Button type="submit" variant="contained" disabled={grantAction.busy}>
+              {grantAction.busy ? "Sharing..." : "Share"}
+            </Button>
+          </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            They need to already have a registered account. Viewer = read-only, Operator = can run
+            workflows/deploy, Owner = can also share/revoke.
+          </Typography>
+        </Box>
+      </TableCell>
+    </TableRow>
   );
 }
 
 export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProfileChanged: () => void }) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [newTenant, setNewTenant] = useState({ tenantId: "", displayName: "", defaultDomain: "" });
+  const [lastAction, setLastAction] = useState<"load" | "sync" | "add" | "assign" | null>(null);
+  const toast = useToast();
 
-  const load = () =>
-    Promise.all([api.tenants.list(), api.contracts.list()])
-      .then(([t, c]) => { setTenants(t); setContracts(c); })
-      .catch((e) => setError(String(e)));
+  const loadAction = useAsyncAction(async () => {
+    const [t, c] = await Promise.all([api.tenants.list(), api.contracts.list()]);
+    setTenants(t);
+    setContracts(c);
+  });
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setLastAction("load");
+    void loadAction.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const sync = async () => {
-    setBusy(true); setError(null);
-    try { await api.tenants.sync(); await load(); onProfileChanged(); }
-    catch (e) { setError(String(e)); }
-    finally { setBusy(false); }
-  };
+  const syncAction = useAsyncAction(async () => {
+    await api.tenants.sync();
+    await loadAction.run();
+    onProfileChanged();
+    toast("Synced from Partner Center", "success");
+  });
 
-  const addTenant = async (ev: React.FormEvent) => {
-    ev.preventDefault();
-    setError(null);
-    try {
-      await api.tenants.create(newTenant.tenantId, newTenant.displayName, newTenant.defaultDomain || undefined);
-      setNewTenant({ tenantId: "", displayName: "", defaultDomain: "" });
-      await load();
-      onProfileChanged();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  };
+  const addTenantAction = useAsyncAction(async () => {
+    const addedName = newTenant.displayName;
+    await api.tenants.create(newTenant.tenantId, newTenant.displayName, newTenant.defaultDomain || undefined);
+    setNewTenant({ tenantId: "", displayName: "", defaultDomain: "" });
+    await loadAction.run();
+    onProfileChanged();
+    toast(`${addedName} added`, "success");
+  });
 
-  const assign = async (id: string, contractId: string) => {
+  const assignAction = useAsyncAction(async (id: string, contractId: string) => {
     await api.tenants.setContract(id, contractId || null);
-    await load();
-  };
+    await loadAction.run();
+    const t = tenants.find((x) => x.id === id);
+    const c = contracts.find((x) => x.id === contractId);
+    toast(
+      c ? `${t?.displayName ?? "Tenant"} assigned to ${c.name}` : `${t?.displayName ?? "Tenant"} contract cleared`,
+      "success"
+    );
+  });
 
   // Under Auth:Mode=Local, sharing is only meaningful (and only enabled server-side) for the
   // Owner of a tenant. OIDC/dev-auth operators (me === null) already have unrestricted access,
@@ -112,60 +241,147 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
   const roleFor = (tenantId: string) => me?.tenantAccess.find((a) => a.tenantId === tenantId)?.role;
   const canShare = (tenantId: string) => me !== null && roleFor(tenantId) === "Owner";
 
+  // See SharePanel's identical comment: error is scoped to the most recently attempted action so
+  // an older failure from an unrelated action can't mask or outlive a newer one.
+  const error =
+    lastAction === "load" ? loadAction.error :
+    lastAction === "sync" ? syncAction.error :
+    lastAction === "add" ? addTenantAction.error :
+    lastAction === "assign" ? assignAction.error :
+    null;
+
   return (
-    <section>
-      <div className="toolbar">
-        <h2>Tenants</h2>
-        <button onClick={sync} disabled={busy}>{busy ? "Syncing…" : "Sync from Partner Center"}</button>
-      </div>
-      {error && <p className="error">{error}</p>}
+    <Box component="section">
+      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <Typography variant="h5" component="h2">
+          Tenants
+        </Typography>
+        <Button
+          variant="contained"
+          onClick={() => {
+            setLastAction("sync");
+            void syncAction.run();
+          }}
+          disabled={syncAction.busy}
+        >
+          {syncAction.busy ? "Syncing..." : "Sync from Partner Center"}
+        </Button>
+      </Stack>
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      <table>
-        <thead><tr><th>Name</th><th>Domain</th><th>Status</th><th>Contract</th><th></th></tr></thead>
-        <tbody>
-          {tenants.map((t) => (
-            <Fragment key={t.id}>
-              <tr>
-                <td>{t.displayName}</td>
-                <td>{t.defaultDomain ?? "—"}</td>
-                <td><span className={`badge ${t.status.toLowerCase()}`}>{t.status}</span></td>
-                <td>
-                  <select value={t.contractId ?? ""} onChange={(e) => assign(t.id, e.target.value)}>
-                    <option value="">— none —</option>
-                    {contracts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </select>
-                </td>
-                <td>
-                  {canShare(t.id) && (
-                    <button onClick={() => setSharingId(sharingId === t.id ? null : t.id)}>
-                      {sharingId === t.id ? "Close" : "Share"}
-                    </button>
-                  )}
-                </td>
-              </tr>
-              {sharingId === t.id && <SharePanel tenant={t} onChanged={load} />}
-            </Fragment>
-          ))}
-          {tenants.length === 0 && <tr><td colSpan={5} className="muted">No tenants yet. Sync from Partner Center or add one below.</td></tr>}
-        </tbody>
-      </table>
+      <TableContainer sx={{ mb: 3, overflowX: "auto" }}>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Name</TableCell>
+              <TableCell>Domain</TableCell>
+              <TableCell>Status</TableCell>
+              <TableCell>Contract</TableCell>
+              <TableCell></TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {tenants.map((t) => (
+              <Fragment key={t.id}>
+                <TableRow>
+                  <TableCell>{t.displayName}</TableCell>
+                  <TableCell>{t.defaultDomain ?? "--"}</TableCell>
+                  <TableCell>
+                    <Chip size="small" label={t.status} color={STATUS_COLOR[t.status]} />
+                  </TableCell>
+                  <TableCell>
+                    <FormControl size="small" sx={{ minWidth: 160 }}>
+                      <InputLabel id={`contract-label-${t.id}`}>Contract</InputLabel>
+                      <Select
+                        labelId={`contract-label-${t.id}`}
+                        label="Contract"
+                        size="small"
+                        value={t.contractId ?? ""}
+                        onChange={(e) => {
+                          setLastAction("assign");
+                          void assignAction.run(t.id, e.target.value);
+                        }}
+                        disabled={assignAction.busy}
+                        displayEmpty
+                      >
+                        <MenuItem value="">-- none --</MenuItem>
+                        {contracts.map((c) => (
+                          <MenuItem key={c.id} value={c.id}>
+                            {c.name}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </TableCell>
+                  <TableCell>
+                    {canShare(t.id) && (
+                      <Button size="small" onClick={() => setSharingId(sharingId === t.id ? null : t.id)}>
+                        {sharingId === t.id ? "Close" : "Share"}
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+                {sharingId === t.id && <SharePanel tenant={t} onChanged={() => void loadAction.run()} />}
+              </Fragment>
+            ))}
+            {tenants.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <Typography variant="body2" color="text.secondary">
+                    No tenants yet. Sync from Partner Center or add one below.
+                  </Typography>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
-      <fieldset>
-        <legend>Add a tenant</legend>
-        <p className="muted">
+      <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+        <Typography component="legend" variant="subtitle1">
+          Add a tenant
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Already have a GDAP relationship with a customer? Register it directly instead of
           waiting for a full sync -- you become its Owner immediately and can share it from there.
-        </p>
-        <form className="row" onSubmit={addTenant}>
-          <input placeholder="Entra tenant id (GUID)" value={newTenant.tenantId}
-            onChange={(e) => setNewTenant({ ...newTenant, tenantId: e.target.value })} />
-          <input placeholder="Display name" value={newTenant.displayName}
-            onChange={(e) => setNewTenant({ ...newTenant, displayName: e.target.value })} />
-          <input placeholder="Default domain (optional)" value={newTenant.defaultDomain}
-            onChange={(e) => setNewTenant({ ...newTenant, defaultDomain: e.target.value })} />
-          <button>Add tenant</button>
-        </form>
-      </fieldset>
-    </section>
+        </Typography>
+        <Stack
+          component="form"
+          direction={{ xs: "column", sm: "row" }}
+          spacing={1}
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            setLastAction("add");
+            void addTenantAction.run();
+          }}
+        >
+          <TextField
+            size="small"
+            label="Entra tenant id (GUID)"
+            value={newTenant.tenantId}
+            onChange={(e) => setNewTenant({ ...newTenant, tenantId: e.target.value })}
+          />
+          <TextField
+            size="small"
+            label="Display name"
+            value={newTenant.displayName}
+            onChange={(e) => setNewTenant({ ...newTenant, displayName: e.target.value })}
+          />
+          <TextField
+            size="small"
+            label="Default domain (optional)"
+            value={newTenant.defaultDomain}
+            onChange={(e) => setNewTenant({ ...newTenant, defaultDomain: e.target.value })}
+          />
+          <Button type="submit" variant="contained" disabled={addTenantAction.busy}>
+            {addTenantAction.busy ? "Adding..." : "Add tenant"}
+          </Button>
+        </Stack>
+      </Box>
+    </Box>
   );
 }
