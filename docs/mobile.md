@@ -52,13 +52,19 @@ Review shots for: no horizontal page scroll, visible touch affordances, nothing 
 right edge. A non-zero exit code means at least one (view, device) pair overflowed -- the console
 output names exactly which.
 
-## Current baseline (as of the mobile capture-matrix foundation landing)
+## Current baseline
 
-The matrix produces 75 captures (15 views x 5 devices). Seven views pass cleanly at every device:
-Dashboard, Find User, Deploy, New Hire, Offboard, Login, and Register. Eight views show the known
-pre-migration overflow baseline: Tenants, Approvals, Contracts, History, App Templates, Workflows,
-Config Snapshots, and Security. This is 31 overflowing view/device pairs, tracked work rather than
-a regression.
+The matrix produces 75 captures (15 views x 5 devices).
+
+Nine views pass cleanly at every device: Dashboard, Find User, Deploy, New Hire, Offboard, Login,
+Register, **Workflows**, and **Approvals**. The last two are newly migrated (Operate group,
+workstream 2 of the 0.6.0 MUI migration) -- both were in the original pre-migration overflow
+baseline and now pass the full 5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=workflows,approvals`,
+zero-overflow exit code), confirmed directly, not assumed.
+
+Six views still show the known pre-migration overflow baseline, tracked work rather than a
+regression, owned by the other three workstream-2 sub-projects running in parallel: Tenants,
+Contracts, App Templates, History, Config Snapshots, and Security.
 
 ## Rules for future views
 
