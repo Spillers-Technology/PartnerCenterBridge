@@ -51,7 +51,10 @@ async function main() {
     console.log("Rendering Workflows (Diagnose)...");
     await gotoTab(page, "Workflows");
     await page.getByRole("button", { name: "Mailbox archive repair", exact: true }).click();
-    await page.locator("select").first().selectOption({ label: "Contoso Ltd" });
+    // MUI Select: click to open the listbox, then click the option -- a bare <select> hasn't
+    // existed here since the Operate group's MUI migration (workstream 2).
+    await page.getByLabel("Tenant").click();
+    await page.getByRole("option", { name: "Contoso Ltd" }).click();
     await page.getByPlaceholder("user@contoso.com").fill("maya.chen@contoso.com");
     await page.getByRole("button", { name: "Diagnose", exact: true }).click();
     await page.getByText("blocks the Managed Folder Assistant", { exact: false }).waitFor({ timeout: 20_000 });
@@ -59,18 +62,23 @@ async function main() {
 
     console.log("Rendering Deploy (fan-out results)...");
     await gotoTab(page, "Deploy");
-    await page.locator("select").first().selectOption({ label: "7-Zip 24.08 v3" });
-    const boxes = page.locator("fieldset .check input[type=checkbox]");
+    await page.getByLabel("Template").click();
+    await page.getByRole("option", { name: "7-Zip 24.08 v3", exact: false }).click();
+    const boxes = page.locator("fieldset input[type=checkbox]");
     await boxes.nth(0).check();
     await boxes.nth(1).check();
     await boxes.nth(2).check();
     await page.getByRole("button", { name: /^Deploy to/ }).click();
+    // Deploy is destructive-adjacent and gated behind useConfirm (added in workstream 1) --
+    // this dialog didn't exist the last time this script ran successfully.
+    const deployDialog = page.getByRole("dialog");
+    await deployDialog.getByRole("button", { name: "Deploy", exact: true }).click();
     await page.getByText("Intune app id", { exact: false }).waitFor({ timeout: 20_000 });
     await page.screenshot({ path: path.join(outDir, "pcbridge-deploy.jpg"), type: "jpeg", quality: 92 });
 
     console.log("Rendering Find User (cross-tenant search)...");
     await gotoTab(page, "Find User");
-    await page.getByPlaceholder(/Name or UPN/).fill("chen");
+    await page.getByLabel(/Name or UPN/).fill("chen");
     await page.getByRole("button", { name: "Search", exact: true }).click();
     await page.getByText("match(es) across", { exact: false }).waitFor({ timeout: 20_000 });
     await page.screenshot({ path: path.join(outDir, "pcbridge-finduser.jpg"), type: "jpeg", quality: 92 });
@@ -120,9 +128,10 @@ async function main() {
     console.log("Rendering Config Snapshots (diff view)...");
     await gotoTab(securedPage, "Config Snapshots");
     await securedPage.getByText("jspillers", { exact: false }).first().waitFor({ timeout: 20_000 });
-    const diffSelects = securedPage.locator("fieldset select");
-    await diffSelects.nth(0).selectOption({ index: 1 });
-    await diffSelects.nth(1).selectOption({ index: 2 });
+    await securedPage.getByLabel("Before").click();
+    await securedPage.getByRole("option").nth(1).click();
+    await securedPage.getByLabel("After").click();
+    await securedPage.getByRole("option").nth(2).click();
     await securedPage.getByRole("button", { name: "View diff", exact: true }).click();
     await securedPage.getByText("Block legacy authentication", { exact: false }).waitFor({ timeout: 20_000 });
     await securedPage.screenshot({ path: path.join(outDir, "pcbridge-config-snapshots.jpg"), type: "jpeg", quality: 92 });
