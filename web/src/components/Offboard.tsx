@@ -58,6 +58,7 @@ export function Offboard() {
   });
 
   const selectedUser = users.find((user) => user.id === userId);
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
 
   const submitAction = useAsyncAction(async () => {
     const offboardResult = await api.provisioning.terminate(tenantId, {
@@ -106,7 +107,7 @@ export function Offboard() {
       const forwardingNote = forwardingSmtpAddress ? ` Mail will forward to ${forwardingSmtpAddress}.` : "";
       const ok = await confirm({
         title: "Offboard this user?",
-        message: `${selectedUser.displayName} (${selectedUser.userPrincipalName}) will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.${forwardingNote}`,
+        message: `${selectedUser.displayName} (${selectedUser.userPrincipalName}) in ${selectedTenant?.displayName ?? "this tenant"} will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.${forwardingNote}`,
         confirmLabel: "Offboard",
         destructive: true
       });

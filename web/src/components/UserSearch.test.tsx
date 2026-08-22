@@ -104,6 +104,26 @@ describe("UserSearch", () => {
     expect(screen.queryByRole("button", { name: "MFA reset" })).not.toBeInTheDocument();
   });
 
+  it("does not resurrect a stale response that resolves after the query has since been edited", async () => {
+    // Regression test: the Search button disables while a search is in flight, but the text field
+    // itself stays editable -- an old query's response landing late used to unconditionally
+    // repopulate the results (and their workflow-launch buttons) under a query box that no longer
+    // matches what they came from.
+    let resolveSearch!: (r: typeof RESULT) => void;
+    vi.mocked(api.search.users).mockReturnValue(new Promise((resolve) => { resolveSearch = resolve; }));
+    const user = userEvent.setup();
+    renderUserSearch();
+
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "ada");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "m");
+    resolveSearch(RESULT);
+
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+  });
+
   it("hides stale results once a re-search fails, instead of leaving them next to the new error", async () => {
     vi.mocked(api.search.users).mockResolvedValueOnce(RESULT);
     const user = userEvent.setup();

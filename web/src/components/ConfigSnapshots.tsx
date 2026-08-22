@@ -48,14 +48,29 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
   const [lastAction, setLastAction] = useState<LastAction>(null);
   const toast = useToast();
 
+  // Always current (updated every render, not just in a change handler) so capture/import below
+  // can tell, after their own async work finishes, whether the tenant they were issued for is
+  // still the one on screen.
+  const currentTenantRef = useRef("");
+  currentTenantRef.current = tenantId;
+
   const tenantsAction = useAsyncAction(() => api.tenants.list());
   const runsAction = useAsyncAction((id: string) => api.configSnapshots.list(id));
   const captureAction = useAsyncAction(async () => {
-    await api.configSnapshots.capture(tenantId);
+    const capturedFor = tenantId;
+    await api.configSnapshots.capture(capturedFor);
     // The capture itself already succeeded at this point -- a failed (or single-flight-dropped)
     // refresh afterward must not make the whole action look like it failed, but it also must not
     // be reported as a plain, unqualified success (see handleCapture below).
-    const refreshed = (await runsAction.run(tenantId)) !== undefined;
+    let refreshed = (await runsAction.run(capturedFor)) !== undefined;
+    if (currentTenantRef.current !== capturedFor) {
+      // The user switched tenants while this capture (or its own refresh) was still in flight --
+      // whatever runsAction.run just fetched (if it fetched at all) belongs to capturedFor, not
+      // whichever tenant is now selected. Re-fetch for the tenant actually on screen instead of
+      // leaving that tenant's UI showing a different tenant's runs.
+      void runsAction.run(currentTenantRef.current);
+      refreshed = false;
+    }
     return { refreshed };
   });
   const viewDiffAction = useAsyncAction((before: string, after: string) => api.configSnapshots.diff(tenantId, before, after));
@@ -69,10 +84,15 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
   });
   const importAction = useAsyncAction(async () => {
     if (!importFile) return null;
+    const capturedFor = tenantId;
     const workbook = JSON.parse(await importFile.text());
-    await api.configSnapshots.import(tenantId, workbook.sections);
+    await api.configSnapshots.import(capturedFor, workbook.sections);
     setImportFile(null);
-    const refreshed = (await runsAction.run(tenantId)) !== undefined;
+    let refreshed = (await runsAction.run(capturedFor)) !== undefined;
+    if (currentTenantRef.current !== capturedFor) {
+      void runsAction.run(currentTenantRef.current);
+      refreshed = false;
+    }
     return { refreshed };
   });
 

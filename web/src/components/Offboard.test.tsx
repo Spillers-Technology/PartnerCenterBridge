@@ -76,7 +76,7 @@ describe("Offboard", () => {
 
     await user.click(screen.getByRole("button", { name: "Offboard user" }));
     const cancelDialog = await screen.findByRole("dialog");
-    expect(within(cancelDialog).getByText(/Ada Lovelace \(ada@contoso.com\) will be offboarded/)).toBeInTheDocument();
+    expect(within(cancelDialog).getByText(/Ada Lovelace \(ada@contoso.com\) in Contoso will be offboarded/)).toBeInTheDocument();
     await user.click(within(cancelDialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(api.provisioning.terminate).not.toHaveBeenCalled();

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "../theme";
@@ -199,37 +199,65 @@ describe("Approvals", () => {
     expect(api.pendingActions.approve).toHaveBeenCalledWith("pa1");
   });
 
-  it("keeps a decided row disabled until its refresh actually lands, not just until the mutation call returns", async () => {
-    // Regression test: onDecided() used to fire without being awaited, so decideAction's busy
-    // flag (and the row's disabled buttons, and the success toast) cleared as soon as approve()
-    // returned -- before the refreshed list had loaded -- inviting a second click on an action
-    // no longer actually pending.
-    // vi.clearAllMocks() (in beforeEach) clears call history but not a previously set
-    // mockImplementation -- reassert approve()'s behavior explicitly rather than relying on
-    // whatever an earlier test in this file left configured for the same mock.
+  it("does not let an older refresh response overwrite a newer one when two rows decide close together", async () => {
+    // Regression test: each row's decision triggers its own load() call (there's no single
+    // shared in-flight guard) -- if two rows decide close together and their list() responses
+    // arrive out of order, the slower/older one must not overwrite the newer, more accurate one.
     vi.mocked(api.pendingActions.approve).mockResolvedValue(undefined);
-    let listCallCount = 0;
-    let resolveRefresh!: (items: PendingAction[]) => void;
-    vi.mocked(api.pendingActions.list).mockImplementation(() => {
-      listCallCount += 1;
-      if (listCallCount === 1) return Promise.resolve([PENDING]);
-      return new Promise((resolve) => { resolveRefresh = resolve; });
-    });
+    let refreshCallCount = 0;
+    let resolveOlderRefresh!: (items: PendingAction[]) => void;
+    let resolveNewerRefresh!: (items: PendingAction[]) => void;
+    vi.mocked(api.pendingActions.list)
+      .mockResolvedValueOnce([PENDING, PENDING2]) // initial load
+      .mockImplementation(() => {
+        refreshCallCount += 1;
+        if (refreshCallCount === 1) return new Promise((resolve) => { resolveOlderRefresh = resolve; });
+        return new Promise((resolve) => { resolveNewerRefresh = resolve; });
+      });
+
+    const user = userEvent.setup();
+    renderApprovals();
+    await screen.findByText("Contoso Ltd");
+
+    await user.click(screen.getAllByRole("button", { name: "Approve" })[0]);
+    await user.click(screen.getByRole("button", { name: "Confirm" })); // row1 decided -> older refresh issued
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Approve" })); // row2's own button
+    await user.click(screen.getByRole("button", { name: "Confirm" })); // row2 decided -> newer refresh issued
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // The newer refresh resolves first, correctly reflecting both decisions (both items are gone
+    // -- an approved/rejected/retried item drops out of the pending list entirely).
+    resolveNewerRefresh([]);
+    await screen.findByText("No pending approvals.");
+
+    // The older, stale refresh (which only reflects row1's decision) resolves after -- it must not
+    // resurrect row2 as pending again.
+    resolveOlderRefresh([PENDING2]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText("No pending approvals.")).toBeInTheDocument();
+    expect(screen.queryByText("Northwind Traders")).not.toBeInTheDocument();
+  });
+
+  it("keeps a decided row's buttons disabled even if the post-decision refresh fails", async () => {
+    // Regression test: the row's disabled state used to be driven purely by decideAction.busy,
+    // which cleared once the whole action settled regardless of outcome -- if the background list
+    // refresh failed, the row reverted to its old, seemingly-still-pending status with its buttons
+    // re-enabled, inviting a second decision on an action that had already gone through
+    // server-side. The row must stay permanently disabled once its own mutation succeeds,
+    // independent of whether the refresh afterward succeeds, fails, or races another row's.
+    vi.mocked(api.pendingActions.approve).mockResolvedValue(undefined);
+    vi.mocked(api.pendingActions.list).mockResolvedValueOnce([PENDING]);
+    vi.mocked(api.pendingActions.list).mockRejectedValueOnce(new Error("refresh failed"));
     const user = userEvent.setup();
     renderApprovals();
 
     await user.click(await screen.findByRole("button", { name: "Approve" }));
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
-    // approve() itself resolves immediately, but the post-decision refresh is deliberately left
-    // pending -- the row must stay busy/disabled and the toast must not fire through that gap.
-    await screen.findByRole("button", { name: "Approving..." });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(screen.getByRole("button", { name: "Approving..." })).toBeDisabled();
-    expect(screen.queryByText("Approved.")).not.toBeInTheDocument();
-
-    resolveRefresh([{ ...PENDING, status: "Approved", executionError: null }]);
     expect(await screen.findByText("Approved.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled());
   });
 
   it("shows an error alert when the initial load fails", async () => {

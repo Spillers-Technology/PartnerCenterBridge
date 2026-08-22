@@ -205,4 +205,39 @@ describe("NewHire", () => {
     expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
     expect(api.directory.skus).toHaveBeenCalledWith("t2");
   });
+
+  it("re-fetches a tenant's directory if it's deselected and reselected, instead of treating it as already requested", async () => {
+    // Regression test: deselecting a tenant cleared its SKU/group lists but never reset the
+    // directory-fetch gate's ref, so reselecting the same tenant later silently skipped
+    // re-fetching, leaving the lists permanently empty.
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await selectTenant(user);
+    await screen.findByLabelText("M365_BUSINESS (4/25)");
+    expect(api.directory.skus).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "-- choose --" }));
+    await selectTenant(user);
+
+    await waitFor(() => expect(api.directory.skus).toHaveBeenCalledTimes(2));
+    expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
+  });
+
+  it("offers a Retry action when the directory fails to load, and retrying re-fetches it", async () => {
+    // Regression test: a directory-load failure had no retry path for a single-tenant user --
+    // the fetch only re-triggers on a tenantId change, which a single-tenant user can't produce.
+    vi.mocked(api.directory.skus).mockRejectedValueOnce(new Error("directory boom"));
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await selectTenant(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent("directory boom");
+
+    vi.mocked(api.directory.skus).mockResolvedValue([sku]);
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
+  });
 });

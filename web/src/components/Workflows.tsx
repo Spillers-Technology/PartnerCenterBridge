@@ -138,22 +138,54 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   const diagnoseAction = useAsyncAction(async () => {
     const requestContext = currentContextRef.current;
     setRun(null);
-    const d = await api.workflows.diagnose(selected!.id, tenantId, inputs);
-    loadRuns();
-    if (currentContextRef.current === requestContext) setDiagnosis(d);
-    return d;
+    try {
+      const d = await api.workflows.diagnose(selected!.id, tenantId, inputs);
+      loadRuns();
+      // A stale successful diagnosis is read-only (no real-world side effect happened), so it's
+      // fine to just not display it -- unlike a stale fix result below, there's nothing the user
+      // needs to be told about.
+      if (currentContextRef.current === requestContext) setDiagnosis(d);
+      return d;
+    } catch (e) {
+      if (currentContextRef.current !== requestContext) {
+        // The tenant/workflow/inputs changed before this rejected -- must not surface as *this*
+        // context's error, which is what actionError below would otherwise do regardless of
+        // whether the failure actually describes what's currently on screen.
+        return null;
+      }
+      throw e;
+    }
   });
 
   const fixAction = useAsyncAction(async () => {
     const requestContext = currentContextRef.current;
-    const r = await api.workflows.remediate(selected!.id, tenantId, inputs);
-    loadRuns();
-    if (currentContextRef.current === requestContext) {
-      setRun(r);
-      if (r.postState) setDiagnosis(r.postState);
+    try {
+      const r = await api.workflows.remediate(selected!.id, tenantId, inputs);
+      loadRuns();
+      if (currentContextRef.current === requestContext) {
+        setRun(r);
+        if (r.postState) setDiagnosis(r.postState);
+        toast(r.succeeded ? "Fix applied successfully." : "Fix ran but did not fully succeed - see the step detail.", r.succeeded ? "success" : "warning");
+      } else {
+        // Unlike a stale diagnosis, this represents a real mutation that already happened --
+        // discarding it silently would hide that from the user entirely. Point at Recent runs
+        // (which loadRuns() above just refreshed) instead of claiming inline step detail that was
+        // never displayed.
+        toast(
+          r.succeeded
+            ? "A fix you started earlier finished successfully -- see Recent runs below."
+            : "A fix you started earlier did not fully succeed -- see Recent runs below.",
+          r.succeeded ? "success" : "warning"
+        );
+      }
+      return r;
+    } catch (e) {
+      if (currentContextRef.current !== requestContext) {
+        toast("A fix you started earlier failed to complete -- see Recent runs below.", "warning");
+        return null;
+      }
+      throw e;
     }
-    toast(r.succeeded ? "Fix applied successfully." : "Fix ran but did not fully succeed - see the step detail.", r.succeeded ? "success" : "warning");
-    return r;
   });
 
   const busy = diagnoseAction.busy || fixAction.busy;

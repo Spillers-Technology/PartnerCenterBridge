@@ -74,22 +74,30 @@ export function NewHire() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // On tenant change, reset every tenant-scoped field immediately -- not just the directory
-  // lists -- then prefill from the contract's provisioning template if there is one. Without this,
-  // a tenant with no provisioning template would silently keep the *previous* tenant's UPN
-  // domain/job title/department/usage-location and license/group selections, which are then
-  // submittable as-is for the wrong tenant. Person-identifying fields (name, mail nickname) are
-  // left alone -- they aren't tenant-scoped.
+  // Fetches the current tenant's directory (SKUs/groups). Re-checked once any prior in-flight
+  // fetch for a different tenant has settled, instead of a rapid switch silently dropping the
+  // request entirely -- useAsyncAction.run() is single-flight and no-ops while busy, so without
+  // this a fast A -> B switch could leave B's directory never fetched at all.
+  const requestedDirectoryTenantRef = useRef("");
+  useEffect(() => {
+    if (!tenantId || directoryAction.busy || requestedDirectoryTenantRef.current === tenantId) return;
+    requestedDirectoryTenantRef.current = tenantId;
+    setLastAction("directory");
+    void directoryAction.run(tenantId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, directoryAction.busy]);
+
+  // Kicks off the contract's provisioning-template prefill once the tenant (and the tenant list
+  // it's looked up against) are both available. The synchronous reset of tenant-scoped state lives
+  // in the Select's onChange below, not here -- an effect only runs after React commits the new
+  // tenantId, which leaves a render (and a real, if brief, window before the browser repaints)
+  // where the new tenantId is showing next to the *previous* tenant's still-unreset form/license
+  // selections, submittable as-is. Resetting synchronously in the same event handler that changes
+  // tenantId closes that window instead of racing it.
   useEffect(() => {
     currentTenantRef.current = tenantId;
-    setSkus([]);
-    setGroups([]);
     if (!tenantId) return;
-    setResult(null);
     const tenant = tenants.find((t) => t.id === tenantId);
-    setForm((f) => ({ ...f, upnDomain: tenant?.defaultDomain ?? "", jobTitle: "", department: "", usageLocation: "US" }));
-    setLicenseSkuIds(new Set());
-    setGroupIds(new Set());
     if (tenant?.contractId) {
       const requestedTenantId = tenantId;
       api.provisioning.getTemplate(tenant.contractId).then((tpl) => {
@@ -104,19 +112,6 @@ export function NewHire() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, tenants]);
-
-  // Fetches the current tenant's directory (SKUs/groups). Re-checked once any prior in-flight
-  // fetch for a different tenant has settled, instead of a rapid switch silently dropping the
-  // request entirely -- useAsyncAction.run() is single-flight and no-ops while busy, so without
-  // this a fast A -> B switch could leave B's directory never fetched at all.
-  const requestedDirectoryTenantRef = useRef("");
-  useEffect(() => {
-    if (!tenantId || directoryAction.busy || requestedDirectoryTenantRef.current === tenantId) return;
-    requestedDirectoryTenantRef.current = tenantId;
-    setLastAction("directory");
-    void directoryAction.run(tenantId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, directoryAction.busy]);
 
   const error =
     lastAction === "tenants" ? tenantsAction.error :
@@ -144,7 +139,34 @@ export function NewHire() {
       </Typography>
       <FormControl fullWidth sx={{ maxWidth: 360, mb: 2 }}>
         <InputLabel id="new-hire-tenant-label">Tenant</InputLabel>
-        <Select labelId="new-hire-tenant-label" label="Tenant" value={tenantId} onChange={(e) => setTenantId(e.target.value)} displayEmpty>
+        <Select
+          labelId="new-hire-tenant-label"
+          label="Tenant"
+          value={tenantId}
+          onChange={(e) => {
+            const id = e.target.value;
+            currentTenantRef.current = id;
+            setTenantId(id);
+            // Reset every tenant-scoped field synchronously, in the same handler that changes
+            // tenantId -- not in a useEffect, which would leave a render (and a real window
+            // before the browser repaints) showing the new tenantId next to the *previous*
+            // tenant's still-unreset, still-submittable form/license selections.
+            setSkus([]);
+            setGroups([]);
+            setResult(null);
+            const tenant = tenants.find((t) => t.id === id);
+            setForm((f) => ({ ...f, upnDomain: tenant?.defaultDomain ?? "", jobTitle: "", department: "", usageLocation: "US" }));
+            setLicenseSkuIds(new Set());
+            setGroupIds(new Set());
+            if (!id) {
+              // Deselecting back to blank must not leave the directory-fetch gate believing this
+              // tenant was already requested -- otherwise reselecting the same tenant later would
+              // silently skip re-fetching its now-cleared SKU/group lists.
+              requestedDirectoryTenantRef.current = "";
+            }
+          }}
+          displayEmpty
+        >
           <MenuItem value="">-- choose --</MenuItem>
           {tenants.map((t) => <MenuItem key={t.id} value={t.id}>{t.displayName}</MenuItem>)}
         </Select>
@@ -192,7 +214,25 @@ export function NewHire() {
           </Box>
         </Stack>
       )}
-      {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mt: 2 }}
+          action={
+            // A directory-load failure otherwise has no retry path for a single-tenant user --
+            // the fetch only re-triggers on a tenantId change, which switching tenants away and
+            // back provides incidentally for a multi-tenant user, but there's no other tenant to
+            // switch to for someone who only has the one.
+            lastAction === "directory" ? (
+              <Button color="inherit" size="small" onClick={() => void directoryAction.run(tenantId)}>
+                Retry
+              </Button>
+            ) : undefined
+          }
+        >
+          {error}
+        </Alert>
+      )}
       {result && <StepList result={result} />}
     </Box>
   );
