@@ -119,7 +119,7 @@ public class TotpController : ControllerBase
             return Unauthorized("Challenge expired or invalid. Log in again.");
 
         var user = await _db.AppUsers.FindAsync([state.UserId], ct);
-        if (user is null || !user.TotpEnabled || user.TotpSecretProtected is null)
+        if (user is null || !user.IsActive || !user.TotpEnabled || user.TotpSecretProtected is null)
         {
             _challenges.Remove(req.MfaTicket);
             return Unauthorized();
