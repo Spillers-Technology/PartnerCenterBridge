@@ -61,7 +61,8 @@ public class FakeSamTokenStore : PartnerCenterBridge.Core.Abstractions.ISamToken
     public Task SaveRefreshTokenAsync(string refreshToken, CancellationToken ct) => Task.CompletedTask;
 }
 
-public class FakeTenantAccessService : PartnerCenterBridge.Api.Auth.ITenantAccessService
+public class FakeTenantAccessService : PartnerCenterBridge.Api.Auth.ITenantAccessService,
+    PartnerCenterBridge.Api.Auth.IInstanceAccessService
 {
     private readonly bool _isSystemAdmin;
     public FakeTenantAccessService(bool isSystemAdmin) : this(isSystemAdmin, Guid.NewGuid()) { }
@@ -73,4 +74,10 @@ public class FakeTenantAccessService : PartnerCenterBridge.Api.Auth.ITenantAcces
     public bool IsSystemAdmin => _isSystemAdmin;
     public Guid? CurrentUserId { get; }
     public Task<bool> HasRoleAsync(Guid tenantId, TenantRole minimum, CancellationToken ct) => Task.FromResult(true);
+    public Task<IReadOnlyList<Guid>?> GetAuthorizedTenantIdsAsync(TenantRole minimum, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<Guid>?>(null);
+    public Task<InstanceRole> GetRolesAsync(CancellationToken ct) =>
+        Task.FromResult(_isSystemAdmin ? InstanceRole.Administrator : InstanceRole.None);
+    public Task<bool> HasPermissionAsync(InstancePermission permission, CancellationToken ct) =>
+        Task.FromResult(_isSystemAdmin);
 }

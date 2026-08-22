@@ -20,11 +20,13 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
+import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
 import { createPasskey, type RegisterOptionsWire } from "../webauthn";
 import type { McpTokenInfo, MeProfile, PasskeyInfo } from "../types";
+import { InstanceAccessCard } from "./InstanceAccessCard";
 
 type PasskeysLastAction = "addPasskey" | "removePasskey" | null;
 type TotpLastAction = "startTotp" | "confirmTotp" | "disableTotp" | null;
@@ -245,8 +247,11 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
         Security
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Signed in as {me.displayName} ({me.email}){me.isSystemAdmin && " -- system admin"}
+        Signed in as {me.displayName} ({me.email})
+        {me.instanceRoles?.length ? ` -- ${me.instanceRoles.join(", ")}` : ""}
       </Typography>
+
+      {hasInstancePermission(me, "instance.roles.manage") && <InstanceAccessCard me={me} />}
 
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>

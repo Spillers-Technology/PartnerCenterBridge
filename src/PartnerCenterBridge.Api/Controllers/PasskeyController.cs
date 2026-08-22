@@ -120,6 +120,7 @@ public class PasskeyController : ControllerBase
         var credential = await _db.PasskeyCredentials.Include(c => c.User)
             .FirstOrDefaultAsync(c => c.CredentialId == req.AssertionResponse.RawId, ct);
         if (credential?.User is null) return Unauthorized("Unrecognized passkey.");
+        if (!credential.User.IsActive) return Unauthorized("Unrecognized passkey.");
 
         var result = await _fido2.MakeAssertionAsync(new MakeAssertionParams
         {

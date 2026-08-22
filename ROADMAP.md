@@ -23,15 +23,6 @@ draft or show-once output) was open. Also surfaced by the usability workstream's
 scoped out of that pass as architectural rather than a friction fix. Would need routing wired
 through `App.tsx`'s tab state and each screen's own local state reconciled with URL params.
 
-## RBAC: real roles with delegation
-
-Today's only privileged flag is `ITenantAccessService.IsSystemAdmin`, all-or-nothing and not
-tenant-scoped (see `CLAUDE.md`'s own standing warning about not letting it bypass per-tenant
-`TenantAccessGrant` checks). As more admin-gated actions accumulate (App Templates, and now the
-Contracts desired-app editor), worth a real review of what roles actually make intuitive sense here
-and whether delegation below "full system admin" is worth modeling properly. Flagged by the user
-as something to do before the next version release, not urgent enough to block current work.
-
 ## Design language: "quest-driven" playful nudges
 
 The Contracts desired-app editor's disabled-template state (a package-less app template, hidden by

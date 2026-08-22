@@ -17,11 +17,14 @@ public class TenantsController : ControllerBase
 {
     private readonly BridgeDbContext _db;
     private readonly ITenantAccessService _access;
+    private readonly IInstanceAccessService _instanceAccess;
 
-    public TenantsController(BridgeDbContext db, ITenantAccessService access)
+    public TenantsController(
+        BridgeDbContext db, ITenantAccessService access, IInstanceAccessService instanceAccess)
     {
         _db = db;
         _access = access;
+        _instanceAccess = instanceAccess;
     }
 
     /// <summary>
@@ -34,13 +37,9 @@ public class TenantsController : ControllerBase
     {
         var query = _db.Tenants.AsNoTracking().AsQueryable();
 
-        if (_access.CurrentUserId is { } userId)
-        {
-            var allowed = await _db.TenantAccessGrants.AsNoTracking()
-                .Where(g => g.UserId == userId && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
-                .Select(g => g.TenantId).ToListAsync(ct);
+        var allowed = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null)
             query = query.Where(t => allowed.Contains(t.Id));
-        } // else: OIDC/dev-auth caller, unrestricted (unchanged operator-plane behavior).
 
         return (await query.OrderBy(t => t.DisplayName).ToListAsync(ct)).Select(TenantDto.From).ToList();
     }
@@ -54,6 +53,7 @@ public class TenantsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<TenantDto>> Create(CreateTenantRequest req, CancellationToken ct)
     {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageTenantRegistry, ct)) return Forbid();
         if (string.IsNullOrWhiteSpace(req.TenantId) || string.IsNullOrWhiteSpace(req.DisplayName))
             return BadRequest("tenantId and displayName are required.");
         if (await _db.Tenants.AnyAsync(t => t.TenantId == req.TenantId, ct))
@@ -82,6 +82,7 @@ public class TenantsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TenantDto>>> Sync(
         [FromServices] PartnerCenterClient partnerCenter, CancellationToken ct)
     {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageTenantRegistry, ct)) return Forbid();
         IReadOnlyList<CustomerSummary> customers;
         try { customers = await partnerCenter.ListCustomersAsync(ct); }
         catch (InvalidOperationException e) { return BadRequest(e.Message); }

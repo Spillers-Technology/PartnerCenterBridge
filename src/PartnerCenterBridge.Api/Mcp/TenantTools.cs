@@ -12,7 +12,9 @@ public class TenantTools
 {
     private readonly TenantsController _tenants;
 
-    public TenantTools(BridgeDbContext db, ITenantAccessService access) => _tenants = new TenantsController(db, access);
+    public TenantTools(
+        BridgeDbContext db, ITenantAccessService access, IInstanceAccessService instanceAccess) =>
+        _tenants = new TenantsController(db, access, instanceAccess);
 
     [McpServerTool(ReadOnly = true, Destructive = false), Description("Lists customer tenants the caller has access to, with GDAP delegation status.")]
     public async Task<IReadOnlyList<TenantDto>> ListTenants(CancellationToken ct) => await _tenants.List(ct);

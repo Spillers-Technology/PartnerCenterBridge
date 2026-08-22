@@ -186,6 +186,8 @@ public class WorkflowToolsTests
         public bool IsSystemAdmin => false;
         public Guid? CurrentUserId { get; }
         public Task<bool> HasRoleAsync(Guid tenantId, TenantRole minimum, CancellationToken ct) => Task.FromResult(_hasRole);
+        public Task<IReadOnlyList<Guid>?> GetAuthorizedTenantIdsAsync(TenantRole minimum, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<Guid>?>(null);
     }
 
     private sealed class NoOpRunNotifier : IRunNotifier

@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
+using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Data;
 
@@ -14,12 +16,21 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class ProvisioningTemplatesController : ControllerBase
 {
     private readonly BridgeDbContext _db;
+    private readonly ITenantAccessService _tenantAccess;
+    private readonly IInstanceAccessService _instanceAccess;
 
-    public ProvisioningTemplatesController(BridgeDbContext db) => _db = db;
+    public ProvisioningTemplatesController(
+        BridgeDbContext db, ITenantAccessService tenantAccess, IInstanceAccessService instanceAccess)
+    {
+        _db = db;
+        _tenantAccess = tenantAccess;
+        _instanceAccess = instanceAccess;
+    }
 
     [HttpGet]
     public async Task<ActionResult<ProvisioningTemplateDto>> Get(Guid contractId, CancellationToken ct)
     {
+        if (!await CanReadAsync(contractId, ct)) return Forbid();
         var template = await _db.ProvisioningTemplates.FirstOrDefaultAsync(t => t.ContractId == contractId, ct);
         return template is null ? NoContent() : Ok(ProvisioningTemplateDto.From(template));
     }
@@ -28,6 +39,7 @@ public class ProvisioningTemplatesController : ControllerBase
     public async Task<ActionResult<ProvisioningTemplateDto>> Upsert(
         Guid contractId, UpsertProvisioningTemplateRequest req, CancellationToken ct)
     {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
         if (!await _db.Contracts.AnyAsync(c => c.Id == contractId, ct)) return NotFound("Contract not found.");
 
         var template = await _db.ProvisioningTemplates.FirstOrDefaultAsync(t => t.ContractId == contractId, ct);
@@ -46,5 +58,14 @@ public class ProvisioningTemplatesController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
         return Ok(ProvisioningTemplateDto.From(template));
+    }
+
+    private async Task<bool> CanReadAsync(Guid contractId, CancellationToken ct)
+    {
+        if (await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return true;
+        var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is null) return true;
+        return await _db.Tenants.AsNoTracking()
+            .AnyAsync(tenant => tenant.ContractId == contractId && allowed.Contains(tenant.Id), ct);
     }
 }

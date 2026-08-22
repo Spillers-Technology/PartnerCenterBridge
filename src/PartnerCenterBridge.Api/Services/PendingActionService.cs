@@ -162,12 +162,12 @@ public class PendingActionService
     {
         var now = DateTimeOffset.UtcNow;
         var expiredAction = await UpdateAndAuditAsync(id,
-            () => _db.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE ""PendingActions""
-                SET ""Status"" = {(int)PendingActionStatus.Expired}
-                WHERE ""Id"" = {id}
-                  AND ""Status"" = {(int)PendingActionStatus.Pending}
-                  AND ""ExpiresAt"" < {now}", CancellationToken.None),
+            () => _db.PendingActions
+                .Where(action => action.Id == id
+                    && action.Status == PendingActionStatus.Pending
+                    && action.ExpiresAt < now)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(action => action.Status, PendingActionStatus.Expired), CancellationToken.None),
             "expired", CancellationToken.None);
 
         return expiredAction ?? await _db.PendingActions.AsNoTracking()
@@ -202,14 +202,14 @@ public class PendingActionService
         Guid decidedByUserId,
         DateTimeOffset decidedAt,
         CancellationToken ct) =>
-        _db.Database.ExecuteSqlInterpolatedAsync($@"
-            UPDATE ""PendingActions""
-            SET ""Status"" = {(int)claimedStatus},
-                ""DecidedByUserId"" = {decidedByUserId},
-                ""DecidedAt"" = {decidedAt}
-            WHERE ""Id"" = {id}
-              AND ""Status"" = {(int)PendingActionStatus.Pending}
-              AND ""ExpiresAt"" >= {decidedAt}", ct);
+        _db.PendingActions
+            .Where(action => action.Id == id
+                && action.Status == PendingActionStatus.Pending
+                && action.ExpiresAt >= decidedAt)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(action => action.Status, claimedStatus)
+                .SetProperty(action => action.DecidedByUserId, decidedByUserId)
+                .SetProperty(action => action.DecidedAt, decidedAt), ct);
 
     private async Task AuditTransitionAsync(PendingAction action, string detail)
     {

@@ -73,13 +73,11 @@ public class WorkflowsController : ControllerBase
         if (tenantId is not null) query = query.Where(r => r.TenantId == tenantId);
         if (!string.IsNullOrEmpty(workflowId)) query = query.Where(r => r.WorkflowId == workflowId);
 
-        if (tenantId is null && !_access.IsSystemAdmin)
+        if (tenantId is null)
         {
-            var allowed = await _db.TenantAccessGrants.AsNoTracking()
-                .Where(g => g.UserId == _access.CurrentUserId
-                         && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
-                .Select(g => g.TenantId).ToListAsync(ct);
-            query = query.Where(r => allowed.Contains(r.TenantId));
+            var allowed = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+            if (allowed is not null)
+                query = query.Where(r => allowed.Contains(r.TenantId));
         }
 
         return Ok((await query

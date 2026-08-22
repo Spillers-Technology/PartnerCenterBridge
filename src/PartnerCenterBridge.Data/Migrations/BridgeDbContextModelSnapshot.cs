@@ -86,6 +86,10 @@ namespace PartnerCenterBridge.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<long>("AuthorizationVersion")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -100,10 +104,10 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Property<int>("FailedLoginCount")
                         .HasColumnType("integer");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean");
+                    b.Property<int>("InstanceRoles")
+                        .HasColumnType("integer");
 
-                    b.Property<bool>("IsSystemAdmin")
+                    b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
@@ -314,6 +318,26 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.HasIndex("TenantId", "AppTemplateId");
 
                     b.ToTable("Deployments");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.InstanceAuthorizationState", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("InstanceAuthorizationStates");
+
+                    b.HasData(
+                        new
+                        {
+                            Id = 1,
+                            Revision = 1L
+                        });
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.McpToken", b =>

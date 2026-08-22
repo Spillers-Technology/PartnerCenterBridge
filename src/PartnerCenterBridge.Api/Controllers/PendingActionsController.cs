@@ -65,9 +65,8 @@ public class PendingActionsController : ControllerBase
     [HttpPost("{id:guid}/approve")]
     public async Task<IActionResult> Approve(Guid id, CancellationToken ct)
     {
-        var action = await _db.PendingActions.FindAsync([id], ct);
+        var action = await FindVisibleAsync(id, TenantRole.Operator, ct);
         if (action is null) return NotFound();
-        if (!await _access.HasRoleAsync(action.TenantId, TenantRole.Operator, ct)) return Forbid();
 
         var executor = _executors.FirstOrDefault(e => e.ActionType == action.ActionType);
         if (executor is null) return StatusCode(500, $"No executor registered for '{action.ActionType}'.");
@@ -86,9 +85,8 @@ public class PendingActionsController : ControllerBase
     [HttpPost("{id:guid}/reject")]
     public async Task<IActionResult> Reject(Guid id, CancellationToken ct)
     {
-        var action = await _db.PendingActions.FindAsync([id], ct);
+        var action = await FindVisibleAsync(id, TenantRole.Operator, ct);
         if (action is null) return NotFound();
-        if (!await _access.HasRoleAsync(action.TenantId, TenantRole.Operator, ct)) return Forbid();
 
         try { await _pending.RejectAsync(id, _access.CurrentUserId ?? Guid.Empty, ct); }
         catch (InvalidOperationException ex) { return Conflict(ex.Message); }
@@ -98,9 +96,8 @@ public class PendingActionsController : ControllerBase
     [HttpPost("{id:guid}/retry")]
     public async Task<IActionResult> Retry(Guid id, CancellationToken ct)
     {
-        var action = await _db.PendingActions.FindAsync([id], ct);
+        var action = await FindVisibleAsync(id, TenantRole.Operator, ct);
         if (action is null) return NotFound();
-        if (!await _access.HasRoleAsync(action.TenantId, TenantRole.Operator, ct)) return Forbid();
 
         var executor = _executors.FirstOrDefault(e => e.ActionType == action.ActionType);
         if (executor is null) return StatusCode(500, $"No executor registered for '{action.ActionType}'.");
@@ -114,5 +111,14 @@ public class PendingActionsController : ControllerBase
             return Conflict(ex.Message);
         }
         return NoContent();
+    }
+
+    private async Task<PendingAction?> FindVisibleAsync(Guid id, TenantRole minimum, CancellationToken ct)
+    {
+        var query = _db.PendingActions.Where(action => action.Id == id);
+        var allowed = await _access.GetAuthorizedTenantIdsAsync(minimum, ct);
+        if (allowed is not null)
+            query = query.Where(action => allowed.Contains(action.TenantId));
+        return await query.SingleOrDefaultAsync(ct);
     }
 }

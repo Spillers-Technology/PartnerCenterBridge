@@ -93,6 +93,7 @@ builder.Services.AddSingleton(new AuthModeInfo(authMode));
 builder.Services.Configure<LocalAuthOptions>(cfg.GetSection(LocalAuthOptions.SectionName));
 builder.Services.AddSingleton<LocalTokenService>();
 builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
+builder.Services.AddScoped<IInstanceAccessService, InstanceAccessService>();
 builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.Stateless = true)
     .WithToolsFromAssembly();
@@ -192,6 +193,14 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
     db.Database.Migrate();
+    if (authMode == AuthModeInfo.Local
+        && await db.AppUsers.AnyAsync()
+        && !await db.AppUsers.AnyAsync(user => user.IsActive
+            && (user.InstanceRoles & PartnerCenterBridge.Core.InstanceRole.Administrator) != 0))
+    {
+        throw new InvalidOperationException(
+            "Local authentication has registered users but no active Administrator. Restore an Administrator before starting the service.");
+    }
 }
 
 // CLI mode: `dotnet run -- bootstrap-sam` runs the interactive device-code flow and exits.

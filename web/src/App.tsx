@@ -70,6 +70,15 @@ export function App() {
 
   const onAuthenticated = (r: AuthResponse) => setMe(r.user);
   const refreshMe = () => api.auth.me().then(setMe).catch(() => {});
+
+  useEffect(() => {
+    if (authMode !== "Local" || !me) return;
+    const refreshOnFocus = () => { void refreshMe(); };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+    // Refresh against current database roles/grants whenever a Local operator returns to the app.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authMode, me?.id]);
   const signOutLocal = async () => {
     try { await api.auth.logout(); } catch { /* best-effort */ }
     clearLocalToken();

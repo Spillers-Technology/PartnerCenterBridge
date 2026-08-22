@@ -71,6 +71,30 @@ public enum TenantRole
 }
 
 /// <summary>
+/// Fixed instance-wide roles for Local-mode accounts. These never grant tenant access; tenant
+/// authority remains exclusively in <see cref="Entities.TenantAccessGrant"/>.
+/// </summary>
+[Flags]
+public enum InstanceRole
+{
+    None = 0,
+    Administrator = 1,
+    CatalogManager = 2,
+    CredentialManager = 4,
+    AutomationPolicyManager = 8
+}
+
+/// <summary>Reviewable, code-defined instance permissions composed by <see cref="InstanceRole"/>.</summary>
+public enum InstancePermission
+{
+    ManageRoles,
+    ManageCatalog,
+    ManageSam,
+    ManageMcpPolicy,
+    ManageTenantRegistry
+}
+
+/// <summary>
 /// How a tenant's mutating MCP tool calls are gated. <see cref="Queue"/> is the default for every
 /// tenant and the safe choice: a mutation stages an <see cref="Entities.PendingAction"/> a human
 /// must approve in the SPA instead of executing immediately. <see cref="ClientTrust"/> executes
@@ -112,5 +136,9 @@ public enum AuditEventType
     RecoveryCodeUsed,
     PasskeyRegistered,
     PasskeyRemoved,
-    PasskeyLoginSucceeded
+    PasskeyLoginSucceeded,
+    BootstrapAdministratorAssigned,
+    InstanceRolesChanged,
+    SamCredentialRotated,
+    McpApprovalModeChanged
 }

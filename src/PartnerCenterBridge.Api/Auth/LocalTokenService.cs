@@ -18,6 +18,7 @@ public class LocalTokenService
 {
     /// <summary>Claim carrying the local <see cref="AppUser.Id"/>, read back by <see cref="HttpContextCurrentActor"/>.</summary>
     public const string UserIdClaim = "pcb:userid";
+    /// <summary>Legacy compatibility constant. New tokens do not emit it and authorization ignores it.</summary>
     public const string SystemAdminClaim = "pcb:sysadmin";
     public const string Issuer = "partnercenterbridge-local";
     public const string Audience = "partnercenterbridge";
@@ -36,8 +37,7 @@ public class LocalTokenService
             new Claim(ClaimTypes.Name, user.DisplayName),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim(UserIdClaim, user.Id.ToString()),
-            new Claim(SystemAdminClaim, user.IsSystemAdmin ? "true" : "false")
+            new Claim(UserIdClaim, user.Id.ToString())
         };
 
         var credentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256);
@@ -64,7 +64,6 @@ public class LocalTokenService
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(UserIdClaim, user.Id.ToString()),
-            new Claim(SystemAdminClaim, user.IsSystemAdmin ? "true" : "false"),
             new Claim(JwtRegisteredClaimNames.Jti, token.Id.ToString())
         };
 

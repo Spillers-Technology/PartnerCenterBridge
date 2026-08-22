@@ -182,6 +182,13 @@ export interface PendingAction {
 export type AuthMode = "Oidc" | "Local" | "Dev";
 
 export type TenantRole = "Viewer" | "Operator" | "Owner";
+export type InstanceRole = "Administrator" | "CatalogManager" | "CredentialManager" | "AutomationPolicyManager";
+export type InstancePermission =
+  | "instance.roles.manage"
+  | "instance.catalog.manage"
+  | "instance.sam.manage"
+  | "instance.mcp-policy.manage"
+  | "instance.tenant-registry.manage";
 /** Which tenants the current user has access to (used in MeProfile). */
 export interface TenantAccess { tenantId: string; tenantName: string; role: TenantRole }
 /** Who has access to a given tenant (used by the share/revoke panel) -- the other direction from TenantAccess. */
@@ -194,6 +201,18 @@ export interface MeProfile {
   isSystemAdmin: boolean;
   totpEnabled: boolean;
   tenantAccess: TenantAccess[];
+  instanceRoles?: InstanceRole[];
+  instancePermissions?: InstancePermission[];
+  authorizationVersion?: number;
+}
+
+export interface InstanceUser {
+  id: string;
+  email: string;
+  displayName: string;
+  isActive: boolean;
+  roles: InstanceRole[];
+  authorizationVersion: number;
 }
 
 export interface AuthResponse { accessToken: string; user: MeProfile }

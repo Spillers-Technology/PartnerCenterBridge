@@ -17,6 +17,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
@@ -240,6 +241,8 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
   // so there's nothing to share -- the button doesn't apply to them.
   const roleFor = (tenantId: string) => me?.tenantAccess.find((a) => a.tenantId === tenantId)?.role;
   const canShare = (tenantId: string) => me !== null && roleFor(tenantId) === "Owner";
+  const canAssign = (tenantId: string) => me === null || roleFor(tenantId) === "Owner";
+  const canManageRegistry = hasInstancePermission(me, "instance.tenant-registry.manage");
 
   // See SharePanel's identical comment: error is scoped to the most recently attempted action so
   // an older failure from an unrelated action can't mask or outlive a newer one.
@@ -256,16 +259,18 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
         <Typography variant="h5" component="h2">
           Tenants
         </Typography>
-        <Button
-          variant="contained"
-          onClick={() => {
-            setLastAction("sync");
-            void syncAction.run();
-          }}
-          disabled={syncAction.busy}
-        >
-          {syncAction.busy ? "Syncing..." : "Sync from Partner Center"}
-        </Button>
+        {canManageRegistry && (
+          <Button
+            variant="contained"
+            onClick={() => {
+              setLastAction("sync");
+              void syncAction.run();
+            }}
+            disabled={syncAction.busy}
+          >
+            {syncAction.busy ? "Syncing..." : "Sync from Partner Center"}
+          </Button>
+        )}
       </Stack>
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -305,7 +310,7 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
                           setLastAction("assign");
                           void assignAction.run(t.id, e.target.value);
                         }}
-                        disabled={assignAction.busy}
+                        disabled={assignAction.busy || !canAssign(t.id)}
                         displayEmpty
                       >
                         <MenuItem value="">-- none --</MenuItem>
@@ -332,7 +337,9 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
               <TableRow>
                 <TableCell colSpan={5}>
                   <Typography variant="body2" color="text.secondary">
-                    No tenants yet. Sync from Partner Center or add one below.
+                    {canManageRegistry
+                      ? "No tenants yet. Sync from Partner Center or add one below."
+                      : "No tenants have been shared with you yet."}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -341,7 +348,7 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
         </Table>
       </TableContainer>
 
-      <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+      {canManageRegistry && <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
         <Typography component="legend" variant="subtitle1">
           Add a tenant
         </Typography>
@@ -381,7 +388,7 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
             {addTenantAction.busy ? "Adding..." : "Add tenant"}
           </Button>
         </Stack>
-      </Box>
+      </Box>}
     </Box>
   );
 }

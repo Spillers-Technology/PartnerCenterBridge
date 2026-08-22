@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PartnerCenterBridge.Api.Auth;
+using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 
@@ -13,16 +15,19 @@ public class ExchangeController : ControllerBase
 {
     private readonly BridgeDbContext _db;
     private readonly IExchangeOnlineService _exchange;
+    private readonly ITenantAccessService _access;
 
-    public ExchangeController(BridgeDbContext db, IExchangeOnlineService exchange)
+    public ExchangeController(BridgeDbContext db, IExchangeOnlineService exchange, ITenantAccessService access)
     {
         _db = db;
         _exchange = exchange;
+        _access = access;
     }
 
     [HttpGet("mailbox/{identity}")]
     public async Task<ActionResult<MailboxInfo>> Mailbox(Guid tenantId, string identity, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Viewer, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([tenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         try
@@ -36,6 +41,7 @@ public class ExchangeController : ControllerBase
     [HttpGet("shared")]
     public async Task<ActionResult<IReadOnlyList<MailboxInfo>>> Shared(Guid tenantId, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Viewer, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([tenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         try { return Ok(await _exchange.ListSharedMailboxesAsync(tenant, ct)); }
@@ -46,6 +52,7 @@ public class ExchangeController : ControllerBase
     [HttpGet("archive")]
     public async Task<ActionResult<ArchiveState>> ArchiveState(Guid tenantId, [FromQuery] string identity, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Viewer, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([tenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");
@@ -62,6 +69,7 @@ public class ExchangeController : ControllerBase
     public async Task<ActionResult<ArchiveRemediationResult>> RemediateArchive(
         Guid tenantId, [FromQuery] string identity, [FromBody] ArchiveRemediationOptions? options, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Operator, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([tenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");
@@ -73,6 +81,7 @@ public class ExchangeController : ControllerBase
     [HttpPost("archive/nudge")]
     public async Task<ActionResult<ArchiveRemediationResult>> NudgeArchive(Guid tenantId, [FromQuery] string identity, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Operator, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([tenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         if (string.IsNullOrWhiteSpace(identity)) return BadRequest("identity is required.");

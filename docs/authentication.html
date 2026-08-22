@@ -96,21 +96,34 @@ controllers use the same <code>[Authorize]</code> attribute and the same
   it.
 </p>
 <div class="callout">
-  There is no admin flag that bypasses this. <code>IsSystemAdmin</code> (granted automatically to
-  the very first account on a fresh database) gates exactly one thing: the SAM refresh-token
-  admin endpoints (<code>/api/admin/sam/*</code>) -- instance-level infrastructure, not tenant
-  access. Every tenant permission, for every account including the system admin's, comes from an
-  explicit, visible grant.
+  There is no instance role that bypasses tenant access. The first account becomes
+  <strong>Administrator</strong>, but every tenant permission for every account -- including an
+  Administrator -- still comes from an explicit, visible Viewer/Operator/Owner grant.
 </div>
 
+<h3>Delegating instance administration</h3>
+<p>
+  Instance roles govern shared bridge configuration, not customer data. An Administrator can use
+  the Security screen's <strong>Instance access</strong> card to combine the narrow delegated roles
+  below. Role changes take effect on the next request even for an already-issued login token or MCP
+  PAT; roles are resolved from the database rather than trusted from stale token claims.
+</p>
+<table>
+  <tr><th>Instance role</th><th>Can do</th></tr>
+  <tr><td><span class="badge ok">Administrator</span></td><td>Delegate instance roles and onboard/sync tenants, plus every delegated permission below.</td></tr>
+  <tr><td><span class="badge accent">Catalog manager</span></td><td>Author app templates and packages, contracts and desired apps, and provisioning defaults.</td></tr>
+  <tr><td><span class="badge">Credential manager</span></td><td>View and rotate the shared Secure Application Model credential.</td></tr>
+  <tr><td><span class="badge warn">Automation policy manager</span></td><td>Change a tenant's MCP approval policy between Queue and ClientTrust without gaining access to that tenant's data.</td></tr>
+</table>
+
 <h3>Owning a tenant</h3>
-<p>You become a tenant's <strong>Owner</strong> automatically, the moment you bring it into the
-system, two ways:</p>
+<p>An Administrator becomes a tenant's <strong>Owner</strong> automatically when bringing it into
+the system, two ways:</p>
 <ul>
   <li><strong>Add it directly</strong> -- <code>POST /api/tenants</code> (the "Add a tenant" form
       on the Tenants screen) if you already have the GDAP relationship and just want to start
       automating against it.</li>
-  <li><strong>Sync from Partner Center</strong> -- running a sync grants you Owner on any
+  <li><strong>Sync from Partner Center</strong> -- running an Administrator-only sync grants you Owner on any
       <em>newly discovered</em> tenant. A tenant the system already knew about just gets its name
       and domain refreshed; ownership is untouched.</li>
 </ul>
@@ -165,9 +178,9 @@ roaming ones (security keys) alike.</p>
   A fourth credential type, layered on top of Local mode rather than a fourth <code>Auth:Mode</code>:
   a <strong>personal access token (PAT)</strong> is a long-lived, individually revocable JWT for
   machine callers -- specifically, an MCP client that can't do an interactive browser login. Mint
-  one from the Security screen's "MCP access tokens" panel; it carries the same identity and
-  tenant-access as your account, so revoke it immediately if the client using it is decommissioned
-  or compromised.
+  one from the Security screen's "MCP access tokens" panel; it carries your identity while current
+  roles, tenant grants, account status, and token revocation are checked from the database on every
+  request. Revoke it immediately if the client using it is decommissioned or compromised.
 </p>
 <div class="callout">
   A PAT is confined to the MCP transport (<code>/mcp</code>) only -- dedicated middleware rejects

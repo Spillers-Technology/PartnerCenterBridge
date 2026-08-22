@@ -28,7 +28,7 @@ public class PendingActionToolsTests
     }
 
     [Fact]
-    public async Task CheckPendingAction_rejects_a_caller_without_viewer_access()
+    public async Task CheckPendingAction_hides_an_action_from_a_caller_without_viewer_access()
     {
         using var db = new TestDb();
         var tenant = new Tenant { TenantId = "tenant", DisplayName = "Tenant" };
@@ -40,11 +40,8 @@ public class PendingActionToolsTests
         var access = new ToolAccessService(hasRole: false);
         var tools = new PendingActionTools(db.Context, access, pending);
 
-        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
             tools.CheckPendingAction(action.Id, CancellationToken.None));
-
-        Assert.Equal(TenantRole.Viewer, access.LastMinimumRole);
-        Assert.Equal(tenant.Id, access.LastTenantId);
     }
 
     private sealed class ToolAccessService : ITenantAccessService
@@ -64,5 +61,8 @@ public class PendingActionToolsTests
             LastMinimumRole = minimum;
             return Task.FromResult(_hasRole);
         }
+
+        public Task<IReadOnlyList<Guid>?> GetAuthorizedTenantIdsAsync(TenantRole minimum, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<Guid>?>(_hasRole ? null : []);
     }
 }

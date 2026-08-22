@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
@@ -25,11 +26,13 @@ public class SearchController : ControllerBase
 
     private readonly BridgeDbContext _db;
     private readonly IServiceScopeFactory _scopes;
+    private readonly ITenantAccessService _access;
 
-    public SearchController(BridgeDbContext db, IServiceScopeFactory scopes)
+    public SearchController(BridgeDbContext db, IServiceScopeFactory scopes, ITenantAccessService access)
     {
         _db = db;
         _scopes = scopes;
+        _access = access;
     }
 
     [HttpGet("users")]
@@ -38,10 +41,13 @@ public class SearchController : ControllerBase
         var query = (q ?? "").Trim();
         if (query.Length < 3) return BadRequest("Search needs at least 3 characters.");
 
-        var tenants = await _db.Tenants.AsNoTracking()
+        var allowed = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        var tenantQuery = _db.Tenants.AsNoTracking()
             .Where(t => t.Status == TenantStatus.Active)
-            .OrderBy(t => t.DisplayName)
-            .ToListAsync(ct);
+            .AsQueryable();
+        if (allowed is not null)
+            tenantQuery = tenantQuery.Where(tenant => allowed.Contains(tenant.Id));
+        var tenants = await tenantQuery.OrderBy(t => t.DisplayName).ToListAsync(ct);
 
         var hits = new List<GlobalUserHit>();
         var errors = new List<TenantSearchError>();

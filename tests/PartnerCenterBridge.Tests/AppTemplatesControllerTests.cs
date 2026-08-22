@@ -8,6 +8,12 @@ namespace PartnerCenterBridge.Tests;
 
 public class AppTemplatesControllerTests
 {
+    private static AppTemplatesController CreateController(TestDb db, bool isSystemAdmin)
+    {
+        var access = new FakeTenantAccessService(isSystemAdmin);
+        return new AppTemplatesController(db.Context, access, access);
+    }
+
     private static AppTemplate MakeTemplate() => new()
     {
         DisplayName = "Original Name",
@@ -21,7 +27,7 @@ public class AppTemplatesControllerTests
     public async Task Create_rejects_a_non_system_admin_caller()
     {
         using var db = new TestDb();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
         var request = new CreateAppTemplateRequest(
             "Defender", null, null, "install.exe", "uninstall.exe", null, null, null);
 
@@ -38,7 +44,7 @@ public class AppTemplatesControllerTests
         var contract = new Contract { Name = "Contoso baseline" };
         db.Context.Contracts.Add(contract);
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
         var request = new CreateAppTemplateRequest(
             "Defender", null, null, "install.exe", "uninstall.exe", contract.Id, null, null);
 
@@ -57,7 +63,7 @@ public class AppTemplatesControllerTests
     public async Task UploadPackage_rejects_a_non_system_admin_caller_before_reading_the_file()
     {
         using var db = new TestDb();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
 
         var result = await controller.UploadPackage(
             Guid.NewGuid(), null!, null!, null!, CancellationToken.None);
@@ -73,7 +79,7 @@ public class AppTemplatesControllerTests
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
         var originalUpdatedAt = template.UpdatedAt;
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.Update(template.Id, new UpdateAppTemplateRequest(
             "New Name", "New description", "New Publisher", "new-install.exe", "new-uninstall.exe"), CancellationToken.None);
@@ -100,7 +106,7 @@ public class AppTemplatesControllerTests
         template.ContentVersion = 3;
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         await controller.Update(template.Id, new UpdateAppTemplateRequest(
             "New Name", null, null, "install.exe", "uninstall.exe"), CancellationToken.None);
@@ -117,7 +123,7 @@ public class AppTemplatesControllerTests
         var template = MakeTemplate();
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
 
         var result = await controller.Update(template.Id, new UpdateAppTemplateRequest(
             "New Name", null, null, "install.exe", "uninstall.exe"), CancellationToken.None);
@@ -132,7 +138,7 @@ public class AppTemplatesControllerTests
     public async Task Update_returns_NotFound_for_an_unknown_id()
     {
         using var db = new TestDb();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.Update(Guid.NewGuid(), new UpdateAppTemplateRequest(
             "New Name", null, null, "install.exe", "uninstall.exe"), CancellationToken.None);
@@ -147,7 +153,7 @@ public class AppTemplatesControllerTests
         var template = MakeTemplate();
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.Delete(template.Id, CancellationToken.None);
 
@@ -167,7 +173,7 @@ public class AppTemplatesControllerTests
         await db.Context.SaveChangesAsync();
         db.Context.Deployments.Add(new Deployment { AppTemplateId = template.Id, TenantId = tenant.Id });
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.Delete(template.Id, CancellationToken.None);
 
@@ -183,7 +189,7 @@ public class AppTemplatesControllerTests
         var template = MakeTemplate();
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
 
         var result = await controller.Delete(template.Id, CancellationToken.None);
 

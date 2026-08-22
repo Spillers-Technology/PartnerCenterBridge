@@ -8,6 +8,12 @@ namespace PartnerCenterBridge.Tests;
 
 public class ContractsControllerTests
 {
+    private static ContractsController CreateController(TestDb db, bool isSystemAdmin)
+    {
+        var access = new FakeTenantAccessService(isSystemAdmin);
+        return new ContractsController(db.Context, access, access);
+    }
+
     private static Contract MakeContract() => new() { Name = "Contoso baseline" };
     private static AppTemplate MakeTemplate(string name = "Defender") => new()
     {
@@ -38,7 +44,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -62,7 +68,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -81,7 +87,7 @@ public class ContractsControllerTests
         firstContract.DesiredApps.Add(template);
         db.Context.Contracts.AddRange(firstContract, secondContract);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(secondContract.Id, template.Id, CancellationToken.None);
 
@@ -104,7 +110,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
 
         var result = await controller.AddDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -121,7 +127,7 @@ public class ContractsControllerTests
         var template = MakeTemplate();
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(Guid.NewGuid(), template.Id, CancellationToken.None);
 
@@ -135,7 +141,7 @@ public class ContractsControllerTests
         var contract = MakeContract();
         db.Context.Contracts.Add(contract);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(contract.Id, Guid.NewGuid(), CancellationToken.None);
 
@@ -152,7 +158,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.AddDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -173,7 +179,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.RemoveDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -196,7 +202,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.RemoveDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -215,7 +221,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var controller = CreateController(db, isSystemAdmin: false);
 
         var result = await controller.RemoveDesiredApp(contract.Id, template.Id, CancellationToken.None);
 
@@ -229,7 +235,7 @@ public class ContractsControllerTests
     public async Task RemoveDesiredApp_returns_NotFound_for_an_unknown_contract()
     {
         using var db = new TestDb();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var result = await controller.RemoveDesiredApp(Guid.NewGuid(), Guid.NewGuid(), CancellationToken.None);
 
@@ -246,7 +252,7 @@ public class ContractsControllerTests
         db.Context.Contracts.Add(contract);
         db.Context.AppTemplates.Add(template);
         await db.Context.SaveChangesAsync();
-        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var controller = CreateController(db, isSystemAdmin: true);
 
         var list = await controller.List(CancellationToken.None);
 

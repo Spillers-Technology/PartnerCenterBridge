@@ -227,7 +227,22 @@ const meProfile = {
   id: "u1", email: "jspillers@example.com", displayName: "jspillers",
   isSystemAdmin: true, totpEnabled: true,
   tenantAccess: [{ tenantId: tenants[0].id, tenantName: "Contoso Ltd", role: "Owner" }],
+  instanceRoles: ["Administrator"],
+  instancePermissions: [
+    "instance.roles.manage", "instance.catalog.manage", "instance.sam.manage",
+    "instance.mcp-policy.manage", "instance.tenant-registry.manage",
+  ],
+  authorizationVersion: 3,
 };
+
+// Delegated instance roles: Administrator, CatalogManager, CredentialManager,
+// AutomationPolicyManager -- separate from per-tenant Viewer/Operator/Owner access above.
+const instanceUsers = [
+  { id: "u1", email: "jspillers@example.com", displayName: "jspillers", isActive: true, roles: ["Administrator"], authorizationVersion: 3 },
+  { id: "u2", email: "maya.chen@example.com", displayName: "Maya Chen", isActive: true, roles: ["CatalogManager", "AutomationPolicyManager"], authorizationVersion: 1 },
+  { id: "u3", email: "devon.reyes@example.com", displayName: "Devon Reyes", isActive: true, roles: ["CredentialManager"], authorizationVersion: 1 },
+  { id: "u4", email: "former.contractor@example.com", displayName: "Former Contractor", isActive: false, roles: [], authorizationVersion: 2 },
+];
 
 const passkeys = [
   { id: "pk1", nickname: "YubiKey 5C", createdAt: minutesAgo(43200), lastUsedAt: minutesAgo(62) },
@@ -362,12 +377,27 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
     ]);
   }
 
+  if (method === "GET" && apiPath === "/admin/users") return json(route, instanceUsers);
+  match = apiPath.match(/^\/admin\/users\/([^/]+)\/roles$/);
+  if (method === "PUT" && match) {
+    const targetUser = instanceUsers.find((u) => u.id === match[1]);
+    if (!targetUser) return json(route, { message: "Not found." }, 404);
+    const body = request.postDataJSON?.() ?? {};
+    targetUser.roles = body.roles ?? [];
+    targetUser.authorizationVersion += 1;
+    return json(route, targetUser);
+  }
+
   if (method === "GET" && apiPath === "/auth/mode") return json(route, { mode: authModeOverride || "Dev" });
   if (method === "POST" && apiPath === "/auth/login") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
   if (method === "POST" && apiPath === "/auth/register") return json(route, { accessToken: "fake.jwt.token", user: meProfile });
   if (method === "GET" && apiPath === "/auth/me") return authenticated ? json(route, meProfile) : json(route, {}, 401);
   if (method === "POST" && apiPath === "/auth/logout") return json(route, {}, 204);
   if (method === "GET" && apiPath === "/auth/passkey") return json(route, passkeys);
+  // Login's conditional-passkey (WebAuthn autofill) effect fires this on mount, unprompted --
+  // every capture that renders Login/Security needs it mocked even though nothing clicks a button.
+  if (method === "POST" && apiPath === "/auth/passkey/login/options")
+    return json(route, { challengeKey: "mock-challenge-key", options: {} });
   if (method === "GET" && apiPath === "/mcp-tokens") return json(route, mcpTokens);
   if (method === "GET" && apiPath === "/config-sections") return json(route, configSections);
 

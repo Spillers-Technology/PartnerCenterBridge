@@ -59,12 +59,12 @@ public class AuthController : ControllerBase
             return BadRequest("Display name is required.");
         if (req.Password.Length < _options.MinPasswordLength)
             return BadRequest($"Password must be at least {_options.MinPasswordLength} characters.");
+        // Serialize bootstrap so concurrent first registrations cannot both observe an empty user
+        // table and both become Administrator.
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
         if (await _db.AppUsers.AnyAsync(u => u.Email == email, ct))
             return Conflict("An account with that email already exists.");
 
-        // First account on a fresh database becomes the bootstrap admin -- otherwise nobody could
-        // ever grant tenant access to anyone, including themselves. This is unrelated to tenant
-        // power (see ITenantAccessService remarks): it only gates the SAM admin endpoints.
         var isFirstUser = !await _db.AppUsers.AnyAsync(ct);
 
         var user = new AppUser
@@ -72,7 +72,7 @@ public class AuthController : ControllerBase
             Email = email,
             DisplayName = req.DisplayName.Trim(),
             PasswordHash = "",
-            IsSystemAdmin = isFirstUser
+            InstanceRoles = isFirstUser ? InstanceRole.Administrator : InstanceRole.None
         };
         user.PasswordHash = Hasher.HashPassword(user, req.Password);
 
@@ -86,7 +86,21 @@ public class AuthController : ControllerBase
             EntityId = user.Id.ToString(),
             Detail = isFirstUser ? "\"first account; granted system admin\"" : null
         });
+        if (isFirstUser)
+        {
+            _db.AuditEvents.Add(new AuditEvent
+            {
+                EventType = AuditEventType.BootstrapAdministratorAssigned,
+                ActorUserId = user.Id,
+                ActorName = user.DisplayName,
+                EntityType = nameof(AppUser),
+                EntityId = user.Id.ToString(),
+                Detail = System.Text.Json.JsonSerializer.Serialize(new { roles = new[] { nameof(InstanceRole.Administrator) } })
+            });
+            authorizationLock.State.Revision++;
+        }
         await _db.SaveChangesAsync(ct);
+        await authorizationLock.CommitAsync(ct);
 
         return Ok(await _responses.BuildAsync(user, ct));
     }

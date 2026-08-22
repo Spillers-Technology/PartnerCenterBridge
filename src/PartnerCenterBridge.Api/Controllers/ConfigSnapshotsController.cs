@@ -77,7 +77,7 @@ public class ConfigSnapshotsController : ControllerBase
         Guid tenantId, [FromQuery] Guid beforeRunId, [FromQuery] Guid afterRunId, [FromQuery] string? sectionId, CancellationToken ct)
     {
         if (!await _access.HasRoleAsync(tenantId, TenantRole.Viewer, ct)) return Forbid();
-        var diffs = await BuildDiffsAsync(beforeRunId, afterRunId, sectionId, ct);
+        var diffs = await BuildDiffsAsync(tenantId, beforeRunId, afterRunId, sectionId, ct);
         if (diffs is null) return NotFound("One or both runs not found.");
         return Ok(diffs.Select(SectionDiffDto.From).ToList());
     }
@@ -88,7 +88,7 @@ public class ConfigSnapshotsController : ControllerBase
         Guid tenantId, [FromQuery] Guid beforeRunId, [FromQuery] Guid afterRunId, [FromQuery] string? sectionId, CancellationToken ct)
     {
         if (!await _access.HasRoleAsync(tenantId, TenantRole.Viewer, ct)) return Forbid();
-        var diffs = await BuildDiffsAsync(beforeRunId, afterRunId, sectionId, ct);
+        var diffs = await BuildDiffsAsync(tenantId, beforeRunId, afterRunId, sectionId, ct);
         if (diffs is null) return NotFound("One or both runs not found.");
 
         var text = ConfigDiffFormatter.ToPatchText(diffs);
@@ -151,12 +151,18 @@ public class ConfigSnapshotsController : ControllerBase
         return Ok(ConfigSnapshotRunDto.From(run));
     }
 
-    private async Task<List<SectionDiff>?> BuildDiffsAsync(Guid beforeRunId, Guid afterRunId, string? sectionId, CancellationToken ct)
+    /// <summary>
+    /// Both run IDs are confirmed to belong to <paramref name="tenantId"/> before any section
+    /// content is read -- the caller only authorizes the route's own tenantId, so a run ID from a
+    /// different tenant must never resolve here, even to a "not found" vs "forbidden" timing tell.
+    /// </summary>
+    private async Task<List<SectionDiff>?> BuildDiffsAsync(Guid tenantId, Guid beforeRunId, Guid afterRunId, string? sectionId, CancellationToken ct)
     {
+        if (!await _db.ConfigSnapshotRuns.AnyAsync(r => r.Id == beforeRunId && r.TenantId == tenantId, ct)) return null;
+        if (!await _db.ConfigSnapshotRuns.AnyAsync(r => r.Id == afterRunId && r.TenantId == tenantId, ct)) return null;
+
         var before = await _db.ConfigSnapshotSections.AsNoTracking().Where(s => s.RunId == beforeRunId).ToListAsync(ct);
         var after = await _db.ConfigSnapshotSections.AsNoTracking().Where(s => s.RunId == afterRunId).ToListAsync(ct);
-        if (before.Count == 0 && !await _db.ConfigSnapshotRuns.AnyAsync(r => r.Id == beforeRunId, ct)) return null;
-        if (after.Count == 0 && !await _db.ConfigSnapshotRuns.AnyAsync(r => r.Id == afterRunId, ct)) return null;
 
         var sectionIds = sectionId is not null
             ? [sectionId]

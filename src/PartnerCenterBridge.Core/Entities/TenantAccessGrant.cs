@@ -4,7 +4,7 @@ namespace PartnerCenterBridge.Core.Entities;
 /// One user's access to one tenant. This is the collaboration/sharing primitive for local
 /// accounts: an <see cref="TenantRole.Owner"/> on a tenant can grant or revoke another registered
 /// user's access to it (self-service, like sharing a document) instead of every grant needing a
-/// central admin. <see cref="AppUser.IsSystemAdmin"/> users bypass this table entirely.
+/// central admin. Instance roles never bypass this table.
 /// </summary>
 public class TenantAccessGrant
 {

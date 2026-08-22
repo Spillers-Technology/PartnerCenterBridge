@@ -28,14 +28,9 @@ public class DeploymentsController : ControllerBase
     {
         var query = _db.Deployments.AsNoTracking().AsQueryable();
 
-        if (!_access.IsSystemAdmin)
-        {
-            var allowed = await _db.TenantAccessGrants.AsNoTracking()
-                .Where(g => g.UserId == _access.CurrentUserId
-                         && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
-                .Select(g => g.TenantId).ToListAsync(ct);
+        var allowed = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null)
             query = query.Where(d => allowed.Contains(d.TenantId));
-        }
 
         return Ok((await query.OrderByDescending(d => d.CreatedAt).ToListAsync(ct)).Select(DeploymentDto.From).ToList());
     }

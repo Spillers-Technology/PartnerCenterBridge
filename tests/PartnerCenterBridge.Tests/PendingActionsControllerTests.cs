@@ -141,7 +141,7 @@ public class PendingActionsControllerTests
             Email = "admin@example.com",
             DisplayName = "Admin",
             PasswordHash = "hash",
-            IsSystemAdmin = true
+            InstanceRoles = InstanceRole.Administrator
         };
         var grantedTenant = new Tenant { TenantId = "granted", DisplayName = "Granted Tenant" };
         var ungrantedTenant = new Tenant { TenantId = "ungranted", DisplayName = "Ungranted Tenant" };

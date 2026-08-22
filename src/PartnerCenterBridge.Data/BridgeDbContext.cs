@@ -48,6 +48,7 @@ public class BridgeDbContext : DbContext
     public DbSet<ConfigSnapshotSection> ConfigSnapshotSections => Set<ConfigSnapshotSection>();
     public DbSet<PendingAction> PendingActions => Set<PendingAction>();
     public DbSet<McpToken> McpTokens => Set<McpToken>();
+    public DbSet<InstanceAuthorizationState> InstanceAuthorizationStates => Set<InstanceAuthorizationState>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -137,6 +138,15 @@ public class BridgeDbContext : DbContext
             e.Property(u => u.PasswordHash).IsRequired();
             e.Property(u => u.TotpRecoveryCodeHashes).HasColumnType("jsonb")
                 .HasConversion(StringListConverter, StringListComparer);
+            e.Property(u => u.InstanceRoles).HasConversion<int>();
+            e.Property(u => u.AuthorizationVersion).IsConcurrencyToken();
+        });
+
+        b.Entity<InstanceAuthorizationState>(e =>
+        {
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).ValueGeneratedNever();
+            e.HasData(new InstanceAuthorizationState { Id = 1, Revision = 1 });
         });
 
         b.Entity<PasskeyCredential>(e =>
@@ -192,6 +202,18 @@ public class BridgeDbContext : DbContext
             e.HasIndex(a => new { a.TenantId, a.OccurredAt });
             e.HasIndex(a => new { a.ActorUserId, a.OccurredAt });
         });
+
+        // SQLite has no native DateTimeOffset ordering/comparison. The in-memory test fixture uses
+        // SQLite to exercise real EF queries, so store offsets as sortable binary values there;
+        // production Npgsql keeps its native timestamptz mapping.
+        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        {
+            var converter = new DateTimeOffsetToBinaryConverter();
+            foreach (var property in b.Model.GetEntityTypes().SelectMany(entity => entity.GetProperties())
+                         .Where(property => Nullable.GetUnderlyingType(property.ClrType) == typeof(DateTimeOffset)
+                             || property.ClrType == typeof(DateTimeOffset)))
+                property.SetValueConverter(converter);
+        }
     }
 }
 

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
 using PartnerCenterBridge.Api.Orchestration;
+using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Data;
@@ -16,22 +17,31 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class AppTemplatesController : ControllerBase
 {
     private readonly BridgeDbContext _db;
-    private readonly ITenantAccessService _access;
+    private readonly ITenantAccessService _tenantAccess;
+    private readonly IInstanceAccessService _access;
 
-    public AppTemplatesController(BridgeDbContext db, ITenantAccessService access)
+    public AppTemplatesController(
+        BridgeDbContext db, ITenantAccessService tenantAccess, IInstanceAccessService access)
     {
         _db = db;
+        _tenantAccess = tenantAccess;
         _access = access;
     }
 
     [HttpGet]
-    public async Task<IReadOnlyList<AppTemplateDto>> List(CancellationToken ct) =>
-        (await _db.AppTemplates.ToListAsync(ct)).Select(AppTemplateDto.From).ToList();
+    public async Task<ActionResult<IReadOnlyList<AppTemplateDto>>> List(CancellationToken ct)
+    {
+        var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null && allowed.Count == 0
+            && !await _access.HasPermissionAsync(InstancePermission.ManageCatalog, ct))
+            return Forbid();
+        return Ok((await _db.AppTemplates.ToListAsync(ct)).Select(AppTemplateDto.From).ToList());
+    }
 
     [HttpPost]
     public async Task<ActionResult<AppTemplateDto>> Create(CreateAppTemplateRequest req, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         if (req.ContractId is Guid contractId)
         {
@@ -63,7 +73,7 @@ public class AppTemplatesController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<AppTemplateDto>> Update(Guid id, UpdateAppTemplateRequest req, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         var template = await _db.AppTemplates.FindAsync([id], ct);
         if (template is null) return NotFound();
@@ -87,7 +97,7 @@ public class AppTemplatesController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         var template = await _db.AppTemplates.FindAsync([id], ct);
         if (template is null) return NotFound();
@@ -114,7 +124,7 @@ public class AppTemplatesController : ControllerBase
         [FromServices] IPackageStore packages,
         CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         var template = await _db.AppTemplates.FindAsync([id], ct);
         if (template is null) return NotFound();
