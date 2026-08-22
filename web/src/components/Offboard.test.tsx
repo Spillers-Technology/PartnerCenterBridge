@@ -76,7 +76,7 @@ describe("Offboard", () => {
 
     await user.click(screen.getByRole("button", { name: "Offboard user" }));
     const cancelDialog = await screen.findByRole("dialog");
-    expect(within(cancelDialog).getByText(/Ada Lovelace will be offboarded/)).toBeInTheDocument();
+    expect(within(cancelDialog).getByText(/Ada Lovelace \(ada@contoso.com\) in Contoso will be offboarded/)).toBeInTheDocument();
     await user.click(within(cancelDialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(api.provisioning.terminate).not.toHaveBeenCalled();
@@ -144,6 +144,45 @@ describe("Offboard", () => {
     await user.click(within(dialog).getByRole("button", { name: "Offboard" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("terminate failed");
+  });
+
+  it("does not leave a previously selected user submittable after a new search replaces the results", async () => {
+    // Regression guard: selecting a user, then re-searching, used to leave the old userId set
+    // (and the Offboard button enabled) even though that person no longer appears anywhere in the
+    // UI -- a wrong-person-offboarded risk. A new search must clear the prior selection.
+    const user = userEvent.setup();
+    renderOffboard();
+    await selectTenantAndUser(user);
+
+    expect(screen.getByRole("button", { name: "Offboard user" })).toBeEnabled();
+
+    vi.mocked(api.directory.users).mockResolvedValue([]);
+    await user.clear(screen.getByLabelText("Search name or UPN"));
+    await user.type(screen.getByLabelText("Search name or UPN"), "Bob");
+    await user.click(screen.getByRole("button", { name: "Search users" }));
+
+    await waitFor(() => expect(api.directory.users).toHaveBeenCalledWith("t1", "Bob"));
+    expect(screen.queryByLabelText("User")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Offboard user" })).toBeDisabled();
+  });
+
+  it("clears the forwarding address when a new search or user selection replaces the prior target", async () => {
+    const user = userEvent.setup();
+    renderOffboard();
+    await selectTenantAndUser(user);
+
+    await user.click(screen.getByLabelText("Convert mailbox to shared (Exchange Online)"));
+    await user.type(screen.getByLabelText("Forward mailbox to (optional SMTP)"), "old-manager@contoso.com");
+
+    vi.mocked(api.directory.users).mockResolvedValue([directoryUser]);
+    await user.clear(screen.getByLabelText("Search name or UPN"));
+    await user.type(screen.getByLabelText("Search name or UPN"), "Ada");
+    await user.click(screen.getByRole("button", { name: "Search users" }));
+
+    await waitFor(() => expect(screen.getByLabelText("User")).toBeInTheDocument());
+    // The mailbox-forwarding field only renders while convertMailboxToShared is checked, which the
+    // new search does not reset -- so it's still visible, but its value must not have survived.
+    expect(screen.getByLabelText("Forward mailbox to (optional SMTP)")).toHaveValue("");
   });
 
   it("disables the offboard button while a confirm is pending, before the API call itself starts", async () => {

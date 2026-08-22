@@ -196,6 +196,49 @@ describe("ConfigSnapshots", () => {
     expect(await screen.findByText("Workbook imported")).toBeInTheDocument();
   });
 
+  it("clears run selections and diffs when the tenant changes, instead of pairing them with the new tenant", async () => {
+    const tenant2: Tenant = { id: "t2", tenantId: "aad-2", displayName: "Fabrikam", status: "Active" as Tenant["status"] };
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant, tenant2]);
+    const diffs: SectionDiff[] = [
+      { sectionId: "ca", sectionName: "Conditional Access", changes: [{ kind: "Modified", itemId: "policy-1", label: "Require MFA", fieldChanges: [] }] }
+    ];
+    vi.mocked(api.configSnapshots.diff).mockResolvedValue(diffs);
+    vi.mocked(api.configSnapshots.list).mockImplementation((id: string) => Promise.resolve(id === "t1" ? [run1, run2] : []));
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText(/Conditional Access \(3\)/);
+    await selectMuiOptionByIndex(user, "Before", 1);
+    await selectMuiOptionByIndex(user, "After", 2);
+    await user.click(screen.getByRole("button", { name: "View diff" }));
+    expect(await screen.findByText("Require MFA")).toBeInTheDocument();
+
+    await selectMuiOptionByIndex(user, "Tenant", 1); // switch to Fabrikam
+    await waitFor(() => expect(api.configSnapshots.list).toHaveBeenCalledWith("t2"));
+
+    expect(screen.queryByText("Require MFA")).not.toBeInTheDocument();
+    // The old run IDs must no longer be usable -- both actions require a selected Before and
+    // After, so a cleared selection re-disables them (the actual behavior that matters here; the
+    // combobox's own rendered text for an empty MUI Select value is a separate, unrelated quirk).
+    expect(screen.getByRole("button", { name: "View diff" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Export as patch" })).toBeDisabled();
+  });
+
+  it("shows a warning (not a plain success) when the snapshot captures but the list fails to refresh", async () => {
+    vi.mocked(api.configSnapshots.capture).mockResolvedValue(run1);
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText(/Conditional Access \(3\)/);
+    vi.mocked(api.configSnapshots.list).mockRejectedValueOnce(new Error("refresh failed"));
+
+    await user.click(screen.getByRole("button", { name: "Take Snapshot" }));
+
+    await waitFor(() => expect(api.configSnapshots.capture).toHaveBeenCalledWith("t1"));
+    expect(await screen.findByText(/Snapshot captured, but the list couldn't refresh/)).toBeInTheDocument();
+    expect(screen.queryByText("Snapshot captured")).not.toBeInTheDocument();
+  });
+
   it("hides Take Snapshot and the import panel for a Viewer", async () => {
     const viewerMe: MeProfile = {
       ...me,

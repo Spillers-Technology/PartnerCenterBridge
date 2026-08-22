@@ -58,6 +58,7 @@ export function Offboard() {
   });
 
   const selectedUser = users.find((user) => user.id === userId);
+  const selectedTenant = tenants.find((t) => t.id === tenantId);
 
   const submitAction = useAsyncAction(async () => {
     const offboardResult = await api.provisioning.terminate(tenantId, {
@@ -67,6 +68,11 @@ export function Offboard() {
     setResult(offboardResult);
     if (offboardResult.succeeded) toast(`${selectedUser?.displayName ?? "User"} offboarded`, "success");
   });
+
+  // A stale userId (from before the most recent search, or a user no longer in the search
+  // results) must never stay submittable -- selectedUser is the single source of truth for
+  // "there is a real, currently-visible target selected," not just a non-empty userId string.
+  const canSubmit = Boolean(selectedUser) && !searchAction.busy;
 
   useEffect(() => {
     setLastAction("tenants");
@@ -82,18 +88,26 @@ export function Offboard() {
 
   const find = () => {
     if (!tenantId) return;
+    // A new search invalidates any previously selected user -- it may not appear in the new
+    // results at all, and leaving it selected would let a stale ID stay submittable underneath a
+    // dropdown that visually shows nothing chosen. Same for a target-specific forwarding address
+    // and any leftover result panel from a prior offboard.
+    setUserId("");
+    setForwardingSmtpAddress("");
+    setResult(null);
     setLastAction("search");
     void searchAction.run(tenantId, search);
   };
 
   const submit = async () => {
-    if (!tenantId || !userId || confirming) return;
+    if (!tenantId || !selectedUser || confirming) return;
     setConfirming(true);
     try {
       const enabledActions = ACTIONS.filter(([key]) => opts[key]).map(([, label]) => label.toLowerCase());
+      const forwardingNote = forwardingSmtpAddress ? ` Mail will forward to ${forwardingSmtpAddress}.` : "";
       const ok = await confirm({
         title: "Offboard this user?",
-        message: `${selectedUser?.displayName ?? "This user"} will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.`,
+        message: `${selectedUser.displayName} (${selectedUser.userPrincipalName}) in ${selectedTenant?.displayName ?? "this tenant"} will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.${forwardingNote}`,
         confirmLabel: "Offboard",
         destructive: true
       });
@@ -124,6 +138,8 @@ export function Offboard() {
             setTenantId(id);
             setUsers([]);
             setUserId("");
+            setForwardingSmtpAddress("");
+            setResult(null);
           }}
         >
           <MenuItem value="">-- choose --</MenuItem>
@@ -140,7 +156,16 @@ export function Offboard() {
           {users.length > 0 && (
             <FormControl fullWidth sx={{ maxWidth: 560 }}>
               <InputLabel id="offboard-user-label">User</InputLabel>
-              <Select labelId="offboard-user-label" label="User" value={userId} displayEmpty onChange={(e) => setUserId(e.target.value)}>
+              <Select
+                labelId="offboard-user-label"
+                label="User"
+                value={userId}
+                displayEmpty
+                onChange={(e) => {
+                  setUserId(e.target.value);
+                  setForwardingSmtpAddress("");
+                }}
+              >
                 <MenuItem value="">-- choose --</MenuItem>
                 {users.map((user) => <MenuItem key={user.id} value={user.id}>{user.displayName} ({user.userPrincipalName})</MenuItem>)}
               </Select>
@@ -161,7 +186,7 @@ export function Offboard() {
           )}
 
           <Box>
-            <Button variant="contained" color="error" onClick={() => void submit()} disabled={submitAction.busy || confirming || !userId}>
+            <Button variant="contained" color="error" onClick={() => void submit()} disabled={submitAction.busy || confirming || !canSubmit}>
               {submitAction.busy ? "Offboarding..." : "Offboard user"}
             </Button>
           </Box>

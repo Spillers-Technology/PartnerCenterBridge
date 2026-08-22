@@ -135,6 +135,98 @@ describe("Workflows", () => {
     expect(screen.queryByText("502 Bad Gateway")).not.toBeInTheDocument();
   });
 
+  it("does not apply a diagnose response that resolves after the tenant has since changed", async () => {
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    let resolveDiagnose!: (v: unknown) => void;
+    vi.mocked(api.workflows.diagnose).mockReturnValue(new Promise((res) => { resolveDiagnose = res; }) as never);
+
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user); // selects Contoso Ltd (t1)
+    await user.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    // Switch tenant before the in-flight diagnose response resolves.
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    resolveDiagnose({ findings: [{ name: "MFA methods", status: "Ok", detail: "none registered" }], healthy: true });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText("MFA methods")).not.toBeInTheDocument();
+  });
+
+  it("clears a shown diagnosis when the tenant changes, instead of leaving it displayed under the new tenant", async () => {
+    vi.mocked(api.workflows.diagnose).mockResolvedValue({
+      findings: [{ name: "MFA methods", status: "Ok", detail: "none registered" }],
+      healthy: true
+    });
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user);
+    await user.click(screen.getByRole("button", { name: "Diagnose" }));
+    expect(await screen.findByText("MFA methods")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    expect(screen.queryByText("MFA methods")).not.toBeInTheDocument();
+  });
+
+  it("tells the user about a fix that finished after they'd already switched tenants, instead of silently discarding it", async () => {
+    // Regression test: a discarded stale fix result used to leave the user with no idea a real,
+    // already-applied mutation had happened -- the toast claimed "see the step detail" for detail
+    // that was never shown.
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    let resolveRemediate!: (v: unknown) => void;
+    vi.mocked(api.workflows.remediate).mockReturnValue(new Promise((res) => { resolveRemediate = res; }) as never);
+
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user);
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    resolveRemediate({ steps: [{ name: "Clear methods", success: true }], succeeded: true });
+
+    expect(await screen.findByText(/A fix you started earlier finished successfully/)).toBeInTheDocument();
+    expect(screen.queryByText("Fix applied successfully.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Clear methods")).not.toBeInTheDocument();
+  });
+
+  it("does not surface a diagnose error under a tenant the user has since switched to", async () => {
+    // Regression test: clearOutput() only cleared displayed findings, not the action error state
+    // -- a diagnose call that rejected after a tenant switch could still show its stale error
+    // under the newly selected tenant.
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    let rejectDiagnose!: (e: Error) => void;
+    vi.mocked(api.workflows.diagnose).mockReturnValue(new Promise((_res, rej) => { rejectDiagnose = rej; }) as never);
+
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user);
+    await user.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    rejectDiagnose(new Error("502 Bad Gateway"));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText("502 Bad Gateway")).not.toBeInTheDocument();
+  });
+
   it("shows recent runs once loaded", async () => {
     vi.mocked(api.workflows.runs).mockResolvedValue([
       {

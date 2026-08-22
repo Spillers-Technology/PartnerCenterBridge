@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -32,11 +32,24 @@ const ACTIONS: { workflowId: string; label: string }[] = [
 export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) => void }) {
   const [q, setQ] = useState("");
   const [result, setResult] = useState<GlobalSearchResult | null>(null);
+  // Always current (updated every render) so a search response can tell, once it resolves,
+  // whether the query it was issued for is still what's in the box -- the Search button disables
+  // while a search is in flight, but the text field itself doesn't, so the query can still change
+  // underneath an in-flight request.
+  const currentQueryRef = useRef("");
+  currentQueryRef.current = q;
 
   const searchAction = useAsyncAction(async () => {
     const query = q.trim();
     if (query.length < 3) throw new Error("Type at least 3 characters.");
+    // Clear the prior results as soon as a new search starts -- without this, a failed re-search
+    // left the previous query's results (and their workflow-launch buttons) sitting on screen
+    // next to the new error, looking like they might belong to the query that just failed.
+    setResult(null);
     const r = await api.search.users(query);
+    // The query field itself stays editable while a search is in flight -- if it's since changed,
+    // this response no longer describes what's in the box, so don't display it.
+    if (currentQueryRef.current.trim() !== query) return r;
     setResult(r);
     return r;
   });
@@ -63,7 +76,13 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
         <TextField
           label="Name or UPN (min 3 chars)"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            // Editing the query invalidates the results shown for the previous one -- leaving
+            // them clickable (workflow-launch buttons included) while the field no longer matches
+            // what they came from is exactly the kind of stale-but-actionable state this fixes.
+            setResult(null);
+          }}
           size="small"
           fullWidth
         />

@@ -78,10 +78,12 @@ describe("NewHire", () => {
 
     await selectTenant(user);
     await screen.findByLabelText("First name");
+    // UPN domain is seeded from the tenant's own defaultDomain as soon as it's selected -- no
+    // typing needed here, and typing more into it would append rather than replace.
+    expect(screen.getByLabelText("UPN domain (e.g. contoso.com)")).toHaveValue("contoso.com");
     await user.type(screen.getByLabelText("First name"), "Ada");
     await user.type(screen.getByLabelText("Last name"), "Lovelace");
     await user.type(screen.getByLabelText("Mail nickname (e.g. ada)"), "ada");
-    await user.type(screen.getByLabelText("UPN domain (e.g. contoso.com)"), "contoso.com");
     await user.type(screen.getByLabelText("Job title"), "Engineer");
     await user.type(screen.getByLabelText("Department"), "Platform");
     await user.click(screen.getByLabelText("M365_BUSINESS (4/25)"));
@@ -153,5 +155,89 @@ describe("NewHire", () => {
     resolveTenant1Template({ contractId: "c1", usageLocation: "US", licenseSkuIds: ["sku-1"], groupIds: ["group-1"] });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(licenseCheckbox.checked).toBe(false);
+  });
+
+  it("resets tenant-scoped fields and selections when switching to a tenant with no provisioning template", async () => {
+    // Regression test: a tenant with no contractId used to inherit the previous tenant's UPN
+    // domain/job title/department and license/group selections wholesale, submittable as-is.
+    const tenant2: Tenant = { id: "t2", tenantId: "guid-2", displayName: "Fabrikam", defaultDomain: "fabrikam.com", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant, tenant2]);
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await selectTenant(user);
+    await screen.findByLabelText("First name");
+    await user.type(screen.getByLabelText("Job title"), "Engineer");
+    await user.type(screen.getByLabelText("Department"), "Platform");
+    await user.click(screen.getByLabelText("M365_BUSINESS (4/25)"));
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "Fabrikam" }));
+    await screen.findByLabelText("First name");
+
+    expect(screen.getByLabelText("UPN domain (e.g. contoso.com)")).toHaveValue("fabrikam.com");
+    expect(screen.getByLabelText("Job title")).toHaveValue("");
+    expect(screen.getByLabelText("Department")).toHaveValue("");
+    expect(await screen.findByLabelText<HTMLInputElement>("M365_BUSINESS (4/25)")).not.toBeChecked();
+  });
+
+  it("still loads the second tenant's directory after a rapid switch, instead of the request being silently dropped", async () => {
+    // Regression test: useAsyncAction.run() is single-flight -- a directory fetch for the tenant
+    // switched away from used to silently swallow the newly selected tenant's own fetch entirely.
+    const tenant2: Tenant = { id: "t2", tenantId: "guid-2", displayName: "Fabrikam", defaultDomain: "fabrikam.com", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant, tenant2]);
+
+    let resolveT1Skus!: (v: Sku[]) => void;
+    const t1SkusPromise = new Promise<Sku[]>((resolve) => { resolveT1Skus = resolve; });
+    vi.mocked(api.directory.skus).mockImplementation((id: string) => (id === "t1" ? t1SkusPromise : Promise.resolve([sku])));
+    vi.mocked(api.directory.groups).mockResolvedValue([group]);
+
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await user.click(await screen.findByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "Contoso" })); // t1 -- its SKUs fetch is left pending
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "Fabrikam" })); // t2, while t1's fetch is still in flight
+
+    resolveT1Skus([]); // let the stale, in-flight t1 fetch finish so the gate can retry for t2
+    expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
+    expect(api.directory.skus).toHaveBeenCalledWith("t2");
+  });
+
+  it("re-fetches a tenant's directory if it's deselected and reselected, instead of treating it as already requested", async () => {
+    // Regression test: deselecting a tenant cleared its SKU/group lists but never reset the
+    // directory-fetch gate's ref, so reselecting the same tenant later silently skipped
+    // re-fetching, leaving the lists permanently empty.
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await selectTenant(user);
+    await screen.findByLabelText("M365_BUSINESS (4/25)");
+    expect(api.directory.skus).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "-- choose --" }));
+    await selectTenant(user);
+
+    await waitFor(() => expect(api.directory.skus).toHaveBeenCalledTimes(2));
+    expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
+  });
+
+  it("offers a Retry action when the directory fails to load, and retrying re-fetches it", async () => {
+    // Regression test: a directory-load failure had no retry path for a single-tenant user --
+    // the fetch only re-triggers on a tenantId change, which a single-tenant user can't produce.
+    vi.mocked(api.directory.skus).mockRejectedValueOnce(new Error("directory boom"));
+    const user = userEvent.setup();
+    renderNewHire();
+
+    await selectTenant(user);
+    expect(await screen.findByRole("alert")).toHaveTextContent("directory boom");
+
+    vi.mocked(api.directory.skus).mockResolvedValue([sku]);
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByLabelText("M365_BUSINESS (4/25)")).toBeInTheDocument();
   });
 });

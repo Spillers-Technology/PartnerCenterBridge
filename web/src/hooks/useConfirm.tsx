@@ -59,12 +59,17 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
           <DialogContentText>{pending?.options.message}</DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => close(false)}>{pending?.options.cancelLabel ?? "Cancel"}</Button>
+          {/* Destructive dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
+              the dialog opens (e.g. a stray keypress carried over from what triggered it) lands
+              on the safe choice instead of defaulting to the destructive one. */}
+          <Button onClick={() => close(false)} autoFocus={pending?.options.destructive}>
+            {pending?.options.cancelLabel ?? "Cancel"}
+          </Button>
           <Button
             onClick={() => close(true)}
             color={pending?.options.destructive ? "error" : "primary"}
             variant="contained"
-            autoFocus
+            autoFocus={!pending?.options.destructive}
           >
             {pending?.options.confirmLabel ?? "Confirm"}
           </Button>
