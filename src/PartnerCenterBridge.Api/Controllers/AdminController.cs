@@ -10,9 +10,8 @@ namespace PartnerCenterBridge.Api.Controllers;
 /// <summary>
 /// Instance-level infrastructure: the SAM refresh token is a single, shared secret that backs
 /// Microsoft-plane access for every tenant on the whole deployment. This is the one place
-/// <see cref="ITenantAccessService.IsSystemAdmin"/> is used to gate anything -- overwriting it is
-/// not a per-tenant action, so per-tenant grants don't apply here. Under <c>Auth:Mode=Oidc</c> or
-/// <c>Dev</c>, <c>IsSystemAdmin</c> is unconditionally true (unchanged pre-existing behavior).
+/// Instance permissions gate these shared settings. Tenant grants never apply here, and instance
+/// permissions never grant access back into tenant-scoped resources.
 /// </summary>
 [ApiController]
 [Route("api/admin")]
@@ -20,10 +19,10 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly ISamTokenStore _store;
-    private readonly ITenantAccessService _access;
+    private readonly IInstanceAccessService _access;
     private readonly BridgeDbContext _db;
 
-    public AdminController(ISamTokenStore store, ITenantAccessService access, BridgeDbContext db)
+    public AdminController(ISamTokenStore store, IInstanceAccessService access, BridgeDbContext db)
     {
         _store = store;
         _access = access;
@@ -32,8 +31,11 @@ public class AdminController : ControllerBase
 
     /// <summary>Whether the Secure Application Model has been bootstrapped (a refresh token is stored).</summary>
     [HttpGet("sam/status")]
-    public async Task<object> Status(CancellationToken ct) =>
-        new { bootstrapped = await _store.GetRefreshTokenAsync(ct) is not null };
+    public async Task<ActionResult<object>> Status(CancellationToken ct)
+    {
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageSam, ct)) return Forbid();
+        return Ok(new { bootstrapped = await _store.GetRefreshTokenAsync(ct) is not null });
+    }
 
     /// <summary>
     /// Manually seed the SAM refresh token (e.g. one captured out-of-band). Prefer the interactive
@@ -42,15 +44,26 @@ public class AdminController : ControllerBase
     [HttpPost("sam/seed")]
     public async Task<IActionResult> Seed([FromBody] SeedRequest req, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageSam, ct)) return Forbid();
         if (string.IsNullOrWhiteSpace(req.RefreshToken)) return BadRequest("refreshToken is required.");
+        await using var transaction = await _db.Database.BeginTransactionAsync(ct);
         await _store.SaveRefreshTokenAsync(req.RefreshToken, ct);
+        _db.AuditEvents.Add(new Core.Entities.AuditEvent
+        {
+            EventType = AuditEventType.SamCredentialRotated,
+            ActorUserId = _access.CurrentUserId,
+            ActorName = ControllerContext.HttpContext?.User.Identity?.Name ?? "",
+            EntityType = "SecureApplicationModelCredential",
+            EntityId = "sam-refresh-token"
+        });
+        await _db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return NoContent();
     }
 
     /// <summary>
     /// Switches a tenant between the default Queue approval mode and ClientTrust. Deliberately
-    /// IsSystemAdmin-only and nothing else -- this changes how OTHER users' already-authorized
+    /// Instance-policy permission only -- this changes how OTHER users' already-authorized
     /// operator actions get gated, not the admin's own access to the tenant's data, so it stays
     /// inside the boundary ITenantAccessService's remarks draw rather than crossing it.
     /// </summary>
@@ -58,10 +71,25 @@ public class AdminController : ControllerBase
     public async Task<IActionResult> SetMcpMode(Guid id, [FromBody] SetMcpModeRequest req, CancellationToken ct)
     {
         if (!Enum.IsDefined(typeof(McpApprovalMode), req.Mode)) return BadRequest("Invalid mode.");
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _access.HasPermissionAsync(InstancePermission.ManageMcpPolicy, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([id], ct);
         if (tenant is null) return NotFound();
+        var before = tenant.McpApprovalMode;
         tenant.McpApprovalMode = req.Mode;
+        _db.AuditEvents.Add(new Core.Entities.AuditEvent
+        {
+            EventType = AuditEventType.McpApprovalModeChanged,
+            ActorUserId = _access.CurrentUserId,
+            ActorName = ControllerContext.HttpContext?.User.Identity?.Name ?? "",
+            TenantId = id,
+            EntityType = nameof(Core.Entities.Tenant),
+            EntityId = id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                before = before.ToString(),
+                after = req.Mode.ToString()
+            })
+        });
         await _db.SaveChangesAsync(ct);
         return NoContent();
     }

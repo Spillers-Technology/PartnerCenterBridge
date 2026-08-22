@@ -10,9 +10,8 @@ namespace PartnerCenterBridge.Core.Entities;
 /// solo technician can stand up the bridge and log in without provisioning an IdP first. What a
 /// freshly registered account can *do* is the actual gate: it starts with zero
 /// <see cref="TenantAccessGrant"/>s, so it cannot act against any tenant until an owner shares
-/// access with it. The one exception is <see cref="IsSystemAdmin"/>, granted automatically to the
-/// very first account created on a fresh database so there is someone able to start granting
-/// access to everyone else.
+/// access with it. The first account receives the fixed <see cref="InstanceRole.Administrator"/>
+/// instance role so it can delegate instance configuration without gaining implicit tenant power.
 /// </remarks>
 public class AppUser
 {
@@ -26,11 +25,13 @@ public class AppUser
     public required string PasswordHash { get; set; }
 
     /// <summary>
-    /// Bypasses per-tenant grants entirely and can manage MSP-wide config (contracts, app
-    /// templates, SAM bootstrap) and grant/revoke any user's tenant access. Set automatically for
-    /// the first account created; every later admin promotion is a deliberate, audited action.
+    /// Instance-wide configuration roles. These never bypass <see cref="TenantAccessGrant"/>;
+    /// tenant access is a separate authorization plane.
     /// </summary>
-    public bool IsSystemAdmin { get; set; }
+    public InstanceRole InstanceRoles { get; set; } = InstanceRole.None;
+
+    /// <summary>Incremented after every role replacement so stale admin-editor writes can be rejected.</summary>
+    public long AuthorizationVersion { get; set; } = 1;
 
     public bool IsActive { get; set; } = true;
 

@@ -12,13 +12,16 @@ namespace PartnerCenterBridge.Api.Mcp;
 [McpServerToolType]
 public class DiagnosticsTools
 {
-    private readonly ITenantAccessService _access;
+    private readonly IInstanceAccessService _access;
 
-    public DiagnosticsTools(ITenantAccessService access) => _access = access;
+    public DiagnosticsTools(IInstanceAccessService access) => _access = access;
 
     [McpServerTool(ReadOnly = true, Destructive = false), Description("Returns the identity this MCP server resolved for the caller of this tool call.")]
-    public string WhoAmI() =>
-        _access.CurrentUserId is { } id
-            ? $"userId={id}, isSystemAdmin={_access.IsSystemAdmin}"
-            : "no local user id resolved (OIDC/dev-auth caller, or auth context did not reach this tool call)";
+    public async Task<string> WhoAmI(CancellationToken ct)
+    {
+        if (_access.CurrentUserId is not { } id)
+            return "no local user id resolved (OIDC/dev-auth caller, or auth context did not reach this tool call)";
+        var roles = InstanceRolePermissions.Expand(await _access.GetRolesAsync(ct));
+        return $"userId={id}, instanceRoles={string.Join(',', roles)}";
+    }
 }

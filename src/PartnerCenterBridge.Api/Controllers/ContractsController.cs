@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
+using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Core.Reconcile;
 using PartnerCenterBridge.Data;
@@ -15,22 +16,34 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class ContractsController : ControllerBase
 {
     private readonly BridgeDbContext _db;
-    private readonly ITenantAccessService _access;
+    private readonly ITenantAccessService _tenantAccess;
+    private readonly IInstanceAccessService _instanceAccess;
 
-    public ContractsController(BridgeDbContext db, ITenantAccessService access)
+    public ContractsController(
+        BridgeDbContext db, ITenantAccessService tenantAccess, IInstanceAccessService instanceAccess)
     {
         _db = db;
-        _access = access;
+        _tenantAccess = tenantAccess;
+        _instanceAccess = instanceAccess;
     }
 
     [HttpGet]
-    public async Task<IReadOnlyList<ContractDto>> List(CancellationToken ct) =>
-        (await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps).ToListAsync(ct))
-        .Select(ContractDto.From).ToList();
+    public async Task<IReadOnlyList<ContractDto>> List(CancellationToken ct)
+    {
+        var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        var contracts = allowed is null
+            ? await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps).ToListAsync(ct)
+            : await _db.Contracts
+                .Include(c => c.Tenants.Where(tenant => allowed.Contains(tenant.Id)))
+                .Include(c => c.DesiredApps)
+                .ToListAsync(ct);
+        return contracts.Select(ContractDto.From).ToList();
+    }
 
     [HttpPost]
     public async Task<ActionResult<ContractDto>> Create(CreateContractRequest req, CancellationToken ct)
     {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
         var contract = new Contract { Name = req.Name, Notes = req.Notes };
         _db.Contracts.Add(contract);
         await _db.SaveChangesAsync(ct);
@@ -50,6 +63,10 @@ public class ContractsController : ControllerBase
             .FirstOrDefaultAsync(c => c.Id == id, ct);
         if (contract is null) return NotFound();
 
+        var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null)
+            contract.Tenants = contract.Tenants.Where(tenant => allowed.Contains(tenant.Id)).ToList();
+
         var templateIds = contract.DesiredApps.Select(a => a.Id).ToList();
         var tenantIds = contract.Tenants.Select(t => t.Id).ToList();
         var deployments = await _db.Deployments
@@ -68,7 +85,7 @@ public class ContractsController : ControllerBase
     [HttpPost("{id:guid}/desired-apps/{templateId:guid}")]
     public async Task<ActionResult<ContractDto>> AddDesiredApp(Guid id, Guid templateId, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         var contract = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
             .FirstOrDefaultAsync(c => c.Id == id, ct);
@@ -105,7 +122,7 @@ public class ContractsController : ControllerBase
     [HttpDelete("{id:guid}/desired-apps/{templateId:guid}")]
     public async Task<ActionResult<ContractDto>> RemoveDesiredApp(Guid id, Guid templateId, CancellationToken ct)
     {
-        if (!_access.IsSystemAdmin) return Forbid();
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
 
         var contract = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
             .FirstOrDefaultAsync(c => c.Id == id, ct);

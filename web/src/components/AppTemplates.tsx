@@ -23,6 +23,7 @@ import DeleteIcon from "@mui/icons-material/Delete";
 import EditIcon from "@mui/icons-material/Edit";
 import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { api } from "../api";
+import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useIsPhone } from "../hooks/useIsPhone";
@@ -63,7 +64,7 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   const [newPackage, setNewPackage] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<TemplateForm>(emptyForm);
-  const canManage = !me || me.isSystemAdmin;
+  const canManage = hasInstancePermission(me, "instance.catalog.manage");
   const confirm = useConfirm();
   const showToast = useToast();
   const isPhone = useIsPhone();

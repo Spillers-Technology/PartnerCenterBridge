@@ -37,11 +37,11 @@ Two independent auth planes:
   - `Oidc` (default) — Authentik or any OIDC provider (JWT bearer). Every authenticated user has
     full operator access; there's no external IdP to run this way without standing one up first.
   - `Local` — self-registered accounts, no external IdP required. Registration is open (no invite
-    code), but a fresh account starts with zero tenant access: it can't touch a customer until an
-    Owner shares that tenant with it (`Viewer`/`Operator`/`Owner`). You become a tenant's Owner
-    automatically by adding it (`POST /api/tenants`) or first-syncing it from Partner Center —
-    there's no admin bypass for tenant power. (`IsSystemAdmin`, granted to the first account on a
-    fresh database, gates only the SAM admin endpoints — unrelated to tenant access.) Passkeys
+    code), but a fresh account starts with zero tenant and instance access. Tenant power is shared
+    explicitly as `Viewer`/`Operator`/`Owner`; even an instance Administrator cannot bypass those
+    grants. The first account becomes Administrator and can delegate narrow instance roles for
+    catalog authoring, SAM credentials, and automation policy. Tenant onboarding remains
+    Administrator-only and grants the onboarding Administrator Owner on each newly added tenant. Passkeys
     (WebAuthn, discoverable/usernameless) are the primary sign-in method; password is the
     permanent fallback. TOTP 2FA is available per-account, with recovery codes. Every auth event
     and every mutation to a user, tenant, contract, template, deployment, or grant is appended to

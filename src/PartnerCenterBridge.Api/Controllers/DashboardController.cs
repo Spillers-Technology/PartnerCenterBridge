@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Data;
 
@@ -26,8 +27,13 @@ public record DashboardDto(DashboardStats Stats, IReadOnlyList<AttentionItem> Ne
 public class DashboardController : ControllerBase
 {
     private readonly BridgeDbContext _db;
+    private readonly ITenantAccessService _access;
 
-    public DashboardController(BridgeDbContext db) => _db = db;
+    public DashboardController(BridgeDbContext db, ITenantAccessService access)
+    {
+        _db = db;
+        _access = access;
+    }
 
     [HttpGet]
     public async Task<DashboardDto> Get(CancellationToken ct)
@@ -36,18 +42,33 @@ public class DashboardController : ControllerBase
         var dayAgo = now.AddHours(-24);
         var weekAgo = now.AddDays(-7);
 
+        var viewerIds = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        var operatorIds = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Operator, ct);
+        var tenants = _db.Tenants.AsNoTracking().AsQueryable();
+        var deployments = _db.Deployments.AsNoTracking().AsQueryable();
+        var runs = _db.WorkflowRuns.AsNoTracking().AsQueryable();
+        var pendingActions = _db.PendingActions.AsNoTracking().AsQueryable();
+        if (viewerIds is not null)
+        {
+            tenants = tenants.Where(tenant => viewerIds.Contains(tenant.Id));
+            deployments = deployments.Where(deployment => viewerIds.Contains(deployment.TenantId));
+            runs = runs.Where(run => viewerIds.Contains(run.TenantId));
+        }
+        if (operatorIds is not null)
+            pendingActions = pendingActions.Where(action => operatorIds.Contains(action.TenantId));
+
         var stats = new DashboardStats(
-            Tenants: await _db.Tenants.CountAsync(ct),
-            TenantsNoDelegation: await _db.Tenants.CountAsync(t => t.Status == TenantStatus.NoDelegation, ct),
-            Deployments: await _db.Deployments.CountAsync(ct),
-            DeploymentsFailed: await _db.Deployments.CountAsync(d => d.Status == DeploymentStatus.Failed, ct),
-            DeploymentsUpdateAvailable: await _db.Deployments.CountAsync(d => d.Status == DeploymentStatus.UpdateAvailable, ct),
-            RunsLast24h: await _db.WorkflowRuns.CountAsync(r => r.StartedAt >= dayAgo, ct),
-            RunsFailedLast7d: await _db.WorkflowRuns.CountAsync(r => !r.Succeeded && r.StartedAt >= weekAgo, ct));
+            Tenants: await tenants.CountAsync(ct),
+            TenantsNoDelegation: await tenants.CountAsync(t => t.Status == TenantStatus.NoDelegation, ct),
+            Deployments: await deployments.CountAsync(ct),
+            DeploymentsFailed: await deployments.CountAsync(d => d.Status == DeploymentStatus.Failed, ct),
+            DeploymentsUpdateAvailable: await deployments.CountAsync(d => d.Status == DeploymentStatus.UpdateAvailable, ct),
+            RunsLast24h: await runs.CountAsync(r => r.StartedAt >= dayAgo, ct),
+            RunsFailedLast7d: await runs.CountAsync(r => !r.Succeeded && r.StartedAt >= weekAgo, ct));
 
         var attention = new List<AttentionItem>();
 
-        attention.AddRange(await _db.Deployments.AsNoTracking()
+        attention.AddRange(await deployments
             .Include(d => d.Tenant).Include(d => d.AppTemplate)
             .Where(d => d.Status == DeploymentStatus.Failed)
             .OrderByDescending(d => d.LastSyncedAt ?? d.CreatedAt)
@@ -56,7 +77,7 @@ public class DashboardController : ControllerBase
                 d.AppTemplate!.DisplayName, d.LastError ?? "unknown error", d.LastSyncedAt ?? d.CreatedAt))
             .ToListAsync(ct));
 
-        attention.AddRange(await _db.Tenants.AsNoTracking()
+        attention.AddRange(await tenants
             .Where(t => t.Status == TenantStatus.NoDelegation)
             .OrderBy(t => t.DisplayName)
             .Take(10)
@@ -64,7 +85,7 @@ public class DashboardController : ControllerBase
                 t.DefaultDomain ?? t.TenantId, "GDAP relationship missing or expired - the bridge cannot act here.", t.LastSeenAt))
             .ToListAsync(ct));
 
-        attention.AddRange((await _db.WorkflowRuns.AsNoTracking()
+        attention.AddRange((await runs
             .Include(r => r.Tenant)
             .Where(r => !r.Succeeded && r.StartedAt >= weekAgo)
             .OrderByDescending(r => r.StartedAt)
@@ -73,7 +94,7 @@ public class DashboardController : ControllerBase
             .Select(r => new AttentionItem("Workflow failed", r.TenantId, r.Tenant?.DisplayName ?? "",
                 r.WorkflowName, r.Error ?? "one or more steps failed", r.StartedAt)));
 
-        attention.AddRange(await _db.PendingActions.AsNoTracking()
+        attention.AddRange(await pendingActions
             .Include(a => a.Tenant)
             .Where(a => a.Status == PendingActionStatus.Pending
                      || (a.Status == PendingActionStatus.Approved && a.ExecutionError != null))
@@ -87,7 +108,7 @@ public class DashboardController : ControllerBase
                 a.CreatedAt))
             .ToListAsync(ct));
 
-        var recentRuns = (await _db.WorkflowRuns.AsNoTracking()
+        var recentRuns = (await runs
             .Include(r => r.Tenant)
             .OrderByDescending(r => r.StartedAt)
             .Take(10)

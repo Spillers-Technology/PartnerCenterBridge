@@ -30,11 +30,12 @@ public class PendingActionTools
         "Returns a staged pending action's current status and any execution error.")]
     public async Task<PendingActionStatusDto> CheckPendingAction(Guid id, CancellationToken ct)
     {
-        var existing = await _db.PendingActions.AsNoTracking()
-            .SingleOrDefaultAsync(action => action.Id == id, ct)
-            ?? throw new InvalidOperationException("Pending action not found.");
-        if (!await _access.HasRoleAsync(existing.TenantId, TenantRole.Viewer, ct))
-            throw new UnauthorizedAccessException("Caller does not have access to this tenant.");
+        var query = _db.PendingActions.AsNoTracking().Where(action => action.Id == id);
+        var allowed = await _access.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null)
+            query = query.Where(action => allowed.Contains(action.TenantId));
+        if (!await query.AnyAsync(ct))
+            throw new InvalidOperationException("Pending action not found.");
 
         var action = await _pending.GetAsync(id, ct)
             ?? throw new InvalidOperationException("Pending action not found.");

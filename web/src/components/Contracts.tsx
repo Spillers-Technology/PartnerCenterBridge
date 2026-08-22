@@ -16,6 +16,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useToast } from "../hooks/useToast";
 import type { AppTemplate, Contract, MeProfile } from "../types";
@@ -95,7 +96,7 @@ export function Contracts({ me }: { me: MeProfile | null }) {
   const [pendingUploadIds, setPendingUploadIds] = useState<Set<string>>(new Set());
   const contractsLoadGeneration = useRef(0);
   const planGeneration = useRef(0);
-  const canManage = !me || me.isSystemAdmin;
+  const canManage = hasInstancePermission(me, "instance.catalog.manage");
   const toast = useToast();
 
   const loadAction = useAsyncAction(async (preserve: Contract[] = []) => {

@@ -21,10 +21,17 @@ public class AuthResponseFactory
     {
         var access = await _db.TenantAccessGrants.AsNoTracking()
             .Include(g => g.Tenant)
-            .Where(g => g.UserId == user.Id)
+            .Where(g => g.UserId == user.Id
+                     && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
             .Select(g => new TenantAccessDto(g.TenantId, g.Tenant!.DisplayName, g.Role))
             .ToListAsync(ct);
-        var me = new MeDto(user.Id, user.Email, user.DisplayName, user.IsSystemAdmin, user.TotpEnabled, access);
+        var roles = InstanceRolePermissions.Expand(user.InstanceRoles);
+        var me = new MeDto(
+            user.Id, user.Email, user.DisplayName,
+            user.InstanceRoles.HasFlag(Core.InstanceRole.Administrator),
+            user.TotpEnabled, access, roles,
+            InstanceRolePermissions.PermissionNames(user.InstanceRoles),
+            user.AuthorizationVersion);
         return new AuthResponse(_tokens.IssueAccessToken(user), me);
     }
 }

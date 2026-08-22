@@ -8,7 +8,16 @@ public record LoginRequest(string Email, string Password);
 
 public record TenantAccessDto(Guid TenantId, string TenantName, TenantRole Role);
 
-public record MeDto(Guid Id, string Email, string DisplayName, bool IsSystemAdmin, bool TotpEnabled, IReadOnlyList<TenantAccessDto> TenantAccess);
+public record MeDto(
+    Guid Id,
+    string Email,
+    string DisplayName,
+    bool IsSystemAdmin,
+    bool TotpEnabled,
+    IReadOnlyList<TenantAccessDto> TenantAccess,
+    IReadOnlyList<InstanceRole> InstanceRoles,
+    IReadOnlyList<string> InstancePermissions,
+    long AuthorizationVersion);
 
 public record AuthResponse(string AccessToken, MeDto User);
 

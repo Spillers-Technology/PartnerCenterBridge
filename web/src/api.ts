@@ -3,7 +3,7 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
+  InstanceRole, InstanceUser, McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
   TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
@@ -52,6 +52,15 @@ export const api = {
       }),
     revoke: (tenantId: string, userId: string) =>
       request<void>(`/api/tenants/${tenantId}/access/${userId}`, { method: "DELETE" })
+  },
+
+  instanceAccess: {
+    list: () => request<InstanceUser[]>("/api/admin/users"),
+    replaceRoles: (userId: string, roles: InstanceRole[], expectedAuthorizationVersion: number) =>
+      request<InstanceUser>(`/api/admin/users/${userId}/roles`, {
+        method: "PUT",
+        body: JSON.stringify({ roles, expectedAuthorizationVersion })
+      })
   },
 
   contracts: {

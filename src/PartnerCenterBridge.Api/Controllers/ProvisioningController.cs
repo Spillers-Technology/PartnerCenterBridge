@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
+using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Data;
 
@@ -14,18 +16,23 @@ public class ProvisioningController : ControllerBase
     private readonly BridgeDbContext _db;
     private readonly IGraphUserService _users;
     private readonly IExchangeOnlineService _exchange;
+    private readonly ITenantAccessService _access;
 
-    public ProvisioningController(BridgeDbContext db, IGraphUserService users, IExchangeOnlineService exchange)
+    public ProvisioningController(
+        BridgeDbContext db, IGraphUserService users, IExchangeOnlineService exchange,
+        ITenantAccessService access)
     {
         _db = db;
         _users = users;
         _exchange = exchange;
+        _access = access;
     }
 
     /// <summary>Create a new-hire user in the selected tenant, applying licenses/groups/manager.</summary>
     [HttpPost("hire")]
     public async Task<ActionResult<ProvisioningResult>> Hire(HireApiRequest req, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(req.TenantId, TenantRole.Operator, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([req.TenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
         return Ok(await _users.CreateUserAsync(tenant, req.Hire, ct));
@@ -35,6 +42,7 @@ public class ProvisioningController : ControllerBase
     [HttpPost("terminate")]
     public async Task<ActionResult<ProvisioningResult>> Terminate(TerminateApiRequest req, CancellationToken ct)
     {
+        if (!await _access.HasRoleAsync(req.TenantId, TenantRole.Operator, ct)) return Forbid();
         var tenant = await _db.Tenants.FindAsync([req.TenantId], ct);
         if (tenant is null) return NotFound("Tenant not found.");
 

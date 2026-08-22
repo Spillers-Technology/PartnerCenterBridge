@@ -48,12 +48,14 @@ public class TenantAccessController : ControllerBase
     {
         if (!await _access.HasRoleAsync(tenantId, TenantRole.Owner, ct)) return Forbid();
 
-        var tenant = await _db.Tenants.FindAsync([tenantId], ct);
-        if (tenant is null) return NotFound("Tenant not found.");
+        await using var tenantLock = await TenantAuthorizationLock.AcquireAsync(_db, tenantId, ct);
+        if (tenantLock is null) return NotFound("Tenant not found.");
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Owner, ct)) return Forbid();
 
         var email = req.Email.Trim().ToLowerInvariant();
         var targetUser = await _db.AppUsers.FirstOrDefaultAsync(u => u.Email == email, ct);
         if (targetUser is null) return NotFound("No registered account with that email. They need to register first.");
+        if (!targetUser.IsActive) return Conflict("Tenant access cannot be granted to an inactive account.");
 
         // Sharing only means something between local accounts -- an OIDC/dev-auth caller (who
         // passed the check above by virtue of that plane's unrestricted access) has no AppUser id
@@ -67,6 +69,12 @@ public class TenantAccessController : ControllerBase
         {
             grant = new TenantAccessGrant { TenantId = tenantId, UserId = targetUser.Id };
             _db.TenantAccessGrants.Add(grant);
+        }
+        else if (IsPermanentOwner(grant)
+            && (req.Role != TenantRole.Owner || req.ExpiresAt is not null)
+            && !await HasAnotherPermanentOwnerAsync(tenantId, grant.UserId, ct))
+        {
+            return Conflict("At least one active, non-expiring Owner must remain.");
         }
         grant.Role = req.Role;
         grant.ExpiresAt = req.ExpiresAt;
@@ -84,6 +92,7 @@ public class TenantAccessController : ControllerBase
             Detail = System.Text.Json.JsonSerializer.Serialize(new { targetUser.Email, req.Role, req.ExpiresAt })
         });
         await _db.SaveChangesAsync(ct);
+        await tenantLock.CommitAsync(ct);
         return NoContent();
     }
 
@@ -92,9 +101,15 @@ public class TenantAccessController : ControllerBase
     {
         if (!await _access.HasRoleAsync(tenantId, TenantRole.Owner, ct)) return Forbid();
 
+        await using var tenantLock = await TenantAuthorizationLock.AcquireAsync(_db, tenantId, ct);
+        if (tenantLock is null) return NotFound();
+        if (!await _access.HasRoleAsync(tenantId, TenantRole.Owner, ct)) return Forbid();
+
         var grant = await _db.TenantAccessGrants
             .FirstOrDefaultAsync(g => g.TenantId == tenantId && g.UserId == userId, ct);
         if (grant is null) return NotFound();
+        if (IsPermanentOwner(grant) && !await HasAnotherPermanentOwnerAsync(tenantId, grant.UserId, ct))
+            return Conflict("At least one active, non-expiring Owner must remain.");
 
         _db.TenantAccessGrants.Remove(grant);
         _db.AuditEvents.Add(new AuditEvent
@@ -107,6 +122,19 @@ public class TenantAccessController : ControllerBase
             EntityId = userId.ToString()
         });
         await _db.SaveChangesAsync(ct);
+        await tenantLock.CommitAsync(ct);
         return NoContent();
     }
+
+    private static bool IsPermanentOwner(TenantAccessGrant grant) =>
+        grant.Role == TenantRole.Owner && grant.ExpiresAt is null;
+
+    private Task<bool> HasAnotherPermanentOwnerAsync(Guid tenantId, Guid excludedUserId, CancellationToken ct) =>
+        _db.TenantAccessGrants.AsNoTracking()
+            .AnyAsync(grant => grant.TenantId == tenantId
+                && grant.UserId != excludedUserId
+                && grant.Role == TenantRole.Owner
+                && grant.ExpiresAt == null
+                && grant.User != null
+                && grant.User.IsActive, ct);
 }

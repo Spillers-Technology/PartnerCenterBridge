@@ -137,12 +137,13 @@
   </tr>
 </table>
 <div class="callout">
-  Switching a tenant to ClientTrust requires <code>IsSystemAdmin</code>
+  Switching a tenant to ClientTrust requires the <strong>Automation policy manager</strong>
+  instance role (or Administrator)
   (<code>PATCH /api/admin/tenants/{id}/mcp-mode</code>) -- there's no SPA toggle yet, so it's an
-  API call today. This is the one place <code>IsSystemAdmin</code> gates something MCP-specific,
-  and it's deliberately a safety-policy flag, not a tenant-operational bypass -- see
-  <a href="authentication.html">Authentication</a>'s note on what <code>IsSystemAdmin</code> is
-  and isn't allowed to do.
+  API call today. This is deliberately a narrow instance safety-policy permission, not a
+  tenant-operational bypass: it grants no ability to view or act on that tenant's data. See
+  <a href="authentication.html">Authentication</a> for the separate instance-role and tenant-role
+  models.
 </div>
 
 <h2>The approval workflow</h2>

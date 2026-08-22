@@ -12,9 +12,8 @@ namespace PartnerCenterBridge.Api.Auth;
 /// so existing Authentik-backed and docker-compose dev deployments see no behavior change.
 /// </summary>
 /// <remarks>
-/// <see cref="IsSystemAdmin"/> deliberately does <b>not</b> bypass tenant checks here. It gates
-/// instance-wide configuration (SAM credentials, app-template authoring, and contract desired
-/// state), but never substitutes for a role check on a tenant-scoped resource.
+/// Instance roles deliberately do <b>not</b> appear here. They gate instance-wide configuration
+/// through <see cref="IInstanceAccessService"/>, but never substitute for a tenant role check.
 /// Tenant power is 100% driven by <see cref="TenantAccessGrant"/> -- creating or first-syncing a
 /// tenant grants its creator Owner (see <c>TenantsController</c>), and Owners share from there.
 /// Two separate concerns, two separate mechanisms; conflating them was the muddle this replaced.
@@ -33,10 +32,6 @@ public class TenantAccessService : ITenantAccessService
     private bool IsLocalToken =>
         _accessor.HttpContext?.User.HasClaim(c => c.Type == LocalTokenService.UserIdClaim) == true;
 
-    /// <summary>Instance-wide configuration admin only -- see the type-level remarks. Never used to gate tenant access.</summary>
-    public bool IsSystemAdmin =>
-        !IsLocalToken || _accessor.HttpContext?.User.FindFirst(LocalTokenService.SystemAdminClaim)?.Value == "true";
-
     public Guid? CurrentUserId =>
         Guid.TryParse(_accessor.HttpContext?.User.FindFirstValue(LocalTokenService.UserIdClaim), out var id) ? id : null;
 
@@ -45,13 +40,30 @@ public class TenantAccessService : ITenantAccessService
         if (!IsLocalToken) return true; // OIDC/dev-auth operator plane: unchanged, all-access.
 
         var userId = CurrentUserId!.Value;
-        var now = DateTimeOffset.UtcNow;
-
         var grant = await _db.TenantAccessGrants.AsNoTracking()
             .Where(g => g.TenantId == tenantId && g.UserId == userId)
-            .Where(g => g.ExpiresAt == null || g.ExpiresAt > now)
+            .Select(g => new { g.Role, g.ExpiresAt })
             .FirstOrDefaultAsync(ct);
 
-        return grant is not null && grant.Role >= minimum;
+        return grant is not null
+            && grant.Role >= minimum
+            && (grant.ExpiresAt is null || grant.ExpiresAt > DateTimeOffset.UtcNow);
+    }
+
+    public async Task<IReadOnlyList<Guid>?> GetAuthorizedTenantIdsAsync(TenantRole minimum, CancellationToken ct)
+    {
+        if (!IsLocalToken) return null;
+
+        var userId = CurrentUserId!.Value;
+        var grants = await _db.TenantAccessGrants.AsNoTracking()
+            .Where(grant => grant.UserId == userId)
+            .Select(grant => new { grant.TenantId, grant.Role, grant.ExpiresAt })
+            .ToListAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+        return grants
+            .Where(grant => grant.Role >= minimum
+                && (grant.ExpiresAt is null || grant.ExpiresAt > now))
+            .Select(grant => grant.TenantId)
+            .ToList();
     }
 }
