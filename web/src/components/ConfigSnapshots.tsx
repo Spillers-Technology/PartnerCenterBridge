@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -52,8 +52,11 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
   const runsAction = useAsyncAction((id: string) => api.configSnapshots.list(id));
   const captureAction = useAsyncAction(async () => {
     await api.configSnapshots.capture(tenantId);
-    await runsAction.run(tenantId);
-    return true;
+    // The capture itself already succeeded at this point -- a failed (or single-flight-dropped)
+    // refresh afterward must not make the whole action look like it failed, but it also must not
+    // be reported as a plain, unqualified success (see handleCapture below).
+    const refreshed = (await runsAction.run(tenantId)) !== undefined;
+    return { refreshed };
   });
   const viewDiffAction = useAsyncAction((before: string, after: string) => api.configSnapshots.diff(tenantId, before, after));
   const exportPatchAction = useAsyncAction(async () => {
@@ -65,12 +68,12 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     return true;
   });
   const importAction = useAsyncAction(async () => {
-    if (!importFile) return false;
+    if (!importFile) return null;
     const workbook = JSON.parse(await importFile.text());
     await api.configSnapshots.import(tenantId, workbook.sections);
     setImportFile(null);
-    await runsAction.run(tenantId);
-    return true;
+    const refreshed = (await runsAction.run(tenantId)) !== undefined;
+    return { refreshed };
   });
 
   useEffect(() => {
@@ -86,14 +89,21 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     }
   }, [tenants, tenantId]);
 
+  // Tracks the tenant we've actually issued a runs request for. A rapid tenant switch (A -> B
+  // before A's request finishes) used to silently drop B's fetch entirely -- useAsyncAction.run()
+  // is single-flight and no-ops while busy, so B's runs list never loaded and A's response could
+  // still land and render under B's now-selected tenant. Re-checking once the in-flight request
+  // settles (runsAction.busy is a dependency below) makes the fetch always converge on whichever
+  // tenant is selected once the previous request is done, never mid-flight.
+  const requestedTenantRef = useRef("");
+
   useEffect(() => {
-    if (tenantId) {
-      setDiffs(null);
-      setLastAction("runs");
-      void runsAction.run(tenantId);
-    }
+    if (!tenantId || runsAction.busy || requestedTenantRef.current === tenantId) return;
+    requestedTenantRef.current = tenantId;
+    setLastAction("runs");
+    void runsAction.run(tenantId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId]);
+  }, [tenantId, runsAction.busy]);
 
   const canOperate = me === null || me.tenantAccess.some((a) => a.tenantId === tenantId && a.role !== "Viewer");
 
@@ -108,8 +118,10 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
 
   const handleCapture = async () => {
     setLastAction("capture");
-    const ok = await captureAction.run();
-    if (ok) toast("Snapshot captured");
+    const outcome = await captureAction.run();
+    if (!outcome) return;
+    if (outcome.refreshed) toast("Snapshot captured");
+    else toast("Snapshot captured, but the list couldn't refresh -- reload to see it.", "warning");
   };
 
   const handleViewDiff = async () => {
@@ -136,8 +148,10 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
 
   const handleImport = async () => {
     setLastAction("import");
-    const ok = await importAction.run();
-    if (ok) toast("Workbook imported");
+    const outcome = await importAction.run();
+    if (!outcome) return;
+    if (outcome.refreshed) toast("Workbook imported");
+    else toast("Workbook imported, but the list couldn't refresh -- reload to see it.", "warning");
   };
 
   if (tenantsAction.status === "error") {
@@ -174,7 +188,23 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
         <Typography variant="h5" component="h2" sx={{ mr: "auto" }}>
           Config Snapshots
         </Typography>
-        <TextField select label="Tenant" size="small" value={tenantId} onChange={(e) => setTenantId(e.target.value)} sx={{ minWidth: 220 }}>
+        <TextField
+          select
+          label="Tenant"
+          size="small"
+          value={tenantId}
+          onChange={(e) => {
+            setTenantId(e.target.value);
+            // These are scoped to the previously selected tenant's runs -- leaving them set would
+            // let a diff/export/comparison request pair a stale run ID from the old tenant with
+            // the newly selected tenant, or keep a since-invalid run's export button enabled.
+            setBeforeRunId("");
+            setAfterRunId("");
+            setDiffs(null);
+            setExportingRunId(null);
+          }}
+          sx={{ minWidth: 220 }}
+        >
           {tenants.map((t: Tenant) => (
             <MenuItem key={t.id} value={t.id}>
               {t.displayName}

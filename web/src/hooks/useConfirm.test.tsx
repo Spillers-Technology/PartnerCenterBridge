@@ -165,4 +165,37 @@ describe("useConfirm / ConfirmDialogProvider", () => {
     await user.click(screen.getByRole("button", { name: "Yes2" }));
     expect(results).toEqual([true, true]);
   });
+
+  it("autofocuses Cancel (not Confirm) for a destructive dialog, so Enter doesn't default to it", async () => {
+    const user = userEvent.setup();
+    renderHarness(() => {});
+
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByRole("button", { name: "Cancel" })).toHaveFocus();
+  });
+
+  it("autofocuses Confirm for a non-destructive dialog", async () => {
+    const user = userEvent.setup();
+    const results: boolean[] = [];
+
+    function NonDestructiveHarness() {
+      const confirm = useConfirm();
+      return (
+        <button onClick={async () => results.push(await confirm({ title: "Deploy?", message: "To 4 tenants." }))}>
+          Ask
+        </button>
+      );
+    }
+
+    render(
+      <ThemeProvider theme={theme}>
+        <ConfirmDialogProvider>
+          <NonDestructiveHarness />
+        </ConfirmDialogProvider>
+      </ThemeProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByRole("button", { name: "Confirm" })).toHaveFocus();
+  });
 });
