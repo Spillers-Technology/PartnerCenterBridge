@@ -297,13 +297,26 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                 </Box>
               )}
               {run?.ephemeral && Object.entries(run.ephemeral).map(([k, v]) => (
-                <Typography key={k} variant="body2">
-                  {k}:{" "}
-                  <Box component="span" sx={{ fontFamily: "monospace", overflowWrap: "break-word", wordBreak: "break-all" }}>
-                    {v}
-                  </Box>{" "}
-                  (shown once - not recorded)
-                </Typography>
+                <Stack key={k} direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+                  <Typography variant="body2">
+                    {k}:{" "}
+                    <Box component="span" sx={{ fontFamily: "monospace", overflowWrap: "break-word", wordBreak: "break-all" }}>
+                      {v}
+                    </Box>{" "}
+                    (shown once - not recorded)
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() =>
+                      void navigator.clipboard.writeText(v).then(
+                        () => toast("Copied"),
+                        () => toast("Couldn't copy -- select and copy the text manually.", "warning")
+                      )
+                    }
+                  >
+                    Copy
+                  </Button>
+                </Stack>
               ))}
             </Stack>
           )}
