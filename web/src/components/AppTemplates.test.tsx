@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
@@ -52,6 +52,8 @@ function renderComponent(me: MeProfile | null = admin) {
 }
 
 describe("AppTemplates", () => {
+  beforeEach(() => vi.clearAllMocks());
+
   it("shows the empty state when there are no templates", async () => {
     vi.mocked(api.templates.list).mockResolvedValue([]);
     renderComponent();
@@ -191,6 +193,105 @@ describe("AppTemplates", () => {
     );
     expect(api.templates.uploadPackage).toHaveBeenCalledWith("t1", file);
     expect(await screen.findByText("Template created and package uploaded.")).toBeInTheDocument();
+  });
+
+  it("refreshes the list a second time after a successful upload, so the new row stops showing 'No package'", async () => {
+    // Regression test: the list was only refreshed once, right after create() and before
+    // uploadPackage() -- a successful upload never triggered a second refresh, so the new
+    // template's row kept showing "No package" until the user manually reloaded the page.
+    vi.mocked(api.templates.list).mockResolvedValueOnce([]);
+    vi.mocked(api.templates.create).mockResolvedValue(template);
+    vi.mocked(api.templates.uploadPackage).mockResolvedValue({ ...template, hasPackage: true });
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText("No templates yet.");
+    // First refresh (right after create, before upload) still shows no package -- the real
+    // server state at that point in time.
+    vi.mocked(api.templates.list).mockResolvedValueOnce([{ ...template, hasPackage: false }]);
+    // Second refresh (after the upload succeeds) reflects the now-attached package.
+    vi.mocked(api.templates.list).mockResolvedValueOnce([{ ...template, hasPackage: true }]);
+
+    await user.type(screen.getByLabelText("Display name"), "Company Portal");
+    await user.type(screen.getByLabelText("Install command line"), "install.exe");
+    await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
+    const file = new File(["binary"], "package.intunewin");
+    await user.upload(screen.getByLabelText("Attach package (.intunewin, optional)"), file);
+    await user.click(screen.getByRole("button", { name: "Create template" }));
+
+    expect(await screen.findByText("Template created and package uploaded.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Uploaded")).toBeInTheDocument());
+    expect(screen.queryByText("No package")).not.toBeInTheDocument();
+  });
+
+  it("uploads the file that was attached when Create was clicked, not one picked afterward while the create call is still in flight", async () => {
+    // Regression test: newPackage wasn't captured/cleared until after create() resolved, so a
+    // file picked in the still-enabled attach-package input during that window could silently
+    // replace what actually gets uploaded for this create.
+    vi.mocked(api.templates.list).mockResolvedValue([]);
+    let resolveCreate!: (t: AppTemplate) => void;
+    vi.mocked(api.templates.create).mockReturnValue(new Promise((resolve) => { resolveCreate = resolve; }));
+    vi.mocked(api.templates.uploadPackage).mockResolvedValue({ ...template, hasPackage: true });
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText("No templates yet.");
+    await user.type(screen.getByLabelText("Display name"), "Company Portal");
+    await user.type(screen.getByLabelText("Install command line"), "install.exe");
+    await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
+    const firstFile = new File(["first"], "first.intunewin");
+    await user.upload(screen.getByLabelText("Attach package (.intunewin, optional)"), firstFile);
+    await user.click(screen.getByRole("button", { name: "Create template" }));
+
+    // The attach-package input resets to its placeholder label as soon as Create is clicked
+    // (newPackage is captured and cleared synchronously, before create() is even awaited) -- it's
+    // still enabled while create() is pending, and picking a different file here must not change
+    // what this in-flight create ends up uploading.
+    await waitFor(() => expect(screen.getByText("Attach package (.intunewin, optional)")).toBeInTheDocument());
+    const secondFile = new File(["second"], "second.intunewin");
+    await user.upload(screen.getByLabelText("Attach package (.intunewin, optional)"), secondFile);
+
+    resolveCreate(template);
+    await waitFor(() => expect(api.templates.uploadPackage).toHaveBeenCalled());
+
+    expect(api.templates.uploadPackage).toHaveBeenCalledWith("t1", firstFile);
+  });
+
+  it("resets the create form after a successful create even if the follow-up package upload fails, instead of inviting a duplicate", async () => {
+    // Regression test: create() succeeding but uploadPackage() then failing used to leave the
+    // create form still filled in with the same values -- clicking "Create template" again would
+    // create a second, duplicate template, since the first one was already created server-side.
+    vi.mocked(api.templates.list).mockResolvedValue([]);
+    vi.mocked(api.templates.create).mockResolvedValue(template);
+    vi.mocked(api.templates.uploadPackage).mockRejectedValue(new Error("blob storage unavailable"));
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText("No templates yet.");
+    vi.mocked(api.templates.list).mockResolvedValue([template]);
+
+    await user.type(screen.getByLabelText("Display name"), "Company Portal");
+    await user.type(screen.getByLabelText("Install command line"), "install.exe");
+    await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
+    const file = new File(["binary"], "package.intunewin");
+    await user.upload(screen.getByLabelText("Attach package (.intunewin, optional)"), file);
+    await user.click(screen.getByRole("button", { name: "Create template" }));
+
+    expect(api.templates.create).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/was created, but the package upload failed/)).toBeInTheDocument();
+    // The form is reset -- the display name field is empty again, and the attach-package button
+    // shows its placeholder label rather than the previously selected file's name.
+    expect(screen.getByLabelText("Display name")).toHaveValue("");
+    expect(screen.queryByText("package.intunewin")).not.toBeInTheDocument();
+    expect(screen.getByText("Attach package (.intunewin, optional)")).toBeInTheDocument();
+    // createAction genuinely succeeded (the template itself was created) -- no spurious inline
+    // "creation failed" error should appear next to the form.
+    expect(screen.queryByText("blob storage unavailable")).not.toBeInTheDocument();
+
+    // Clicking "Create template" again (form is empty, so this simulates the user not noticing
+    // and pressing it again) must not be possible without re-filling the form -- disabled while
+    // required fields are blank, so it can't silently fire a duplicate create.
+    expect(screen.getByRole("button", { name: "Create template" })).toBeDisabled();
   });
 
   it("hides the create form and actions column for non-admin users", async () => {

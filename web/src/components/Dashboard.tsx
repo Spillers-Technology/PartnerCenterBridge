@@ -140,14 +140,21 @@ export function Dashboard() {
             </TableHead>
             <TableBody>
               {data.recentRuns.map((r) => (
-                <TableRow key={r.id} title={r.error ?? undefined}>
+                <TableRow key={r.id}>
                   <TableCell>{new Date(r.startedAt).toLocaleString()}</TableCell>
                   <TableCell>{r.workflowName}</TableCell>
                   <TableCell>{r.tenantName}</TableCell>
                   <TableCell>{r.kind}</TableCell>
                   <TableCell>{r.operator}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ maxWidth: 280 }}>
                     <Chip size="small" label={r.succeeded ? "ok" : "failed"} color={r.succeeded ? "success" : "error"} />
+                    {/* A native title attribute only shows on mouse hover -- invisible to keyboard
+                        and touch users. Plain visible text is accessible to everyone. */}
+                    {!r.succeeded && r.error && (
+                      <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>
+                        {r.error}
+                      </Typography>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}

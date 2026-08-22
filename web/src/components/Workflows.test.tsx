@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
 import { theme } from "../theme";
@@ -113,6 +113,39 @@ describe("Workflows", () => {
     expect(api.workflows.remediate).toHaveBeenCalledWith("mfa-reset", "t1", { userUpn: "ada@contoso.com" });
     expect(await screen.findByText("Clear methods")).toBeInTheDocument();
     expect(await screen.findByText("Fix applied successfully.")).toBeInTheDocument();
+  });
+
+  it("copies a shown-once ephemeral secret to the clipboard", async () => {
+    // Regression test: an ephemeral secret (e.g. a temp password) used to render as plain text
+    // with no copy action -- it's shown exactly once, so retyping it by hand is the only fallback.
+    vi.mocked(api.workflows.remediate).mockResolvedValue({
+      steps: [{ name: "Reset password", success: true }],
+      succeeded: true,
+      ephemeral: { tempPassword: "Sup3r$ecret!" }
+    });
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user);
+    await user.click(screen.getByRole("button", { name: "Apply fix" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByText("Sup3r$ecret!")).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    // The toast queue shows one at a time -- dismiss the "Fix applied successfully." toast
+    // already showing so the "Copied" toast (below) isn't just queued invisibly behind it.
+    await user.click(await screen.findByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByText("Fix applied successfully.")).not.toBeInTheDocument());
+
+    // user-event's own setup() installs its own navigator.clipboard stub -- define after setup()
+    // so this mock isn't the one that gets clobbered.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+
+    await user.click(screen.getByRole("button", { name: "Copy" }));
+
+    expect(writeText).toHaveBeenCalledWith("Sup3r$ecret!");
+    expect(await screen.findByText("Copied")).toBeInTheDocument();
   });
 
   it("clears a stale diagnose error once Apply fix is confirmed and succeeds", async () => {

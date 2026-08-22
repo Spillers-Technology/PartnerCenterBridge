@@ -75,14 +75,36 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   useEffect(() => { void load(); }, []);
 
   const createAction = useAsyncAction(async () => {
-    const created = await api.templates.create({ ...form });
-    if (newPackage) {
-      await api.templates.uploadPackage(created.id, newPackage);
-    }
-    await load();
-    setForm(emptyForm);
+    // Captured and cleared immediately, before any await -- otherwise a file picked in the
+    // still-enabled attach-package input during the create/upload round-trip below would silently
+    // replace what this run is actually supposed to upload.
+    const packageToUpload = newPackage;
     setNewPackage(null);
-    showToast(newPackage ? "Template created and package uploaded." : "Template created.", "success");
+    const created = await api.templates.create({ ...form });
+    // The template now exists server-side regardless of what happens next -- reset the create
+    // form and refresh the list immediately, rather than only after a subsequent package upload
+    // also succeeds. Otherwise a failed upload left the form still filled in looking like the
+    // whole creation had failed, and clicking "Create template" again created a duplicate
+    // template instead of retrying just the upload.
+    setForm(emptyForm);
+    await load();
+    if (packageToUpload) {
+      try {
+        await api.templates.uploadPackage(created.id, packageToUpload);
+        // load() above ran before the upload -- the row it just added still shows "No package"
+        // until this second refresh picks up the upload's own result.
+        await load();
+        showToast("Template created and package uploaded.", "success");
+      } catch (e) {
+        showToast(
+          `"${created.displayName}" was created, but the package upload failed -- use its Upload action below to retry: ${e instanceof Error ? e.message : String(e)}`,
+          "warning"
+        );
+        return;
+      }
+    } else {
+      showToast("Template created.", "success");
+    }
   });
 
   const updateAction = useAsyncAction(async (id: string, next: TemplateForm) => {

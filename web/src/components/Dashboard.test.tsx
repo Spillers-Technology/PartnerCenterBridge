@@ -76,6 +76,26 @@ describe("Dashboard", () => {
     expect(screen.getByText("No runs recorded yet.")).toBeInTheDocument();
   });
 
+  it("shows a failed run's error as visible text, not only in a hover-only title attribute", async () => {
+    // Regression test: the error used to live only in a native `title` attribute on the row,
+    // which only surfaces on mouse hover -- invisible to keyboard and touch users.
+    vi.mocked(api.dashboard).mockResolvedValue({
+      stats: { tenants: 2, tenantsNoDelegation: 0, deployments: 2, deploymentsFailed: 0, deploymentsUpdateAvailable: 0, runsLast24h: 0, runsFailedLast7d: 0 },
+      needsAttention: [],
+      recentRuns: [
+        {
+          id: "r1", workflowId: "mailbox-archive", workflowName: "Mailbox archive repair", tenantId: "t1",
+          tenantName: "Contoso Ltd", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [],
+          succeeded: false, error: "Graph API 403", startedAt: "2026-08-19T09:00:00Z", durationMs: 5210
+        }
+      ]
+    });
+
+    renderDashboard();
+
+    expect(await screen.findByText("Graph API 403")).toBeInTheDocument();
+  });
+
   it("shows an error alert with the bare message, no 'Error:' prefix", async () => {
     vi.mocked(api.dashboard).mockRejectedValue(new Error("500 Internal Server Error"));
     renderDashboard();

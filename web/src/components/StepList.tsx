@@ -1,12 +1,27 @@
 import type { ProvisioningResult } from "../types";
+import { useToast } from "../hooks/useToast";
 
 /** Renders the per-step outcome of a provisioning/offboarding run. */
 export function StepList({ result }: { result: ProvisioningResult }) {
+  const toast = useToast();
+
+  const copy = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast("Copied");
+    } catch {
+      toast("Couldn't copy -- select and copy the text manually.", "warning");
+    }
+  };
+
   return (
     <div className="plan">
       {result.initialPassword && (
         <p className="password">
-          Temporary password: <span className="mono">{result.initialPassword}</span> (shown once)
+          Temporary password: <span className="mono">{result.initialPassword}</span> (shown once){" "}
+          <button type="button" onClick={() => void copy(result.initialPassword!)}>
+            Copy
+          </button>
         </p>
       )}
       <table>
