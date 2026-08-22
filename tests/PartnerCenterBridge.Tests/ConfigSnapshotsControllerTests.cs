@@ -29,12 +29,16 @@ public class ConfigSnapshotsControllerTests
 
         var controller = NewController(db);
 
-        var crossTenant = await controller.Diff(mine.Id, mineRun.Id, theirsRun.Id, null, CancellationToken.None);
-        var crossTenantExport = await controller.ExportDiff(mine.Id, mineRun.Id, theirsRun.Id, null, CancellationToken.None);
+        // Each run ID is checked independently, so a foreign ID must be rejected regardless of
+        // which of the two positions (before/after) it's placed in.
+        var foreignAfter = await controller.Diff(mine.Id, mineRun.Id, theirsRun.Id, null, CancellationToken.None);
+        var foreignBefore = await controller.Diff(mine.Id, theirsRun.Id, mineRun.Id, null, CancellationToken.None);
+        var foreignAfterExport = await controller.ExportDiff(mine.Id, mineRun.Id, theirsRun.Id, null, CancellationToken.None);
         var sameTenant = await controller.Diff(mine.Id, mineRun.Id, mineRun.Id, null, CancellationToken.None);
 
-        Assert.IsType<NotFoundObjectResult>(crossTenant.Result);
-        Assert.IsType<NotFoundObjectResult>(crossTenantExport);
+        Assert.IsType<NotFoundObjectResult>(foreignAfter.Result);
+        Assert.IsType<NotFoundObjectResult>(foreignBefore.Result);
+        Assert.IsType<NotFoundObjectResult>(foreignAfterExport);
         Assert.IsType<OkObjectResult>(sameTenant.Result);
     }
 
