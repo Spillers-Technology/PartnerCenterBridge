@@ -34,9 +34,15 @@ public class AppTemplate
     /// </summary>
     public Win32ContentInfo? Content { get; set; }
 
-    /// <summary>Contract this template belongs to (part of that contract's desired state).</summary>
+    /// <summary>
+    /// Legacy owning contract retained for API and data compatibility. Desired-state membership is
+    /// many-to-many through <see cref="DesiredByContracts"/>.
+    /// </summary>
     public Guid? ContractId { get; set; }
     public Contract? Contract { get; set; }
+
+    /// <summary>Contracts whose desired state includes this reusable template.</summary>
+    public ICollection<Contract> DesiredByContracts { get; set; } = new List<Contract>();
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;

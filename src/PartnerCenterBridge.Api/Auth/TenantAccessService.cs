@@ -13,7 +13,8 @@ namespace PartnerCenterBridge.Api.Auth;
 /// </summary>
 /// <remarks>
 /// <see cref="IsSystemAdmin"/> deliberately does <b>not</b> bypass tenant checks here. It gates
-/// only instance-level infrastructure (<c>AdminController</c>'s SAM refresh-token management).
+/// instance-wide configuration (SAM credentials, app-template authoring, and contract desired
+/// state), but never substitutes for a role check on a tenant-scoped resource.
 /// Tenant power is 100% driven by <see cref="TenantAccessGrant"/> -- creating or first-syncing a
 /// tenant grants its creator Owner (see <c>TenantsController</c>), and Owners share from there.
 /// Two separate concerns, two separate mechanisms; conflating them was the muddle this replaced.
@@ -32,7 +33,7 @@ public class TenantAccessService : ITenantAccessService
     private bool IsLocalToken =>
         _accessor.HttpContext?.User.HasClaim(c => c.Type == LocalTokenService.UserIdClaim) == true;
 
-    /// <summary>Instance infrastructure admin only -- see the type-level remarks. Never used to gate tenant access.</summary>
+    /// <summary>Instance-wide configuration admin only -- see the type-level remarks. Never used to gate tenant access.</summary>
     public bool IsSystemAdmin =>
         !IsLocalToken || _accessor.HttpContext?.User.FindFirst(LocalTokenService.SystemAdminClaim)?.Value == "true";
 

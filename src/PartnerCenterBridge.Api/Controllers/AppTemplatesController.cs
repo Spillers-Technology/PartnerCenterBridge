@@ -31,6 +31,14 @@ public class AppTemplatesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<AppTemplateDto>> Create(CreateAppTemplateRequest req, CancellationToken ct)
     {
+        if (!_access.IsSystemAdmin) return Forbid();
+
+        if (req.ContractId is Guid contractId)
+        {
+            if (!await _db.Contracts.AnyAsync(c => c.Id == contractId, ct))
+                return NotFound("Contract not found.");
+        }
+
         var template = new AppTemplate
         {
             DisplayName = req.DisplayName,
@@ -106,6 +114,8 @@ public class AppTemplatesController : ControllerBase
         [FromServices] IPackageStore packages,
         CancellationToken ct)
     {
+        if (!_access.IsSystemAdmin) return Forbid();
+
         var template = await _db.AppTemplates.FindAsync([id], ct);
         if (template is null) return NotFound();
         if (file is null || file.Length == 0) return BadRequest("No file uploaded.");

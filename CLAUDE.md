@@ -78,6 +78,7 @@ itself a candidate for automation later; until then, work through it by hand:
   following the CNPG-per-app pattern other apps use (see that repo's `anchordesk`/`guacamole`
   app folders), not assuming this repo's `deploy/` is already wired to anything.
 - `Auth:Mode=Local`'s tenant-access model has exactly one privileged flag
-  (`ITenantAccessService.IsSystemAdmin`), and it gates only `/api/admin/sam/*`. If you're about to
-  add a check that lets a system admin bypass a per-tenant role, stop -- that's the exact muddle
-  this model was built to avoid. Tenant power comes from `TenantAccessGrant` alone.
+  (`ITenantAccessService.IsSystemAdmin`). It gates instance-wide configuration such as
+  `/api/admin/sam/*`, app-template authoring/package replacement, and contract desired-state
+  membership. If you're about to use it to bypass a per-tenant role, stop -- that's the exact
+  muddle this model was built to avoid. Tenant power comes from `TenantAccessGrant` alone.

@@ -76,8 +76,25 @@ public class ContractsController : ControllerBase
         var template = await _db.AppTemplates.FindAsync([templateId], ct);
         if (template is null) return NotFound();
 
-        if (!contract.DesiredApps.Any(a => a.Id == templateId)) contract.DesiredApps.Add(template);
-        await _db.SaveChangesAsync(ct);
+        var alreadyDesired = contract.DesiredApps.Any(a => a.Id == templateId);
+        if (!alreadyDesired && template.Content is null)
+            return Conflict("Attach a package before adding this template to desired state.");
+        if (!alreadyDesired) contract.DesiredApps.Add(template);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException) when (!alreadyDesired)
+        {
+            // Another caller may have inserted the same composite-key membership after our read.
+            // Treat that realized desired state as the idempotent success the endpoint promises.
+            _db.ChangeTracker.Clear();
+            var persisted = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
+                .FirstOrDefaultAsync(c => c.Id == id, ct);
+            if (persisted?.DesiredApps.Any(a => a.Id == templateId) == true)
+                return Ok(ContractDto.From(persisted));
+            throw;
+        }
         return Ok(ContractDto.From(contract));
     }
 
@@ -96,7 +113,20 @@ public class ContractsController : ControllerBase
 
         var existing = contract.DesiredApps.FirstOrDefault(a => a.Id == templateId);
         if (existing is not null) contract.DesiredApps.Remove(existing);
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException) when (existing is not null)
+        {
+            // A concurrent delete that already realized the requested absence is also success.
+            _db.ChangeTracker.Clear();
+            var persisted = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
+                .FirstOrDefaultAsync(c => c.Id == id, ct);
+            if (persisted is not null && persisted.DesiredApps.All(a => a.Id != templateId))
+                return Ok(ContractDto.From(persisted));
+            throw;
+        }
         return Ok(ContractDto.From(contract));
     }
 }

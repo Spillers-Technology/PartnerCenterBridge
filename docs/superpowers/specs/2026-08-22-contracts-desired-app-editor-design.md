@@ -2,13 +2,13 @@
 
 ## Context
 
-`Contract.DesiredApps` (an EF many-to-many navigation to `AppTemplate`) already exists in the
-domain model and is already consumed read-only by `ContractsController.Plan` (the dry-run
-reconcile preview). `Contracts.tsx` already displays a `desiredAppCount` per contract. But there is
-currently no way anywhere -- no API endpoint, no UI -- to actually add or remove a desired app
-from a contract. Surfaced by the usability workstream's friction survey as a feature gap (not a
-friction fix), logged to `ROADMAP.md`, and picked up as its own architectural piece of work once
-that workstream wrapped.
+`Contract.DesiredApps` already exists in the domain model and is consumed read-only by
+`ContractsController.Plan` (the dry-run reconcile preview). The architectural review found that
+the navigation was actually backed by the single nullable `AppTemplate.ContractId` foreign key,
+despite the desired-state model needing reusable templates across contracts. The editor therefore
+also corrects that relationship to a real many-to-many join. `Contracts.tsx` already displays a
+`desiredAppCount` per contract, but there is currently no API or UI for changing the membership.
+The gap came from the usability workstream's friction survey and was logged to `ROADMAP.md`.
 
 ## Goals
 
@@ -16,7 +16,7 @@ that workstream wrapped.
   Contracts screen, without navigating away.
 - Keep templates that can't actually be deployed (no package attached) out of the way by default,
   while making it easy and inviting to notice and fix that gap when the admin does look for them.
-- No schema change, no EF migration -- the many-to-many relationship already exists.
+- Correct desired-app membership to a many-to-many join without losing existing assignments.
 
 ## Non-goals
 
@@ -30,6 +30,15 @@ that workstream wrapped.
   revisit as a possible app-wide design language later.
 
 ## Backend
+
+### Relationship correction and migration
+
+`Contract.DesiredApps` and a new `AppTemplate.DesiredByContracts` navigation use the
+`ContractDesiredApps` join table with a composite `(ContractId, AppTemplateId)` key. The migration
+copies every existing non-null `AppTemplates.ContractId` pair into the join before the new editor is
+used. The legacy optional owner field remains for API/data compatibility, but it no longer backs
+desired-state membership. Creating a new package-less template with that legacy field preserves the
+owner metadata but does not bypass the package-readiness invariant by adding a desired membership.
 
 ### `ContractDto` gains one field
 
@@ -57,7 +66,10 @@ public async Task<ActionResult<ContractDto>> AddDesiredApp(Guid id, Guid templat
     if (contract is null) return NotFound();
     var template = await _db.AppTemplates.FindAsync([templateId], ct);
     if (template is null) return NotFound();
-    if (!contract.DesiredApps.Any(a => a.Id == templateId)) contract.DesiredApps.Add(template);
+    var alreadyDesired = contract.DesiredApps.Any(a => a.Id == templateId);
+    if (!alreadyDesired && template.Content is null)
+        return Conflict("Attach a package before adding this template to desired state.");
+    if (!alreadyDesired) contract.DesiredApps.Add(template);
     await _db.SaveChangesAsync(ct);
     return ContractDto.From(contract);
 }
@@ -80,7 +92,14 @@ Both endpoints are idempotent (adding an already-desired app, or removing one th
 is a harmless no-op success) and return the fresh `ContractDto` so the frontend updates from one
 response instead of a separate list refetch. `ContractsController` needs `ITenantAccessService
 _access` injected (constructor addition) -- `AppTemplatesController` already does exactly this;
-follow that same pattern.
+follow that same pattern. A new membership for a package-less template returns `409 Conflict`; an
+already-desired legacy package-less template remains an idempotent success so it can be repaired by
+the quest-chip upload flow. A unique-key/concurrency collision is reloaded and accepted only when
+the database already reflects the requested state, preserving idempotence across overlapping calls.
+
+The review also found that `AppTemplatesController.Create` and `UploadPackage` were missing the
+system-admin gate already used by its Update/Delete mutations. Both are gated as part of this work,
+because the editor directly exposes package replacement and UI visibility is not authorization.
 
 `ITenantAccessService.IsSystemAdmin` gating a **contract-level** (not tenant-scoped) mutation is
 not the tenant-bypass anti-pattern `CLAUDE.md` warns about -- that warning is specifically about
@@ -128,22 +147,23 @@ contracts: {
   - A `Switch` labeled "Show templates without a package" (off by default) reveals the rest.
   - A revealed no-package template renders **disabled** with the "actionable quest chip" instead of
     a plain checkbox: an amber `Chip` reading "So close! Attach a package to unlock →", itself
-    a clickable trigger for the same hidden-file-input-via-label pattern `AppTemplates.tsx`'s own
-    upload button already uses (`component="label"` + hidden `<input type="file">`), wired to
-    `api.templates.uploadPackage(template.id, file)`. On successful upload, refresh the local
-    `templates` list (so `hasPackage` flips true and the row becomes a normal checkbox) via
-    `api.templates.list()`.
+    a keyboard-activatable button that triggers a hidden `<input type="file">`, wired to
+    `api.templates.uploadPackage(template.id, file)`. Its successful response updates that template
+    immediately, so a secondary refresh failure cannot misreport a committed upload as failed. A
+    per-template pending set disables repeated uploads until completion. A checked legacy
+    package-less membership remains removable even though new package-less memberships are blocked.
 - **Toggling a checkbox:**
   - `pendingIds: Set<string>` (component state, not `useAsyncAction`) tracks which template IDs
     currently have an add/remove call in flight. A checkbox is `disabled={pendingIds.has(template.id)}`.
   - `toggle(contractId, templateId, checked)`: adds `templateId` to `pendingIds` (functional
     `setPendingIds(prev => new Set(prev).add(templateId))`, so concurrent toggles of different
     templates never clobber each other's pending-set entry), calls
-    `api.contracts.addDesiredApp`/`removeDesiredApp`, on success replaces the matching `contract` in
-    local `contracts` state with the response DTO (so `desiredAppIds`/`desiredAppCount` both update
-    from the one response), on failure shows a toast with the error and leaves `desiredAppIds`
-    untouched (checkbox naturally reflects the pre-toggle truth, nothing to revert), then removes
-    `templateId` from `pendingIds` in a `finally`.
+    `api.contracts.addDesiredApp`/`removeDesiredApp`, and merges only that template's membership from
+    the response. Applying a whole DTO snapshot would let an older sibling response erase another
+    completed toggle. An ambiguous failure performs a targeted membership reconciliation from a
+    fresh contract list before showing the toast. Generation guards prevent older create/list or
+    plan responses from overwriting a completed toggle. The template id is removed from
+    `pendingIds` in a `finally`.
   - This is deliberately **not** a per-row extracted sub-component with its own `useAsyncAction`
     (unlike this session's `ApprovalRow`/`DeploymentRow` precedent) -- a boolean checkbox toggle is
     simple enough that a `Set`-based pending tracker gives the same "one item's in-flight call can't
@@ -152,8 +172,9 @@ contracts: {
 
 ## Error handling
 
-- A failed add/remove: toast with the bare error message (matching this codebase's established
-  "show `e.message`, never the `Error: ...`-wrapped form" convention), checkbox state unchanged.
+- A failed add/remove: reconcile that membership from a fresh contract list, then toast with the
+  bare error message (matching the "show `e.message`, never `Error: ...`" convention). This handles
+  a connection failure that occurs after the server commits.
 - 404 (contract or template deleted concurrently by someone else): same toast treatment; the admin
   can refresh the page to see current state. Not worth a special-cased recovery flow for this rare
   a race.
@@ -169,7 +190,12 @@ contracts: {
 - Both are idempotent: adding an already-present template, or removing an absent one, succeeds
   without error and leaves the list unchanged.
 - Both `Forbid()` for a non-system-admin caller.
-- Both `NotFound()` for a missing contract or missing template id.
+- Add returns `NotFound()` for a missing contract/template and `Conflict()` for a package-less
+  template; remove returns `NotFound()` for a missing contract and otherwise treats absence as its
+  idempotent no-op.
+- One reusable template can remain desired by two contracts (regression coverage for the corrected
+  many-to-many model), and existing ownership assignments are copied by the migration.
+- App-template create/package upload reject non-system-admin callers.
 - `Plan`'s existing reconcile behavior is unaffected (regression check, not new coverage).
 
 **Frontend** (`Contracts.test.tsx`):
@@ -184,6 +210,8 @@ contracts: {
   state nor its API call blocks or drops the other's (the concurrency shape this session's own
   `ApprovalRow`/`DeploymentRow` fixes exist to guard against, verified here via the simpler
   `pendingIds`-Set mechanism instead of a per-row component).
-- A failed toggle shows the bare error message and leaves the checkbox in its prior state.
+- Older sibling-toggle, full-list, and plan responses cannot overwrite newer desired state.
+- A failed toggle shows the bare error and reconciles ambiguous server state when possible.
 - Clicking the quest chip opens the upload picker and, on a successful upload, the template moves
-  out of the disabled/hidden state into the normal checked-or-unchecked list.
+  out of the disabled/hidden state into the normal checked-or-unchecked list. The action is keyboard
+  activatable and disabled while its template's upload is pending.

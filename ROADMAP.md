@@ -15,14 +15,6 @@ vitest run` -- wiring it into CI (or at least a pre-PR automated gate) is the re
 Current Config Snapshots (section/whole-tenant diff, workbooks, git sync) works but is limited.
 No specifics yet -- revisit once there's a concrete pain point driving the next iteration.
 
-## Contracts: desired-app editor
-
-**In progress** -- design spec written:
-`docs/superpowers/specs/2026-08-22-contracts-desired-app-editor-design.md` (branch
-`feat/contracts-desired-apps`). Surfaced by the usability workstream's friction survey as a feature
-gap, not a friction fix, so it was deliberately left out of that workstream and picked up as its
-own piece of work afterward.
-
 ## AppShell: route history / deep links
 
 Tabs are plain component-swap state, not real routes -- there's no browser history, no deep

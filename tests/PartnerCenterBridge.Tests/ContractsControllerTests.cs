@@ -13,7 +13,20 @@ public class ContractsControllerTests
     {
         DisplayName = name,
         InstallCommandLine = "install.exe",
-        UninstallCommandLine = "uninstall.exe"
+        UninstallCommandLine = "uninstall.exe",
+        Content = new Win32ContentInfo
+        {
+            FileName = "app.intunewin",
+            Size = 1,
+            SizeEncrypted = 1,
+            EncryptionKey = "key",
+            MacKey = "mac-key",
+            InitializationVector = "iv",
+            Mac = "mac",
+            ProfileIdentifier = "profile",
+            FileDigest = "digest",
+            FileDigestAlgorithm = "SHA256"
+        }
     };
 
     [Fact]
@@ -56,6 +69,30 @@ public class ContractsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var dto = Assert.IsType<ContractDto>(ok.Value);
         Assert.Equal(1, dto.DesiredAppCount);
+    }
+
+    [Fact]
+    public async Task AddDesiredApp_preserves_membership_in_another_contract()
+    {
+        using var db = new TestDb();
+        var firstContract = MakeContract();
+        var secondContract = new Contract { Name = "Fabrikam baseline" };
+        var template = MakeTemplate();
+        firstContract.DesiredApps.Add(template);
+        db.Context.Contracts.AddRange(firstContract, secondContract);
+        await db.Context.SaveChangesAsync();
+        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+
+        var result = await controller.AddDesiredApp(secondContract.Id, template.Id, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+        using var verifyContext = db.CreateContext();
+        var memberships = await verifyContext.Contracts
+            .Include(c => c.DesiredApps)
+            .Where(c => c.Id == firstContract.Id || c.Id == secondContract.Id)
+            .ToListAsync();
+        Assert.All(memberships, contract =>
+            Assert.Contains(contract.DesiredApps, app => app.Id == template.Id));
     }
 
     [Fact]
@@ -103,6 +140,27 @@ public class ContractsControllerTests
         var result = await controller.AddDesiredApp(contract.Id, Guid.NewGuid(), CancellationToken.None);
 
         Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task AddDesiredApp_rejects_a_template_without_a_package()
+    {
+        using var db = new TestDb();
+        var contract = MakeContract();
+        var template = MakeTemplate();
+        template.Content = null;
+        db.Context.Contracts.Add(contract);
+        db.Context.AppTemplates.Add(template);
+        await db.Context.SaveChangesAsync();
+        var controller = new ContractsController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+
+        var result = await controller.AddDesiredApp(contract.Id, template.Id, CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(result.Result);
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.Contracts.Include(c => c.DesiredApps)
+            .SingleAsync(c => c.Id == contract.Id);
+        Assert.Empty(persisted.DesiredApps);
     }
 
     [Fact]
