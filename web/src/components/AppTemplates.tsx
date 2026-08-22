@@ -76,13 +76,29 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
 
   const createAction = useAsyncAction(async () => {
     const created = await api.templates.create({ ...form });
-    if (newPackage) {
-      await api.templates.uploadPackage(created.id, newPackage);
-    }
-    await load();
+    // The template now exists server-side regardless of what happens next -- reset the create
+    // form and refresh the list immediately, rather than only after a subsequent package upload
+    // also succeeds. Otherwise a failed upload left the form still filled in looking like the
+    // whole creation had failed, and clicking "Create template" again created a duplicate
+    // template instead of retrying just the upload.
     setForm(emptyForm);
-    setNewPackage(null);
-    showToast(newPackage ? "Template created and package uploaded." : "Template created.", "success");
+    await load();
+    if (newPackage) {
+      const packageToUpload = newPackage;
+      setNewPackage(null);
+      try {
+        await api.templates.uploadPackage(created.id, packageToUpload);
+        showToast("Template created and package uploaded.", "success");
+      } catch (e) {
+        showToast(
+          `"${created.displayName}" was created, but the package upload failed -- use its Upload action below to retry: ${e instanceof Error ? e.message : String(e)}`,
+          "warning"
+        );
+        return;
+      }
+    } else {
+      showToast("Template created.", "success");
+    }
   });
 
   const updateAction = useAsyncAction(async (id: string, next: TemplateForm) => {
