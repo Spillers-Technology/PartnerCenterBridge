@@ -10,9 +10,12 @@ public record TenantDto(Guid Id, string TenantId, string DisplayName, string? De
 
 public record CreateTenantRequest(string TenantId, string DisplayName, string? DefaultDomain);
 
-public record ContractDto(Guid Id, string Name, string? Notes, int TenantCount, int DesiredAppCount)
+public record ContractDto(Guid Id, string Name, string? Notes, int TenantCount, int DesiredAppCount,
+    IReadOnlyList<Guid> DesiredAppIds)
 {
-    public static ContractDto From(Contract c) => new(c.Id, c.Name, c.Notes, c.Tenants.Count, c.DesiredApps.Count);
+    public static ContractDto From(Contract c) => new(
+        c.Id, c.Name, c.Notes, c.Tenants.Count, c.DesiredApps.Count,
+        c.DesiredApps.Select(a => a.Id).ToList());
 }
 
 public record CreateContractRequest(string Name, string? Notes);

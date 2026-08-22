@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Core.Reconcile;
@@ -14,8 +15,13 @@ namespace PartnerCenterBridge.Api.Controllers;
 public class ContractsController : ControllerBase
 {
     private readonly BridgeDbContext _db;
+    private readonly ITenantAccessService _access;
 
-    public ContractsController(BridgeDbContext db) => _db = db;
+    public ContractsController(BridgeDbContext db, ITenantAccessService access)
+    {
+        _db = db;
+        _access = access;
+    }
 
     [HttpGet]
     public async Task<IReadOnlyList<ContractDto>> List(CancellationToken ct) =>
@@ -53,5 +59,44 @@ public class ContractsController : ControllerBase
         var plan = DesiredStateReconciler.Plan(contract.Tenants, contract.DesiredApps, deployments);
         return Ok(plan.Select(p => new ReconcilePlanItemDto(
             p.Tenant.Id, p.Tenant.DisplayName, p.Template.Id, p.Template.DisplayName, p.Action.ToString())).ToList());
+    }
+
+    /// <summary>
+    /// Adds a template to the contract's desired-app list. Idempotent: adding an already-desired
+    /// template is a harmless no-op success, so the frontend never has to check first.
+    /// </summary>
+    [HttpPost("{id:guid}/desired-apps/{templateId:guid}")]
+    public async Task<ActionResult<ContractDto>> AddDesiredApp(Guid id, Guid templateId, CancellationToken ct)
+    {
+        if (!_access.IsSystemAdmin) return Forbid();
+
+        var contract = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (contract is null) return NotFound();
+        var template = await _db.AppTemplates.FindAsync([templateId], ct);
+        if (template is null) return NotFound();
+
+        if (!contract.DesiredApps.Any(a => a.Id == templateId)) contract.DesiredApps.Add(template);
+        await _db.SaveChangesAsync(ct);
+        return Ok(ContractDto.From(contract));
+    }
+
+    /// <summary>
+    /// Removes a template from the contract's desired-app list. Idempotent: removing a template
+    /// that isn't there is a harmless no-op success.
+    /// </summary>
+    [HttpDelete("{id:guid}/desired-apps/{templateId:guid}")]
+    public async Task<ActionResult<ContractDto>> RemoveDesiredApp(Guid id, Guid templateId, CancellationToken ct)
+    {
+        if (!_access.IsSystemAdmin) return Forbid();
+
+        var contract = await _db.Contracts.Include(c => c.Tenants).Include(c => c.DesiredApps)
+            .FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (contract is null) return NotFound();
+
+        var existing = contract.DesiredApps.FirstOrDefault(a => a.Id == templateId);
+        if (existing is not null) contract.DesiredApps.Remove(existing);
+        await _db.SaveChangesAsync(ct);
+        return Ok(ContractDto.From(contract));
     }
 }
