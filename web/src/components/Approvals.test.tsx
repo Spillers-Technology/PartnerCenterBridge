@@ -199,6 +199,39 @@ describe("Approvals", () => {
     expect(api.pendingActions.approve).toHaveBeenCalledWith("pa1");
   });
 
+  it("keeps a decided row disabled until its refresh actually lands, not just until the mutation call returns", async () => {
+    // Regression test: onDecided() used to fire without being awaited, so decideAction's busy
+    // flag (and the row's disabled buttons, and the success toast) cleared as soon as approve()
+    // returned -- before the refreshed list had loaded -- inviting a second click on an action
+    // no longer actually pending.
+    // vi.clearAllMocks() (in beforeEach) clears call history but not a previously set
+    // mockImplementation -- reassert approve()'s behavior explicitly rather than relying on
+    // whatever an earlier test in this file left configured for the same mock.
+    vi.mocked(api.pendingActions.approve).mockResolvedValue(undefined);
+    let listCallCount = 0;
+    let resolveRefresh!: (items: PendingAction[]) => void;
+    vi.mocked(api.pendingActions.list).mockImplementation(() => {
+      listCallCount += 1;
+      if (listCallCount === 1) return Promise.resolve([PENDING]);
+      return new Promise((resolve) => { resolveRefresh = resolve; });
+    });
+    const user = userEvent.setup();
+    renderApprovals();
+
+    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    // approve() itself resolves immediately, but the post-decision refresh is deliberately left
+    // pending -- the row must stay busy/disabled and the toast must not fire through that gap.
+    await screen.findByRole("button", { name: "Approving..." });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByRole("button", { name: "Approving..." })).toBeDisabled();
+    expect(screen.queryByText("Approved.")).not.toBeInTheDocument();
+
+    resolveRefresh([{ ...PENDING, status: "Approved", executionError: null }]);
+    expect(await screen.findByText("Approved.")).toBeInTheDocument();
+  });
+
   it("shows an error alert when the initial load fails", async () => {
     vi.mocked(api.pendingActions.list).mockRejectedValue(new Error("503 Service Unavailable"));
     renderApprovals();

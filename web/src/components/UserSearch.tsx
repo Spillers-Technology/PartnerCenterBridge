@@ -36,6 +36,10 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
   const searchAction = useAsyncAction(async () => {
     const query = q.trim();
     if (query.length < 3) throw new Error("Type at least 3 characters.");
+    // Clear the prior results as soon as a new search starts -- without this, a failed re-search
+    // left the previous query's results (and their workflow-launch buttons) sitting on screen
+    // next to the new error, looking like they might belong to the query that just failed.
+    setResult(null);
     const r = await api.search.users(query);
     setResult(r);
     return r;
@@ -63,7 +67,13 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
         <TextField
           label="Name or UPN (min 3 chars)"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            // Editing the query invalidates the results shown for the previous one -- leaving
+            // them clickable (workflow-launch buttons included) while the field no longer matches
+            // what they came from is exactly the kind of stale-but-actionable state this fixes.
+            setResult(null);
+          }}
           size="small"
           fullWidth
         />

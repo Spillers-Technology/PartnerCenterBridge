@@ -25,7 +25,7 @@ type Action = "approve" | "reject" | "retry";
  * confirmed action while the first row's mutation was still in flight (useAsyncAction is
  * single-flight by design).
  */
-function ApprovalRow({ item, onDecided }: { item: PendingAction; onDecided: () => void }) {
+function ApprovalRow({ item, onDecided }: { item: PendingAction; onDecided: () => Promise<void> }) {
   const confirm = useConfirm();
   const toast = useToast();
   const failed = item.status === "Approved" && Boolean(item.executionError);
@@ -34,7 +34,12 @@ function ApprovalRow({ item, onDecided }: { item: PendingAction; onDecided: () =
     if (action === "approve") await api.pendingActions.approve(item.id);
     else if (action === "reject") await api.pendingActions.reject(item.id);
     else await api.pendingActions.retry(item.id);
-    onDecided();
+    // Awaited, not fire-and-forget: decideAction.busy (which disables this row's buttons) must
+    // stay true until the refreshed list has actually landed, not just until the mutation call
+    // returned. Otherwise a slow or failed refresh re-enables the row -- still showing its old,
+    // pre-decision status -- while the decision has already gone through server-side, inviting a
+    // second Approve/Reject/Retry click on an action that's no longer actually pending.
+    await onDecided();
     toast(action === "approve" ? "Approved." : action === "reject" ? "Rejected." : "Retried.");
   });
 

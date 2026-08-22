@@ -89,6 +89,39 @@ describe("UserSearch", () => {
     });
   });
 
+  it("hides the previous results and their action buttons as soon as the query is edited", async () => {
+    vi.mocked(api.search.users).mockResolvedValue(RESULT);
+    const user = userEvent.setup();
+    renderUserSearch();
+
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "ada");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "m");
+
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "MFA reset" })).not.toBeInTheDocument();
+  });
+
+  it("hides stale results once a re-search fails, instead of leaving them next to the new error", async () => {
+    vi.mocked(api.search.users).mockResolvedValueOnce(RESULT);
+    const user = userEvent.setup();
+    renderUserSearch();
+
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "ada");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
+
+    vi.mocked(api.search.users).mockRejectedValueOnce(new Error("503 Service Unavailable"));
+    await user.clear(screen.getByLabelText("Name or UPN (min 3 chars)"));
+    await user.type(screen.getByLabelText("Name or UPN (min 3 chars)"), "bob");
+    await user.click(screen.getByRole("button", { name: "Search" }));
+
+    expect(await screen.findByText("503 Service Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Ada Lovelace")).not.toBeInTheDocument();
+  });
+
   it("renders the unreachable-tenants table when errors are present", async () => {
     vi.mocked(api.search.users).mockResolvedValue({
       hits: [],
