@@ -75,6 +75,11 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   useEffect(() => { void load(); }, []);
 
   const createAction = useAsyncAction(async () => {
+    // Captured and cleared immediately, before any await -- otherwise a file picked in the
+    // still-enabled attach-package input during the create/upload round-trip below would silently
+    // replace what this run is actually supposed to upload.
+    const packageToUpload = newPackage;
+    setNewPackage(null);
     const created = await api.templates.create({ ...form });
     // The template now exists server-side regardless of what happens next -- reset the create
     // form and refresh the list immediately, rather than only after a subsequent package upload
@@ -83,11 +88,12 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
     // template instead of retrying just the upload.
     setForm(emptyForm);
     await load();
-    if (newPackage) {
-      const packageToUpload = newPackage;
-      setNewPackage(null);
+    if (packageToUpload) {
       try {
         await api.templates.uploadPackage(created.id, packageToUpload);
+        // load() above ran before the upload -- the row it just added still shows "No package"
+        // until this second refresh picks up the upload's own result.
+        await load();
         showToast("Template created and package uploaded.", "success");
       } catch (e) {
         showToast(

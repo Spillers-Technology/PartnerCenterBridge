@@ -202,6 +202,19 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
     void fixAction.run();
   };
 
+  // navigator.clipboard itself can be undefined (a non-secure/non-HTTPS context, or some
+  // embeddings), not just have writeText() reject -- accessing .writeText on it would then throw
+  // synchronously and escape uncaught from the onClick handler. Wrapped in try/catch, matching
+  // StepList.tsx's own copy helper, so both places degrade the same way.
+  const copyEphemeral = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast("Copied");
+    } catch {
+      toast("Couldn't copy -- select and copy the text manually.", "warning");
+    }
+  };
+
   const grouped = catalog.reduce<Record<string, WorkflowSummary[]>>((acc, w) => {
     (acc[w.category] ??= []).push(w); return acc;
   }, {});
@@ -305,15 +318,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                     </Box>{" "}
                     (shown once - not recorded)
                   </Typography>
-                  <Button
-                    size="small"
-                    onClick={() =>
-                      void navigator.clipboard.writeText(v).then(
-                        () => toast("Copied"),
-                        () => toast("Couldn't copy -- select and copy the text manually.", "warning")
-                      )
-                    }
-                  >
+                  <Button size="small" onClick={() => void copyEphemeral(v)}>
                     Copy
                   </Button>
                 </Stack>

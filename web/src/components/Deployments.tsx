@@ -26,34 +26,37 @@ function statusColor(status: DeploymentStatus): "default" | "success" | "error" 
   return "default";
 }
 
-export function Deployments() {
-  const [deployments, setDeployments] = useState<Deployment[] | null>(null);
-  const [tenants, setTenants] = useState<Tenant[] | null>(null);
-  const [templates, setTemplates] = useState<AppTemplate[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+/**
+ * Each row owns its own useAsyncAction instance so two rows can be retried independently -- a
+ * single shared instance across the whole table would silently no-op a second row's confirmed
+ * retry while the first row's deploy call was still in flight (useAsyncAction is single-flight by
+ * design; the caller gets undefined back with no error, no toast, nothing).
+ */
+function DeploymentRow({
+  d, templateName, tenantName, canRetry, needsAction, onRetried
+}: {
+  d: Deployment; templateName: string; tenantName: string; canRetry: boolean; needsAction: boolean;
+  onRetried: () => Promise<void>;
+}) {
   const confirm = useConfirm();
   const toast = useToast();
+  // The refresh (onRetried) runs inside this action's own closure, not after retryAction.run()
+  // resolves in the caller -- useAsyncAction's busy flag only covers the function passed to it,
+  // so awaiting the refresh from outside would let busy (and the row's disabled state) clear as
+  // soon as the deploy call itself returned, before the refreshed list had actually landed.
+  const retryAction = useAsyncAction(async () => {
+    const results = await api.deployments.deploy(d.appTemplateId, [d.tenantId]);
+    const result = results[0];
+    if (result?.status === "Succeeded") {
+      toast(`${templateName} redeployed to ${tenantName}.`, "success");
+    } else {
+      toast(`Redeploy to ${tenantName} did not succeed${result?.lastError ? ` -- ${result.lastError}` : ""}.`, "warning");
+    }
+    await onRetried();
+    return results;
+  });
 
-  const load = () =>
-    Promise.all([api.deployments.list(), api.tenants.list(), api.templates.list()])
-      .then(([d, tn, tpl]) => { setDeployments(d); setTenants(tn); setTemplates(tpl); })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-
-  useEffect(() => { void load(); }, []);
-
-  const name = (id: string, list: { id: string; displayName: string }[]) =>
-    list.find((x) => x.id === id)?.displayName ?? id;
-
-  // A failed or update-available deployment previously had no path forward from this screen
-  // beyond manually reselecting the same template+tenant in the Deploy wizard -- this re-runs
-  // exactly what the wizard would (the same underlying deploy call, one tenant), directly from
-  // the row it applies to.
-  const retryAction = useAsyncAction((templateId: string, tenantId: string) => api.deployments.deploy(templateId, [tenantId]));
-  const [retryingId, setRetryingId] = useState<string | null>(null);
-
-  const retry = async (d: Deployment) => {
-    const templateName = name(d.appTemplateId, templates ?? []);
-    const tenantName = name(d.tenantId, tenants ?? []);
+  const retry = async () => {
     const verb = d.status === "Failed" ? "Retry" : "Update";
     const ok = await confirm({
       title: `${verb} this deployment?`,
@@ -62,18 +65,78 @@ export function Deployments() {
       destructive: true
     });
     if (!ok) return;
-    setRetryingId(d.id);
-    const results = await retryAction.run(d.appTemplateId, d.tenantId);
-    setRetryingId(null);
-    if (!results) return;
-    const result = results[0];
-    if (result?.status === "Succeeded") {
-      toast(`${templateName} redeployed to ${tenantName}.`, "success");
-    } else {
-      toast(`Redeploy to ${tenantName} did not succeed${result?.lastError ? ` -- ${result.lastError}` : ""}.`, "warning");
-    }
-    void load();
+    void retryAction.run();
   };
+
+  return (
+    <TableRow>
+      <TableCell sx={{ maxWidth: 160 }}>
+        <Tooltip title={templateName}>
+          <Typography variant="body2" noWrap>
+            {templateName}
+          </Typography>
+        </Tooltip>
+      </TableCell>
+      <TableCell sx={{ maxWidth: 160 }}>
+        <Tooltip title={tenantName}>
+          <Typography variant="body2" noWrap>
+            {tenantName}
+          </Typography>
+        </Tooltip>
+      </TableCell>
+      <TableCell>v{d.deployedTemplateVersion}</TableCell>
+      <TableCell sx={{ maxWidth: 240 }}>
+        <Chip size="small" label={d.status} color={statusColor(d.status)} />
+        {d.status === "Failed" && d.lastError && (
+          <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>
+            {d.lastError}
+          </Typography>
+        )}
+        {retryAction.error && (
+          <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>
+            {retryAction.error}
+          </Typography>
+        )}
+      </TableCell>
+      <TableCell>{d.lastSyncedAt ? new Date(d.lastSyncedAt).toLocaleString() : "-"}</TableCell>
+      <TableCell>
+        {needsAction && (
+          <Button size="small" variant="outlined" disabled={!canRetry || retryAction.busy} onClick={() => void retry()}>
+            {retryAction.busy ? "Working..." : d.status === "Failed" ? "Retry" : "Update"}
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+export function Deployments() {
+  const [deployments, setDeployments] = useState<Deployment[] | null>(null);
+  const [tenants, setTenants] = useState<Tenant[] | null>(null);
+  const [templates, setTemplates] = useState<AppTemplate[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+
+  const load = () =>
+    Promise.all([api.deployments.list(), api.tenants.list(), api.templates.list()])
+      .then(([d, tn, tpl]) => { setDeployments(d); setTenants(tn); setTemplates(tpl); setError(null); })
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : String(e);
+        if (deployments === null) {
+          // Nothing has ever loaded -- there's nothing else useful to show in place of the error.
+          setError(message);
+        } else {
+          // A refresh (e.g. after a retry) failed after real data was already on screen -- don't
+          // replace the whole table with an error banner over it; the table itself already has
+          // its own retry-error display per row, and the data still on screen is still usable.
+          toast(`Couldn't refresh the deployment list: ${message}`, "warning");
+        }
+      });
+
+  useEffect(() => { void load(); }, []);
+
+  const name = (id: string, list: { id: string; displayName: string }[]) =>
+    list.find((x) => x.id === id)?.displayName ?? id;
 
   if (error) {
     return (
@@ -104,8 +167,6 @@ export function Deployments() {
         Deployment history
       </Typography>
 
-      {retryAction.error && <Alert severity="error" sx={{ mb: 2 }}>{retryAction.error}</Alert>}
-
       {deployments.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
           No deployments yet.
@@ -125,50 +186,18 @@ export function Deployments() {
             </TableHead>
             <TableBody>
               {deployments.map((d) => {
-                const templateName = name(d.appTemplateId, templates);
-                const tenantName = name(d.tenantId, tenants);
                 const needsAction = d.status === "Failed" || d.status === "UpdateAvailable";
                 const template = templates.find((t) => t.id === d.appTemplateId);
-                const canRetry = needsAction && Boolean(template?.hasPackage);
                 return (
-                  <TableRow key={d.id}>
-                    <TableCell sx={{ maxWidth: 160 }}>
-                      <Tooltip title={templateName}>
-                        <Typography variant="body2" noWrap>
-                          {templateName}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell sx={{ maxWidth: 160 }}>
-                      <Tooltip title={tenantName}>
-                        <Typography variant="body2" noWrap>
-                          {tenantName}
-                        </Typography>
-                      </Tooltip>
-                    </TableCell>
-                    <TableCell>v{d.deployedTemplateVersion}</TableCell>
-                    <TableCell sx={{ maxWidth: 240 }}>
-                      <Chip size="small" label={d.status} color={statusColor(d.status)} />
-                      {d.status === "Failed" && d.lastError && (
-                        <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>
-                          {d.lastError}
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell>{d.lastSyncedAt ? new Date(d.lastSyncedAt).toLocaleString() : "-"}</TableCell>
-                    <TableCell>
-                      {needsAction && (
-                        <Button
-                          size="small"
-                          variant="outlined"
-                          disabled={!canRetry || retryingId === d.id}
-                          onClick={() => void retry(d)}
-                        >
-                          {retryingId === d.id ? "Working..." : d.status === "Failed" ? "Retry" : "Update"}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
+                  <DeploymentRow
+                    key={d.id}
+                    d={d}
+                    templateName={name(d.appTemplateId, templates)}
+                    tenantName={name(d.tenantId, tenants)}
+                    needsAction={needsAction}
+                    canRetry={needsAction && Boolean(template?.hasPackage)}
+                    onRetried={load}
+                  />
                 );
               })}
             </TableBody>
