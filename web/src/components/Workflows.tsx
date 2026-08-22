@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -99,6 +99,16 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   }, []);
 
   const selected = useMemo(() => catalog.find((w) => w.id === selectedId), [catalog, selectedId]);
+  const selectedTenant = useMemo(() => tenants.find((t) => t.id === tenantId), [tenants, tenantId]);
+
+  // Tracks the workflow+tenant+inputs this render is showing, so an in-flight diagnose/fix
+  // response that resolves after the user has since switched tenant, workflow, or input values
+  // can be told apart from one that's still describing what's currently on screen. Without this,
+  // a diagnosis started against Tenant A could still land and render as if it described Tenant B.
+  // Assigned every render (not in an effect) so it's always current by the time an async response
+  // needs to check it.
+  const currentContextRef = useRef("");
+  currentContextRef.current = JSON.stringify({ selectedId, tenantId, inputs });
 
   // Arriving from Find User: select the workflow, tenant, and inputs in one go.
   useEffect(() => {
@@ -111,9 +121,13 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
     setDiagnosis(null); setRun(null);
   }, [prefill, catalog]);
 
+  // Diagnosis/fix output describes a specific workflow+tenant+inputs combination -- any change to
+  // that combination makes the currently displayed output stale, not just a still-in-flight one.
+  const clearOutput = () => { setDiagnosis(null); setRun(null); };
+
   const pick = (id: string) => {
     setSelectedId(id);
-    setDiagnosis(null); setRun(null);
+    clearOutput();
     const w = catalog.find((x) => x.id === id);
     setInputs(Object.fromEntries((w?.inputs ?? []).map((i) => [i.key, i.default ?? ""])));
   };
@@ -122,18 +136,22 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
     selected.inputs.filter((i) => i.required).every((i) => (inputs[i.key] ?? "").trim()));
 
   const diagnoseAction = useAsyncAction(async () => {
+    const requestContext = currentContextRef.current;
     setRun(null);
     const d = await api.workflows.diagnose(selected!.id, tenantId, inputs);
-    setDiagnosis(d);
     loadRuns();
+    if (currentContextRef.current === requestContext) setDiagnosis(d);
     return d;
   });
 
   const fixAction = useAsyncAction(async () => {
+    const requestContext = currentContextRef.current;
     const r = await api.workflows.remediate(selected!.id, tenantId, inputs);
-    setRun(r);
-    if (r.postState) setDiagnosis(r.postState);
     loadRuns();
+    if (currentContextRef.current === requestContext) {
+      setRun(r);
+      if (r.postState) setDiagnosis(r.postState);
+    }
     toast(r.succeeded ? "Fix applied successfully." : "Fix ran but did not fully succeed - see the step detail.", r.succeeded ? "success" : "warning");
     return r;
   });
@@ -145,7 +163,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   const fix = async () => {
     if (!(await confirm({
       title: "Apply this fix?",
-      message: `Apply "${selected?.name}" for this tenant? This will make real changes.`,
+      message: `Apply "${selected?.name}" for ${selectedTenant?.displayName ?? "this tenant"}? This will make real changes.`,
       destructive: true
     }))) return;
     setLastAction("fix");
@@ -198,7 +216,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                   labelId="wf-tenant-label"
                   label="Tenant"
                   value={tenantId}
-                  onChange={(e) => setTenantId(e.target.value)}
+                  onChange={(e) => { setTenantId(e.target.value); clearOutput(); }}
                 >
                   <MenuItem value="">
                     <em>choose</em>
@@ -213,7 +231,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                   control={
                     <Checkbox
                       checked={(inputs[i.key] ?? "true") === "true"}
-                      onChange={(e) => setInputs({ ...inputs, [i.key]: String(e.target.checked) })}
+                      onChange={(e) => { setInputs({ ...inputs, [i.key]: String(e.target.checked) }); clearOutput(); }}
                     />
                   }
                   label={i.label}
@@ -224,7 +242,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                   label={i.label + (i.required ? "" : " (optional)")}
                   placeholder={i.placeholder}
                   value={inputs[i.key] ?? ""}
-                  onChange={(e) => setInputs({ ...inputs, [i.key]: e.target.value })}
+                  onChange={(e) => { setInputs({ ...inputs, [i.key]: e.target.value }); clearOutput(); }}
                   size="small"
                   sx={{ maxWidth: 360 }}
                 />

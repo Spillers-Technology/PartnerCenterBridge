@@ -135,6 +135,48 @@ describe("Workflows", () => {
     expect(screen.queryByText("502 Bad Gateway")).not.toBeInTheDocument();
   });
 
+  it("does not apply a diagnose response that resolves after the tenant has since changed", async () => {
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    let resolveDiagnose!: (v: unknown) => void;
+    vi.mocked(api.workflows.diagnose).mockReturnValue(new Promise((res) => { resolveDiagnose = res; }) as never);
+
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user); // selects Contoso Ltd (t1)
+    await user.click(screen.getByRole("button", { name: "Diagnose" }));
+
+    // Switch tenant before the in-flight diagnose response resolves.
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    resolveDiagnose({ findings: [{ name: "MFA methods", status: "Ok", detail: "none registered" }], healthy: true });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(screen.queryByText("MFA methods")).not.toBeInTheDocument();
+  });
+
+  it("clears a shown diagnosis when the tenant changes, instead of leaving it displayed under the new tenant", async () => {
+    vi.mocked(api.workflows.diagnose).mockResolvedValue({
+      findings: [{ name: "MFA methods", status: "Ok", detail: "none registered" }],
+      healthy: true
+    });
+    const tenant2: Tenant = { id: "t2", tenantId: "bbbb", displayName: "Fabrikam", status: "Active" };
+    vi.mocked(api.tenants.list).mockResolvedValue([...TENANTS, tenant2]);
+    const user = userEvent.setup();
+    renderWorkflows();
+
+    await pickWorkflowAndFillForm(user);
+    await user.click(screen.getByRole("button", { name: "Diagnose" }));
+    expect(await screen.findByText("MFA methods")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Tenant"));
+    await user.click(await screen.findByRole("option", { name: "Fabrikam" }));
+
+    expect(screen.queryByText("MFA methods")).not.toBeInTheDocument();
+  });
+
   it("shows recent runs once loaded", async () => {
     vi.mocked(api.workflows.runs).mockResolvedValue([
       {

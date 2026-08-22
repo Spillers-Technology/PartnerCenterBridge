@@ -74,20 +74,22 @@ export function NewHire() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // On tenant change, load its directory + prefill from the contract's provisioning template.
+  // On tenant change, reset every tenant-scoped field immediately -- not just the directory
+  // lists -- then prefill from the contract's provisioning template if there is one. Without this,
+  // a tenant with no provisioning template would silently keep the *previous* tenant's UPN
+  // domain/job title/department/usage-location and license/group selections, which are then
+  // submittable as-is for the wrong tenant. Person-identifying fields (name, mail nickname) are
+  // left alone -- they aren't tenant-scoped.
   useEffect(() => {
     currentTenantRef.current = tenantId;
-    // Clear immediately so a switch never leaves the previous tenant's directory/prefill on
-    // screen while the new tenant's own fetch is in flight (or, in the case of directoryAction's
-    // shared busy-mutex, silently dropped because a prior fetch for a different tenant hadn't
-    // settled yet -- either way, stale-looking data never lingers).
     setSkus([]);
     setGroups([]);
     if (!tenantId) return;
     setResult(null);
-    setLastAction("directory");
-    void directoryAction.run(tenantId);
     const tenant = tenants.find((t) => t.id === tenantId);
+    setForm((f) => ({ ...f, upnDomain: tenant?.defaultDomain ?? "", jobTitle: "", department: "", usageLocation: "US" }));
+    setLicenseSkuIds(new Set());
+    setGroupIds(new Set());
     if (tenant?.contractId) {
       const requestedTenantId = tenantId;
       api.provisioning.getTemplate(tenant.contractId).then((tpl) => {
@@ -102,6 +104,19 @@ export function NewHire() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, tenants]);
+
+  // Fetches the current tenant's directory (SKUs/groups). Re-checked once any prior in-flight
+  // fetch for a different tenant has settled, instead of a rapid switch silently dropping the
+  // request entirely -- useAsyncAction.run() is single-flight and no-ops while busy, so without
+  // this a fast A -> B switch could leave B's directory never fetched at all.
+  const requestedDirectoryTenantRef = useRef("");
+  useEffect(() => {
+    if (!tenantId || directoryAction.busy || requestedDirectoryTenantRef.current === tenantId) return;
+    requestedDirectoryTenantRef.current = tenantId;
+    setLastAction("directory");
+    void directoryAction.run(tenantId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, directoryAction.busy]);
 
   const error =
     lastAction === "tenants" ? tenantsAction.error :
