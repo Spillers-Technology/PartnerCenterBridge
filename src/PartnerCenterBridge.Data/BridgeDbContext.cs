@@ -62,6 +62,18 @@ public class BridgeDbContext : DbContext
         b.Entity<Contract>(e =>
         {
             e.Property(c => c.Name).IsRequired();
+            e.HasMany(c => c.DesiredApps).WithMany(a => a.DesiredByContracts)
+                .UsingEntity<Dictionary<string, object>>(
+                    "ContractDesiredApps",
+                    right => right.HasOne<AppTemplate>().WithMany()
+                        .HasForeignKey("AppTemplateId").OnDelete(DeleteBehavior.Cascade),
+                    left => left.HasOne<Contract>().WithMany()
+                        .HasForeignKey("ContractId").OnDelete(DeleteBehavior.Cascade),
+                    join =>
+                    {
+                        join.ToTable("ContractDesiredApps");
+                        join.HasKey("ContractId", "AppTemplateId");
+                    });
         });
 
         b.Entity<AppTemplate>(e =>
@@ -71,7 +83,7 @@ public class BridgeDbContext : DbContext
             e.OwnsMany(a => a.DetectionRules, o => o.ToJson());
             e.OwnsMany(a => a.Assignments, o => o.ToJson());
             e.OwnsOne(a => a.Content, o => o.ToJson());
-            e.HasOne(a => a.Contract).WithMany(c => c.DesiredApps)
+            e.HasOne(a => a.Contract).WithMany()
                 .HasForeignKey(a => a.ContractId).OnDelete(DeleteBehavior.SetNull);
         });
 

@@ -60,7 +60,11 @@ export const api = {
       request<Contract>("/api/contracts", { method: "POST", body: JSON.stringify({ name, notes }) }),
     plan: (id: string) =>
       request<{ tenantId: string; tenantName: string; templateId: string; templateName: string; action: string }[]>(
-        `/api/contracts/${id}/plan`)
+        `/api/contracts/${id}/plan`),
+    addDesiredApp: (contractId: string, templateId: string) =>
+      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "POST" }),
+    removeDesiredApp: (contractId: string, templateId: string) =>
+      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "DELETE" })
   },
 
   templates: {

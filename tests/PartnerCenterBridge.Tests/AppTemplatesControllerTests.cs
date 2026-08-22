@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using PartnerCenterBridge.Api.Contracts;
 using PartnerCenterBridge.Api.Controllers;
 using PartnerCenterBridge.Core.Entities;
@@ -15,6 +16,54 @@ public class AppTemplatesControllerTests
         InstallCommandLine = "install.exe",
         UninstallCommandLine = "uninstall.exe"
     };
+
+    [Fact]
+    public async Task Create_rejects_a_non_system_admin_caller()
+    {
+        using var db = new TestDb();
+        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+        var request = new CreateAppTemplateRequest(
+            "Defender", null, null, "install.exe", "uninstall.exe", null, null, null);
+
+        var result = await controller.Create(request, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result.Result);
+        Assert.Empty(db.Context.AppTemplates);
+    }
+
+    [Fact]
+    public async Task Create_with_contract_preserves_owner_without_desiring_a_package_less_template()
+    {
+        using var db = new TestDb();
+        var contract = new Contract { Name = "Contoso baseline" };
+        db.Context.Contracts.Add(contract);
+        await db.Context.SaveChangesAsync();
+        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: true));
+        var request = new CreateAppTemplateRequest(
+            "Defender", null, null, "install.exe", "uninstall.exe", contract.Id, null, null);
+
+        var result = await controller.Create(request, CancellationToken.None);
+
+        var created = Assert.IsType<CreatedAtActionResult>(result.Result);
+        var dto = Assert.IsType<AppTemplateDto>(created.Value);
+        Assert.Equal(contract.Id, dto.ContractId);
+        using var verifyContext = db.CreateContext();
+        var persisted = await verifyContext.Contracts.Include(c => c.DesiredApps)
+            .SingleAsync(c => c.Id == contract.Id);
+        Assert.Empty(persisted.DesiredApps);
+    }
+
+    [Fact]
+    public async Task UploadPackage_rejects_a_non_system_admin_caller_before_reading_the_file()
+    {
+        using var db = new TestDb();
+        var controller = new AppTemplatesController(db.Context, new FakeTenantAccessService(isSystemAdmin: false));
+
+        var result = await controller.UploadPackage(
+            Guid.NewGuid(), null!, null!, null!, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(result.Result);
+    }
 
     [Fact]
     public async Task Update_as_system_admin_edits_metadata_and_bumps_UpdatedAt()

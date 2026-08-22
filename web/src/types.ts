@@ -15,6 +15,7 @@ export interface Contract {
   notes?: string;
   tenantCount: number;
   desiredAppCount: number;
+  desiredAppIds: string[];
 }
 
 export interface AppTemplate {
