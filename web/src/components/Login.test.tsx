@@ -12,7 +12,11 @@ vi.mock("../api", () => ({
     passkey: { loginOptions: vi.fn(), loginVerify: vi.fn() }
   }
 }));
-vi.mock("../webauthn", () => ({ passkeysSupported: false, getPasskey: vi.fn() }));
+vi.mock("../webauthn", () => ({
+  passkeysSupported: false,
+  getPasskey: vi.fn(),
+  conditionalMediationSupported: vi.fn().mockResolvedValue(false)
+}));
 vi.mock("../session", () => ({ setLocalToken: vi.fn() }));
 
 import { api } from "../api";

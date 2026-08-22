@@ -68,15 +68,27 @@ export interface LoginOptionsWire {
   userVerification?: UserVerificationRequirement;
 }
 
-/** Runs the usernameless get-passkey ceremony and returns a body shaped exactly like PasskeyLoginVerifyRequest.assertionResponse. */
-export async function getPasskey(options: LoginOptionsWire) {
+/**
+ * Runs the usernameless get-passkey ceremony and returns a body shaped exactly like
+ * PasskeyLoginVerifyRequest.assertionResponse. `mediation: "conditional"` + `signal` lets a caller
+ * run this as a silent, backgrounded request tied to the browser's native autofill UI (see
+ * `conditionalMediationSupported` below) instead of the default explicit, user-initiated ceremony.
+ */
+export async function getPasskey(
+  options: LoginOptionsWire,
+  init?: { mediation?: CredentialMediationRequirement; signal?: AbortSignal }
+) {
   const publicKey: PublicKeyCredentialRequestOptions = {
     ...options,
     challenge: base64UrlToBytes(options.challenge),
     allowCredentials: (options.allowCredentials ?? []).map(toCredentialDescriptor)
   };
 
-  const cred = (await navigator.credentials.get({ publicKey, mediation: "optional" })) as PublicKeyCredential | null;
+  const cred = (await navigator.credentials.get({
+    publicKey,
+    mediation: init?.mediation ?? "optional",
+    signal: init?.signal
+  })) as PublicKeyCredential | null;
   if (!cred) throw new Error("No passkey was selected.");
   const response = cred.response as AuthenticatorAssertionResponse;
 
@@ -97,3 +109,15 @@ export async function getPasskey(options: LoginOptionsWire) {
 /** Whether this browser can do WebAuthn at all -- gates whether the "Sign in with a passkey" button renders. */
 export const passkeysSupported =
   typeof window !== "undefined" && !!window.PublicKeyCredential;
+
+/**
+ * Whether this browser supports WebAuthn conditional UI: matching passkeys surfaced directly in
+ * the native autofill dropdown for a field marked `autoComplete="webauthn"`, with no explicit
+ * button needed. Async per spec (backed by a platform authenticator capability check) -- callers
+ * should await this before starting a `mediation: "conditional"` request, not just check
+ * `passkeysSupported`, since a browser can support WebAuthn without supporting this specific mode.
+ */
+export async function conditionalMediationSupported(): Promise<boolean> {
+  if (!passkeysSupported || typeof PublicKeyCredential.isConditionalMediationAvailable !== "function") return false;
+  return PublicKeyCredential.isConditionalMediationAvailable();
+}
