@@ -93,9 +93,6 @@
   .btn.primary:hover { background: #38bdf8; text-decoration: none; }
   .btn.secondary { color: #fff; border-color: rgba(255, 255, 255, 0.46); background: rgba(255, 255, 255, 0.08); }
   .btn.secondary:hover { background: rgba(255, 255, 255, 0.16); text-decoration: none; }
-  .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
-  .hero-meta span { border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(15, 23, 42, 0.4); color: #e5edf7; border-radius: 8px; padding: 6px 9px; font-size: 0.88rem; font-weight: 600; }
-
   section { padding: 78px 0; }
   .band { background: #fff; }
   .section-head { max-width: 780px; margin-bottom: 32px; }
@@ -170,11 +167,57 @@
   footer { border-top: 1px solid var(--line); background: #fff; padding: 26px 0; color: var(--muted); }
   footer .wrap { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
   footer nav { margin-left: auto; display: flex; gap: 16px; flex-wrap: wrap; }
+  .stack-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding-bottom: 22px; margin-bottom: 18px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 0.85rem; }
+  .stack-strip-label { font-weight: 800; color: var(--ink); margin-right: 2px; }
+  .stack-strip span:not(.stack-strip-label) { border: 1px solid var(--line); background: var(--canvas); border-radius: 8px; padding: 5px 9px; font-weight: 600; }
+
+  /* "See it work" demos: each plays once via .demo-card.play (added on scroll-into-view, see
+     the script near the end of <body>), then rests in its resolved end state -- deliberately
+     not a looping animation. Base (non-.play) rules below are also the reduced-motion fallback
+     appearance, so the cards read correctly even with JS/animation disabled. */
+  .demos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .demo-card { position: relative; min-width: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; }
+  .demo-replay { position: absolute; top: 14px; right: 14px; width: 26px; height: 26px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); color: var(--muted); cursor: pointer; display: grid; place-items: center; font-size: 0.95rem; line-height: 1; padding: 0; }
+  .demo-replay:hover { color: var(--primary); border-color: var(--primary); }
+  .demo-label { font-weight: 800; font-size: 0.95rem; margin-bottom: 14px; padding-right: 30px; }
+  .demo-stage { min-height: 96px; }
+  .demo-caption { color: var(--muted); font-size: 0.88rem; margin: 14px 0 0; }
+  .demo-result { margin-top: 10px; font-size: 0.84rem; color: var(--ink); font-weight: 600; opacity: 0; transform: translateY(4px); }
+  .demo-result .dot { display: inline-block; width: 7px; height: 7px; border-radius: 999px; background: var(--green); margin-right: 6px; }
+
+  .search-stage .chip { display: inline-block; margin: 0 6px 8px 0; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface-2); font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+  .demo-card.play .search-stage .chip { animation: pcb-dim-chip 1.6s ease forwards; }
+  .demo-card.play .search-stage .t2 { animation: pcb-match-chip 1.6s ease forwards; }
+  .demo-card.play .search-stage .demo-result { animation: pcb-reveal 0.5s ease 1.15s forwards; }
+  @keyframes pcb-dim-chip { 0%, 45% { opacity: 1; } 100% { opacity: 0.45; } }
+  @keyframes pcb-match-chip {
+    0%, 45% { opacity: 1; border-color: var(--line); background: var(--surface-2); color: var(--muted); }
+    70%, 100% { opacity: 1; border-color: var(--sky); background: #e0f2fe; color: var(--primary-dark); box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18); }
+  }
+  @keyframes pcb-reveal { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+  .fanout-action { display: inline-block; padding: 6px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 0.84rem; font-weight: 700; color: var(--primary-dark); margin-bottom: 14px; }
+  .fanout-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .fanout-tenant { display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); font-size: 0.82rem; font-weight: 600; color: var(--muted); }
+  .fanout-tenant i { width: 8px; height: 8px; border-radius: 999px; background: var(--line); flex: 0 0 auto; }
+  .demo-card.play .fanout-tenant.f1 i { animation: pcb-tick 0.4s ease 0.3s forwards; }
+  .demo-card.play .fanout-tenant.f2 i { animation: pcb-tick 0.4s ease 0.6s forwards; }
+  .demo-card.play .fanout-tenant.f3 i { animation: pcb-tick 0.4s ease 0.9s forwards; }
+  .demo-card.play .fanout-tenant.f4 i { animation: pcb-tick 0.4s ease 1.2s forwards; }
+  .demo-card.play .fanout-stage .demo-result { animation: pcb-reveal 0.5s ease 1.55s forwards; }
+  @keyframes pcb-tick { to { background: var(--green); box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18); } }
+
+  .diff-meta { font-size: 0.84rem; margin-bottom: 10px; }
+  .diff-lines { background: #0b1220; border-radius: 8px; padding: 12px 14px; font-size: 0.82rem; line-height: 1.7; margin: 0; overflow: auto; }
+  .diff-lines .del { display: block; color: #fca5a5; opacity: 0; }
+  .diff-lines .add { display: block; color: #86efac; opacity: 0; }
+  .demo-card.play .diff-lines .del { animation: pcb-reveal 0.4s ease 0.2s forwards; }
+  .demo-card.play .diff-lines .add { animation: pcb-reveal 0.4s ease 0.8s forwards; }
 
   @media (max-width: 980px) {
     .nav a:not(.nav-cta) { display: none; }
     .hero h1 { font-size: 2.7rem; }
-    .status-grid, .features, .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .status-grid, .features, .flow, .demos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .integrations, .docs-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .shots, .how { grid-template-columns: 1fr; }
   }
@@ -185,16 +228,19 @@
     .hero-content { padding: 44px 0 56px; }
     .hero h1 { font-size: 2.1rem; }
     .hero .lead { font-size: 1.02rem; }
-    .hero-meta { display: none; }
     section { padding: 58px 0; }
     h2 { font-size: 1.75rem; }
-    .status-grid, .features, .flow, .integrations, .docs-grid { grid-template-columns: 1fr; }
+    .status-grid, .features, .flow, .integrations, .docs-grid, .demos { grid-template-columns: 1fr; }
     .cta-band { display: block; padding: 24px; }
     .cta-band .actions { margin-top: 20px; }
     footer nav { margin-left: 0; width: 100%; }
   }
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
+    .search-stage .chip, .fanout-tenant i, .diff-lines .del, .diff-lines .add, .demo-result { animation: none !important; }
+    .demo-result, .diff-lines .del, .diff-lines .add { opacity: 1 !important; transform: none !important; }
+    .search-stage .t2 { opacity: 1 !important; border-color: var(--sky) !important; background: #e0f2fe !important; color: var(--primary-dark) !important; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18) !important; }
+    .fanout-tenant i { background: var(--green) !important; box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.18) !important; }
   }
 </style>
 <link rel="stylesheet" href="assets/lightbox.css">
@@ -252,24 +298,70 @@
   <section class="hero" aria-labelledby="hero-title">
     <div class="wrap">
       <div class="hero-content">
-        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.6.0</div>
-        <h1 id="hero-title">Cross-tenant Microsoft&nbsp;365 ops,<br><span>done the same way every time.</span></h1>
+        <div class="release"><i></i> Open source &middot; self-hosted &middot; v0.7.0</div>
+        <h1 id="hero-title">The same fix. Every tenant.<br><span>Once.</span></h1>
         <p class="lead">
-          A self-hosted bridge over Microsoft Graph and the Partner Center API for MSPs.
-          Declare desired state once and reconcile every customer tenant to it - and fix the
-          tickets your queue sees every week with transparent Diagnose - Fix - Verify workflows.
+          Your team already knows how to fix the ticket - resetting MFA, repairing a mailbox,
+          deploying an app. PartnerCenterBridge turns that fix into a versioned, reviewable
+          action you run once and push across every customer tenant, with proof it actually
+          worked. It sits on top of Microsoft Graph, Partner Center, and Exchange Online -
+          augmenting the tools you already use, not replacing them.
         </p>
         <div class="actions">
           <a class="btn primary" href="getting-started.html">Get started</a>
           <a class="btn secondary" href="#screens">See the current app</a>
         </div>
-        <div class="hero-meta" aria-label="Stack">
-          <span>ASP.NET Core 8</span>
-          <span>React + Vite + TS</span>
-          <span>PostgreSQL</span>
-          <span>Microsoft Graph</span>
-          <span>Partner Center v3</span>
-          <span>Exchange Online V3</span>
+      </div>
+    </div>
+  </section>
+
+  <section id="wow" class="band">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">See it work</div>
+        <h2>Every tenant, one reviewable action.</h2>
+        <p>Three small, real interactions - not a demo video. This is the shape of every
+          workflow in the app. Scroll past once and they play; the small &#8635; replays one.</p>
+      </div>
+      <div class="demos">
+        <div class="demo-card" id="demo-search">
+          <button class="demo-replay" type="button" aria-label="Replay this demo">&#8635;</button>
+          <div class="demo-label">Find a user, anywhere</div>
+          <div class="demo-stage search-stage">
+            <span class="chip t1">Contoso Ltd</span>
+            <span class="chip t2">Fabrikam Inc</span>
+            <span class="chip t3">Tailspin Toys</span>
+            <span class="chip t4">Adventure Works</span>
+            <div class="demo-result"><span class="dot"></span>maya.chen@fabrikam.onmicrosoft.com &mdash; MFA reset available</div>
+          </div>
+          <p class="demo-caption">Search once, match across every customer tenant you manage.</p>
+        </div>
+
+        <div class="demo-card" id="demo-fanout">
+          <button class="demo-replay" type="button" aria-label="Replay this demo">&#8635;</button>
+          <div class="demo-label">One fix, every tenant</div>
+          <div class="demo-stage fanout-stage">
+            <div class="fanout-action">Enforce MFA policy</div>
+            <div class="fanout-row">
+              <div class="fanout-tenant f1"><i></i>Contoso</div>
+              <div class="fanout-tenant f2"><i></i>Fabrikam</div>
+              <div class="fanout-tenant f3"><i></i>Tailspin</div>
+              <div class="fanout-tenant f4"><i></i>Adventure</div>
+            </div>
+            <div class="demo-result">4/4 tenants updated, identically.</div>
+          </div>
+          <p class="demo-caption">The same reviewed action, run the same way, everywhere it applies.</p>
+        </div>
+
+        <div class="demo-card" id="demo-diff">
+          <button class="demo-replay" type="button" aria-label="Replay this demo">&#8635;</button>
+          <div class="demo-label">Before &rarr; after, provably</div>
+          <div class="demo-stage diff-stage">
+            <div class="diff-meta"><span class="badge info">run #41</span> &rarr; <span class="badge ok">run #42</span></div>
+            <pre class="diff-lines"><span class="del">- state: enabledForReportingButNotEnforced</span>
+<span class="add">+ state: enabled</span></pre>
+          </div>
+          <p class="demo-caption">Every change is a diffable, versioned snapshot - not a "trust me, I fixed it."</p>
         </div>
       </div>
     </div>
@@ -537,6 +629,15 @@ dotnet test</pre>
 </main>
 
 <footer>
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center v3</span>
+    <span>Exchange Online V3</span>
+  </div>
   <div class="wrap">
     <a class="brand" href="#top">
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0ea5e9"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -556,5 +657,37 @@ dotnet test</pre>
   </div>
 </footer>
 <script src="assets/lightbox.js"></script>
+<script>
+  // "See it work" demos: each .demo-card plays its CSS animation once, the first time it
+  // scrolls into view, then rests at its resolved end state (deliberately not a loop). The
+  // small replay button re-triggers just that one card. Reduced-motion users get the resolved
+  // state for free from the CSS media query above, so this script simply does nothing for them.
+  (function () {
+    var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion || !("IntersectionObserver" in window)) return;
+
+    function play(card) {
+      card.classList.remove("play");
+      void card.offsetWidth; // force reflow so re-adding the class restarts the animations
+      card.classList.add("play");
+    }
+
+    var played = new WeakSet();
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting && !played.has(entry.target)) {
+          played.add(entry.target);
+          play(entry.target);
+        }
+      });
+    }, { threshold: 0.55 });
+
+    document.querySelectorAll(".demo-card").forEach(function (card) {
+      observer.observe(card);
+      var replay = card.querySelector(".demo-replay");
+      if (replay) replay.addEventListener("click", function () { play(card); });
+    });
+  })();
+</script>
 </body>
 </html>
