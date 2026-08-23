@@ -14,8 +14,15 @@ project's `dev-process.md`; kept here going forward for PartnerCenterBridge spec
   decision, and the default adversarial reviewer for anything Claude or Luna authored.
 - **Terra/high** — escalation: nontrivial logic, more than a couple files, anything Terra/medium
   would be guessing on.
-- **Sol/high** — architecture, security, tricky debugging, and anything touching threads,
-  lifetimes, shutdown ordering, or a resource that must be released, regardless of diff size.
+- **Sol/high** — architecture, security, tricky debugging, and anything touching auth, RBAC,
+  tenant isolation, or a security-relevant state machine (staging/approval/token flows), regardless
+  of diff size. (Corrected 2026-08-24: this row was imported verbatim from a sibling project's
+  routing table, which is about threads/lifetimes/shutdown ordering — a concern for that project's
+  concurrent/control-loop code, not this one. Every Sol/high escalation actually logged below (Units
+  1, 5, 6, 8, 13, 14) is auth/RBAC/tenant-isolation/security-state-machine work; none involve
+  threads, lifetimes, or shutdown ordering. This repo has no such surface to escalate on — first
+  flagged in the `corporate-strategy` company model's 2026-08-24 review; see that repo's
+  `state/products/PartnerCenterBridge.md` and Decision Log.)
 - **Sol/ultra** — multi-file implementation (5+ files) or a broad review pass. As an
   *implementer*, requires the user's explicit approval in-session before dispatch — never
   self-initiated.
