@@ -76,6 +76,31 @@ async function assertNoOverflow(page, label, expectedWidth) {
   if (scrollWidth > expectedWidth + OVERFLOW_TOLERANCE_PX) {
     overflowFailures++;
     console.error(`  OVERFLOW: ${label} -- content ${scrollWidth}px wide, device is ${expectedWidth}px`);
+    if (debugCapture) {
+      const offenders = await page.evaluate(({ width, tolerance }) =>
+        [...document.querySelectorAll("body *")]
+          .map((element) => {
+            const rect = element.getBoundingClientRect();
+            const style = getComputedStyle(element);
+            return { tag: element.tagName, className: String(element.className), left: Math.round(rect.left), right: Math.round(rect.right), width: Math.round(rect.width), position: style.position, overflowX: style.overflowX };
+          })
+          .filter((rect) => rect.right > width + tolerance || rect.left < -tolerance)
+          .sort((a, b) => a.right - b.right)
+          .slice(0, 12),
+        { width: expectedWidth, tolerance: OVERFLOW_TOLERANCE_PX }
+      );
+      console.error(`  overflow elements: ${JSON.stringify(offenders)}`);
+      const pageMetrics = await page.evaluate(() => ({
+        innerWidth: window.innerWidth,
+        htmlClientWidth: document.documentElement.clientWidth,
+        htmlScrollWidth: document.documentElement.scrollWidth,
+        bodyClientWidth: document.body.clientWidth,
+        bodyScrollWidth: document.body.scrollWidth,
+        bodyMargin: getComputedStyle(document.body).margin,
+        rootRect: document.getElementById("root")?.getBoundingClientRect().toJSON(),
+      }));
+      console.error(`  page metrics: ${JSON.stringify(pageMetrics)}`);
+    }
   } else if (debugCapture) {
     console.log(`  ok: ${label} (${scrollWidth}px in ${expectedWidth}px)`);
   }

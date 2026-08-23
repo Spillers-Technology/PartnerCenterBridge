@@ -38,3 +38,8 @@ mocked API fixtures. Use the [Playwright setup](#playwright-setup) above, then r
 cd web && npm run dev
 node docs/scripts/capture-mobile-media.mjs
 ```
+
+CI runs all 15 views on three representative profiles: Galaxy (the primary
+phone path), folded foldable (the narrowest viewport), and unfolded foldable
+(the separate tablet/windowed-dialog path). Run all five profiles locally for a
+release or a broad layout change; screenshots still need human visual review.

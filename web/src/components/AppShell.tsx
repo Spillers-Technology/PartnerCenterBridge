@@ -52,13 +52,24 @@ export function AppShell({
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
       <AppBar position="static" color="default" enableColorOnDark>
-        <Toolbar>
+        <Toolbar sx={{ px: { xs: 1, sm: 3 } }}>
           {isPhone && (
             <IconButton aria-label="Open navigation" edge="start" onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
               <MenuIcon />
             </IconButton>
           )}
-          <Typography variant="h6" component="h1" sx={{ flexGrow: isPhone ? 1 : 0, mr: 3, whiteSpace: "nowrap" }}>
+          <Typography
+            variant="h6"
+            component="h1"
+            sx={{
+              flexGrow: isPhone ? 1 : 0,
+              minWidth: 0,
+              mr: { xs: 0, sm: 3 },
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            }}
+          >
             Partner Center Bridge
           </Typography>
           {!isPhone && (

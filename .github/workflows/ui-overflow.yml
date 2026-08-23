@@ -1,0 +1,54 @@
+name: UI overflow checks
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  mobile-capture-matrix:
+    runs-on: ubuntu-latest
+    env:
+      PCBRIDGE_CAPTURE_DEVICES: galaxy,fold-closed,fold-open
+      PCBRIDGE_CAPTURE_OUT: ${{ github.workspace }}/mobile-capture-out
+      PCBRIDGE_CAPTURE_DEBUG: "1"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/pcbridge-playwright"
+          npm install --prefix "$RUNNER_TEMP/pcbridge-playwright" playwright
+          echo "PLAYWRIGHT_NODE_MODULES=$RUNNER_TEMP/pcbridge-playwright/node_modules" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/pcbridge-playwright/node_modules/.bin/playwright" install --with-deps chromium
+
+      - name: Start the mocked web client
+        working-directory: web
+        run: nohup npm run dev -- --host 127.0.0.1 --port 5173 --strictPort > "$RUNNER_TEMP/vite-dev.log" 2>&1 &
+
+      - name: Run overflow matrix
+        run: node docs/scripts/capture-mobile-media.mjs
+
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-overflow-failure
+          path: |
+            ${{ env.PCBRIDGE_CAPTURE_OUT }}
+            ${{ runner.temp }}/vite-dev.log
+          retention-days: 7
+          if-no-files-found: ignore
