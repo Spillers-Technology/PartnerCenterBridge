@@ -19,6 +19,11 @@ credit is given unless you prefer otherwise.
 
 - The API is designed to sit behind your own OIDC provider (`Auth` section). Running with
   `Auth:Enabled=false` outside local development is a misconfiguration, not a vulnerability.
-- Secrets belong in SOPS-encrypted overlays or environment injection — never committed plaintext.
+- The committed `deploy/` tree is a deployment **template**, not a live environment. Its
+  `secrets.sops.yaml` contains only `CHANGEME` placeholders and is not evidence that SOPS is
+  configured in this repository. Do not replace those placeholders with real values.
+- A real GitOps deployment belongs in the separate `homelab_ac` repository and must use that
+  repository's SOPS-encrypted secret convention; non-GitOps deployments must inject secrets from
+  their environment or secret manager. Never commit plaintext credentials to either repository.
   A leaked SAM refresh token should be treated as a full partner-tenant compromise: revoke the
   Entra app's sessions and re-seed.
