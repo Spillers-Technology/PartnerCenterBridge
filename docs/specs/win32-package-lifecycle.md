@@ -355,11 +355,14 @@ field.
 - **Staging is the trust boundary for packaging** (Phase A code review, §14). The writer refuses
   symbolic links, names Windows would misread (separators, reserved device names, trailing
   dots/spaces, invalid characters), case-insensitive name collisions, and any group- or
-  other-writable directory. It **cannot** refuse FIFOs, hardlinks, or files swapped by a
-  concurrent writer: verified on .NET 8 that the managed API reports a FIFO and a hardlink
-  identically to a regular file. Those are excluded by construction instead -- **Phase B must
-  stage each upload in a PCB-created owner-only (0700) directory, populated only by PCB writing
-  upload bytes into regular files it creates itself.** No other process may write there. Archive
+  other-writable directory. It does **not** refuse FIFOs, hardlinks, or files swapped by a
+  concurrent writer. The managed `FileSystemInfo` API reports a FIFO and a hardlink identically to
+  a regular file (probed on .NET 8). Detecting them is possible with `openat`/`O_NOFOLLOW`/`fstat`
+  interop on the opened descriptor. That was **deliberately not built**: it's a boundary choice, not
+  a runtime impossibility. **Phase B must establish the whole precondition:** a PCB-created
+  owner-only (0700) staging directory with trusted, non-replaceable ancestors, populated only by PCB
+  writing upload bytes into regular files it creates itself, with no other writer (including same-UID
+  processes). The writer's mode-bit check is a partial guard for that, not enforcement of it. Archive
   uploads that PCB unpacks into staging are bounded for expansion ratio and entry count.
 - Scratch holds unencrypted customer install media: STD-006 handling posture, deterministic cleanup.
 
@@ -561,3 +564,25 @@ key-reuse mutant is caught by a single assertion, which is thin coverage.
 **Not covered, stated rather than implied:** multi-GB / ZIP64 streaming (the oracle buffers whole
 packages in memory and is unsuitable for it); Microsoft-tool interoperability (#4); a real Graph
 commit and endpoint install (§3.0, the Stable gate).
+
+### 14.1 Scoped re-review of the fix round (round 4)
+
+Same reviewer. Arrived after `c282070` was pushed. Status of the six: **#3 and #6 resolved; #2
+resolved for the revised contract (staging boundary accepted); #1 and #5 partial; #4 open.**
+Test re-grade: **B-** (B+ crypto construction, C+ adversarial input/lifetime, D scale).
+Verdict: **not mergeable yet**. Every code claim below was checked against the source by the
+orchestrator and holds.
+
+| # | Sev | Finding | Status |
+|---|---|---|---|
+| R4-1 | P2 | `ReservedNames` lacks `COM1`-`COM3` and `LPT1`-`LPT3` written with superscript digits (U+00B9, U+00B2, U+00B3), which Windows also reserves; leading ASCII spaces accepted (Windows strips them, so `" config.ini"` and `"config.ini"` can collide on extract) | **open** |
+| R4-2 | P2 | `MaxEntries` counts files only, so a staging tree of empty directories is unbounded; no cancellation check inside the enumeration loop | **open** |
+| R4-3 | P2 | Regression: inner zip, payload, and outer zip are all live at once -- peak scratch ~3N, spec §5 budgets 2x. Dispose the inner zip after encryption, before outer assembly | **open** |
+| R4-4 | P2 | "Cancelled midway" test cancels on the first write before any byte persists; partial-output failure, cancellation after a written prefix, and flush failure are uncovered | **open** |
+| R4-5 | P3 | `char.IsControl` also rejects DEL and C1 controls, stricter than Windows' 0-31 rule. Decide: intentional portability policy or narrow it | **open** |
+| R4-6 | -- | Round-3 adjudication overstated ".NET cannot detect" FIFOs/hardlinks; interop could. Wording corrected in §7 and the class doc | **fixed (wording)** |
+| R4-7 | -- | When the #4 fixture lands, the test project needs a copy-to-output rule for `Fixtures/**` | **open, part of #4** |
+
+The reviewer confirmed there was no regression in the collision sets (every combination of files
+and directories colliding, in any enumeration order), ADS handling, disposal ordering,
+`OpenScratch`, or `CopyHashedAsync`. It recommended **against** Unicode compatibility normalization.

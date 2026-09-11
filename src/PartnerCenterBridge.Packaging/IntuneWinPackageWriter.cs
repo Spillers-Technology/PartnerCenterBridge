@@ -52,9 +52,12 @@ public interface IIntuneWinPackageWriter
 /// <para><b>Trust boundary (spec §7).</b> The source folder must be a staging directory PCB
 /// itself created and populated with regular files -- not a directory anyone else can write to.
 /// The writer rejects symbolic links, Windows-invalid or colliding names, and any group- or
-/// other-writable directory, but it is not a sandbox for a hostile filesystem: .NET cannot tell a
-/// FIFO or a hardlink from a regular file, and a concurrent writer could swap a file between the
-/// walk and the open. Those are excluded by who can write to staging, not by this class.</para>
+/// other-writable directory, but it is not a sandbox for a hostile filesystem. The managed
+/// FileSystemInfo API does not expose file type or link count, so FIFOs and hardlinks pass; a
+/// concurrent writer could swap a file between the walk and the open. Defending against those would
+/// take openat/O_NOFOLLOW/fstat interop on the opened descriptor -- deliberately not done here. They
+/// are excluded by who can write to staging, and the mode-bit check only partly enforces that (it
+/// does not verify ownership, ancestors, or same-user writers).</para>
 /// </summary>
 public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
 {
