@@ -44,6 +44,7 @@
     <ProjectReference Include="..\..\src\PartnerCenterBridge.PartnerCenter\PartnerCenterBridge.PartnerCenter.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Exchange\PartnerCenterBridge.Exchange.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Api\PartnerCenterBridge.Api.csproj" />
+    <ProjectReference Include="..\..\src\PartnerCenterBridge.Packaging\PartnerCenterBridge.Packaging.csproj" />
   </ItemGroup>
 
 </Project>

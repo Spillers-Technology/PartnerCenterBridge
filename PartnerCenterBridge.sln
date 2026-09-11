@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PartnerCenterBridge.Tests",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PartnerCenterBridge.Exchange", "src\PartnerCenterBridge.Exchange\PartnerCenterBridge.Exchange.csproj", "{703A5A78-DC73-4E34-81F1-27D80F2D674C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PartnerCenterBridge.Packaging", "src\PartnerCenterBridge.Packaging\PartnerCenterBridge.Packaging.csproj", "{5907A83D-4D76-440A-A04B-995EBE4B6329}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -58,6 +60,10 @@ Global
 		{703A5A78-DC73-4E34-81F1-27D80F2D674C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{703A5A78-DC73-4E34-81F1-27D80F2D674C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{703A5A78-DC73-4E34-81F1-27D80F2D674C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5907A83D-4D76-440A-A04B-995EBE4B6329}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5907A83D-4D76-440A-A04B-995EBE4B6329}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5907A83D-4D76-440A-A04B-995EBE4B6329}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5907A83D-4D76-440A-A04B-995EBE4B6329}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{4717D1ED-294D-4A31-8E5D-3E7F31BFE97B} = {D67F10FD-C60B-4123-A92D-5A06D40E13D1}
@@ -67,5 +73,6 @@ Global
 		{A10913CB-7A5D-4E62-98AC-07EF4942762B} = {D67F10FD-C60B-4123-A92D-5A06D40E13D1}
 		{A19E6454-4088-4F58-8180-A2A19C33EDA7} = {DA1CF465-5950-40B4-B65F-5B8248046738}
 		{703A5A78-DC73-4E34-81F1-27D80F2D674C} = {D67F10FD-C60B-4123-A92D-5A06D40E13D1}
+		{5907A83D-4D76-440A-A04B-995EBE4B6329} = {D67F10FD-C60B-4123-A92D-5A06D40E13D1}
 	EndGlobalSection
 EndGlobal
