@@ -326,11 +326,19 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
     const body = request.postDataJSON?.() ?? {};
     const targetIds = body.tenantIds ?? tenants.slice(0, 2).map((t) => t.id);
     const template = templates.find((t) => t.id === body.templateId) ?? templates[0];
-    return json(route, targetIds.map((tid, i) => ({
+    const results = targetIds.map((tid, i) => ({
       id: `new-${i}`, appTemplateId: template.id, tenantId: tid,
       intuneAppId: `${(9000 + i).toString(16)}...f${i}`, deployedTemplateVersion: template.contentVersion,
       status: "Succeeded",
-    })));
+    }));
+    // Like the real API, a deploy updates the stored records, so a follow-up GET /deployments
+    // (the Deploy wizard's per-tenant hints) reflects it instead of showing stale state.
+    for (const r of results) {
+      const existing = deployments.find((d) => d.appTemplateId === r.appTemplateId && d.tenantId === r.tenantId);
+      if (existing) Object.assign(existing, { ...r, id: existing.id, lastError: undefined, lastSyncedAt: new Date().toISOString() });
+      else deployments.push({ ...r, lastSyncedAt: new Date().toISOString() });
+    }
+    return json(route, results);
   }
 
   if (method === "GET" && apiPath === "/search/users") return json(route, searchResult);

@@ -68,7 +68,7 @@ async function main() {
     await boxes.nth(0).check();
     await boxes.nth(1).check();
     await boxes.nth(2).check();
-    await page.getByRole("button", { name: /^Deploy to/ }).click();
+    await page.getByRole("button", { name: /^(Re)?[Dd]eploy to/ }).click();
     // Deploy is destructive-adjacent and gated behind useConfirm (added in workstream 1) --
     // this dialog didn't exist the last time this script ran successfully.
     const deployDialog = page.getByRole("dialog");
