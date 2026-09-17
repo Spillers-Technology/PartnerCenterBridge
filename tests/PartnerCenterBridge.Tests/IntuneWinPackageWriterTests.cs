@@ -15,11 +15,10 @@ namespace PartnerCenterBridge.Tests;
 /// correctness claim here is instead checked by <see cref="IndependentDecryptor"/>, written from
 /// the format contract rather than from the writer, and sharing no code with it.
 ///
-/// Still open under §3.0: <see cref="Reference_tool_fixture_decrypts_with_the_same_oracle"/> is
-/// written but skipped until a package produced by Microsoft's IntuneWinAppUtil.exe is checked in;
-/// until then the oracle is independent of the writer in implementation but not calibrated
-/// against the reference tool. A real Graph commit + Windows endpoint install is separately
-/// required before Stable. Offline tests prove construction, not deployability. Tests that need
+/// The oracle is calibrated against the reference tool by
+/// <see cref="Reference_tool_package_opens_with_the_same_oracle"/>, which decrypts a package built by
+/// Microsoft's IntuneWinAppUtil.exe 1.8.7. A real Graph commit + Windows endpoint install is still
+/// separately required before Stable. Offline tests prove construction, not deployability. Tests that need
 /// names only Unix filesystems permit, or Unix permission APIs, use <see cref="UnixFactAttribute"/>
 /// and <see cref="UnixTheoryAttribute"/> and report as skipped on Windows rather than failing.
 /// </summary>
@@ -278,6 +277,11 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
     [InlineData("NUL")]
     [InlineData("trailing.")]
     [InlineData("bad:name")]
+    [InlineData("COM0.log")]
+    [InlineData("COM\u00B9.txt")]      // superscript digits are reserved device names too
+    [InlineData("lpt\u00B3")]
+    [InlineData(" leading.ini")]       // Windows tooling strips leading spaces
+    [InlineData("ctl\u0001.txt")]      // U+0000-U+001F are invalid on Windows
     public async Task Names_windows_would_misinterpret_are_refused(string hostileName)
     {
         var source = NewSourceFolder(("setup.exe", Bytes(10, 20)));
@@ -285,6 +289,19 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => BuildAsync(source));
         Assert.Contains("not a valid Windows name", ex.Message);
+    }
+
+    [UnixTheory] // Windows' rule is U+0000-U+001F; DEL and C1 controls are valid NTFS names
+    [InlineData("del\u007F.txt")]
+    [InlineData("c1\u0085.txt")]
+    public async Task Control_characters_outside_windows_rule_are_accepted(string name)
+    {
+        var source = NewSourceFolder(("setup.exe", Bytes(10, 40)));
+        await File.WriteAllBytesAsync(Path.Combine(source, name), Bytes(10, 41));
+
+        var (package, _) = await BuildAsync(source);
+
+        Assert.Equal(Bytes(10, 41), IndependentDecryptor.Open(package).Files[name]);
     }
 
     [UnixTheory] // a case-insensitive filesystem cannot hold both names
@@ -295,6 +312,19 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
         var source = NewSourceFolder(("setup.exe", Bytes(10, 22)), (first, Bytes(10, 23)), (second, Bytes(10, 24)));
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => BuildAsync(source));
         Assert.Contains("collide", ex.Message);
+    }
+
+    [Fact]
+    public async Task Empty_directories_count_toward_the_entry_limit()
+    {
+        var source = NewSourceFolder(("setup.exe", Bytes(10, 42)));
+        for (var i = 0; i < 10; i++)
+            Directory.CreateDirectory(Path.Combine(source, $"empty-{i}"));
+        var writer = new IntuneWinPackageWriter(Path.Combine(_work, "scratch")) { EntryLimit = 5 };
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            writer.WriteAsync(source, "setup.exe", new MemoryStream()));
+        Assert.Contains("more than 5 entries", ex.Message);
     }
 
     [UnixFact]
@@ -316,21 +346,21 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
     {
         var scratch = Path.Combine(_work, "scratch-private");
         var observed = new List<(string Path, UnixFileMode Mode)>();
-        var output = new ProbeStream(onFirstWrite: () =>
+        var writer = new IntuneWinPackageWriter(scratch)
         {
-            // The artifact is copied out while every scratch file still exists.
-            foreach (var dir in Directory.GetDirectories(scratch))
+            // Called before any plaintext reaches the file, so the mode seen here is the mode the
+            // plaintext is written under.
+            ScratchCreated = path =>
             {
+                var dir = Path.GetDirectoryName(path)!;
                 observed.Add((dir, File.GetUnixFileMode(dir)));
-                foreach (var file in Directory.GetFiles(dir))
-                    observed.Add((file, File.GetUnixFileMode(file)));
-            }
-        });
+                observed.Add((path, File.GetUnixFileMode(path)));
+            },
+        };
 
-        await new IntuneWinPackageWriter(scratch).WriteAsync(
-            NewSourceFolder(("setup.exe", Bytes(4_000, 27))), "setup.exe", output);
+        await writer.WriteAsync(NewSourceFolder(("setup.exe", Bytes(4_000, 27))), "setup.exe", new MemoryStream());
 
-        Assert.Equal(4, observed.Count); // one build directory + inner, payload, outer
+        Assert.Equal(6, observed.Count); // payload, inner, outer -- each with its build directory
         const UnixFileMode groupOrOther = UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
                                           UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
         Assert.All(observed, o => Assert.Equal((UnixFileMode)0, o.Mode & groupOrOther));
@@ -338,27 +368,92 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
     }
 
     [Fact]
-    public async Task Scratch_is_removed_when_the_output_write_fails_or_is_cancelled_midway()
+    public async Task At_most_two_scratch_files_exist_at_any_point()
     {
-        var scratch = Path.Combine(_work, "scratch-faults");
-        var writer = new IntuneWinPackageWriter(scratch);
+        // Spec §5 budgets ~2x the source size in scratch. Each scratch file is as large as the
+        // source, so the bound is on how many are live at once: the inner zip must be gone before
+        // the outer zip exists, and only the outer zip may remain while the artifact is copied out.
+        var scratch = Path.Combine(_work, "scratch-peak");
+        var live = new List<string[]>();
+        string[] Snapshot() => Directory.GetDirectories(scratch)
+            .SelectMany(d => Directory.GetFiles(d)).Select(f => Path.GetFileName(f)).Order().ToArray();
+        var writer = new IntuneWinPackageWriter(scratch) { ScratchCreated = _ => live.Add(Snapshot()) };
+        string[]? atCopyOut = null;
+        var output = new ProbeStream(onWrite: i => { if (i == 0) atCopyOut = Snapshot(); });
 
-        var failing = new ProbeStream(onFirstWrite: () => throw new IOException("disk full"));
-        await Assert.ThrowsAsync<IOException>(() =>
-            writer.WriteAsync(NewSourceFolder(("setup.exe", Bytes(200_000, 28))), "setup.exe", failing));
+        await writer.WriteAsync(NewSourceFolder(("setup.exe", Bytes(50_000, 43))), "setup.exe", output);
+
+        Assert.Equal(
+            new[] { new[] { "payload.tmp" }, new[] { "inner.tmp", "payload.tmp" }, new[] { "outer.tmp", "payload.tmp" } },
+            live);
+        Assert.Equal(new[] { "outer.tmp" }, atCopyOut);
+    }
+
+    [Theory]
+    [InlineData("payload.tmp")]
+    [InlineData("inner.tmp")]
+    [InlineData("outer.tmp")]
+    public async Task A_throwing_scratch_observer_still_leaves_scratch_empty(string failOn)
+    {
+        var scratch = Path.Combine(_work, $"scratch-observer-{failOn}");
+        var writer = new IntuneWinPackageWriter(scratch)
+        {
+            ScratchCreated = path =>
+            {
+                if (Path.GetFileName(path) == failOn) throw new InvalidOperationException("observer failed");
+            },
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            writer.WriteAsync(NewSourceFolder(("setup.exe", Bytes(1_000, 44))), "setup.exe", new MemoryStream()));
         Assert.Empty(Directory.GetFileSystemEntries(scratch));
+    }
 
+    public static TheoryData<string, int> OutputFaults => new()
+    {
+        // Write index 0 fails before any byte reaches the caller; index 2 fails after a prefix has.
+        { "io", 0 }, { "io", 2 }, { "cancel", 0 }, { "cancel", 2 }, { "flush", -1 },
+    };
+
+    [Theory]
+    [MemberData(nameof(OutputFaults))]
+    public async Task Output_faults_propagate_and_remove_scratch(string fault, int atWrite)
+    {
+        var scratch = Path.Combine(_work, $"scratch-fault-{fault}-{atWrite}");
+        var writer = new IntuneWinPackageWriter(scratch);
         using var cts = new CancellationTokenSource();
-        var cancelling = new ProbeStream(onFirstWrite: cts.Cancel);
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            writer.WriteAsync(NewSourceFolder(("setup.exe", Bytes(200_000, 29))), "setup.exe", cancelling, cts.Token));
+        var output = new ProbeStream(
+            onWrite: i =>
+            {
+                if (i != atWrite) return;
+                if (fault == "io") throw new IOException("disk full");
+                cts.Cancel();
+            },
+            failFlush: fault == "flush");
+        // Random bytes do not compress, so the ~200 KB artifact takes several 80 KB writes.
+        var source = NewSourceFolder(("setup.exe", Bytes(200_000, 28)));
+
+        var ex = await Record.ExceptionAsync(() => writer.WriteAsync(source, "setup.exe", output, cts.Token));
+
+        if (fault == "cancel") Assert.IsAssignableFrom<OperationCanceledException>(ex);
+        else Assert.IsType<IOException>(ex);
+        if (fault == "flush")
+        {
+            Assert.True(output.Writes >= 3, "flush fails only after every write");
+        }
+        else
+        {
+            // Exactly the writes before the fault persisted: index 2 leaves a real prefix behind.
+            Assert.Equal(atWrite, output.Writes);
+            Assert.Equal(atWrite > 0, output.Length > 0);
+        }
         Assert.Empty(Directory.GetFileSystemEntries(scratch));
     }
 
     [Fact]
     public async Task Output_is_written_only_asynchronously_and_left_open()
     {
-        var output = new ProbeStream(onFirstWrite: null, rejectSyncWrites: true);
+        var output = new ProbeStream(rejectSyncWrites: true);
         var result = await new IntuneWinPackageWriter(Path.Combine(_work, "scratch")).WriteAsync(
             NewSourceFolder(("setup.exe", Bytes(30_000, 30))), "setup.exe", output);
 
@@ -367,46 +462,76 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
         IndependentDecryptor.Open(output.ToArray());
     }
 
-    [Fact(Skip = "Needs a package produced by Microsoft's IntuneWinAppUtil.exe checked in at " +
-                 "Fixtures/IntuneWinAppUtil/reference.intunewin (spec §3.0). Un-skip when it lands.")]
-    public void Reference_tool_fixture_decrypts_with_the_same_oracle()
+    /// <summary>
+    /// Calibrates the oracle against the reference tool (spec §3.0). The fixture was built on
+    /// Windows 11 by IntuneWinAppUtil.exe 1.8.7 (sha256 c1ba45b5...) from a three-file folder:
+    /// <c>IntuneWinAppUtil.exe -c src -s setup.cmd -o out -q</c>. It is a test artifact, not an
+    /// installer: setup.cmd only writes a marker file.
+    /// </summary>
+    [Fact]
+    public void Reference_tool_package_opens_with_the_same_oracle()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "IntuneWinAppUtil", "reference.intunewin");
-        var opened = IndependentDecryptor.Open(File.ReadAllBytes(path));
-        var (meta, _) = IndependentDecryptor.ReadRaw(File.ReadAllBytes(path));
+        var package = File.ReadAllBytes(path);
 
-        Assert.NotEmpty(opened.Files);
-        Assert.Contains(meta.SetupFile, opened.Files.Keys);
+        var (meta, _) = IndependentDecryptor.ReadRaw(package);
+        var opened = IndependentDecryptor.Open(package);
+
+        Assert.Equal("setup.cmd", meta.SetupFile);
+        Assert.Equal("setup.cmd", meta.Name);
+        Assert.Equal("IntunePackage.intunewin", meta.FileName);
+        Assert.Equal("ProfileVersion1", meta.ProfileIdentifier);
+        Assert.Equal("SHA256", meta.FileDigestAlgorithm);
+        Assert.Equal(opened.InnerZip.Length, meta.UnencryptedContentSize);
+
+        // The reference tool writes Windows separators into inner entry names; the PCB writer
+        // writes '/', as the ZIP specification requires. Recorded here so a change in either is
+        // noticed. Whether the Intune Management Extension extracts both is part of the real
+        // endpoint check (spec §11, U4).
+        Assert.Equal(new[] { "config\\blob.bin", "config\\settings.json", "setup.cmd" }, opened.Files.Keys.Order());
+        Assert.Equal("{\"silent\":true}\r\n"u8.ToArray(), opened.Files["config\\settings.json"]);
+        Assert.Equal("6e77dbd0825635b08aff8ed6fd93c75fcdb5ecbe7613d05542850bd4d897a9bb",
+            Convert.ToHexString(SHA256.HashData(opened.Files["setup.cmd"])).ToLowerInvariant());
+        Assert.Equal("ee938db28abdab2b90c7e101c1117cdff8e1073e6d17e0c48057c6c0e717bf2b",
+            Convert.ToHexString(SHA256.HashData(opened.Files["config\\blob.bin"])).ToLowerInvariant());
+    }
+
+    [Fact]
+    public void Reference_tool_package_fails_authentication_when_tampered()
+    {
+        var path = Path.Combine(AppContext.BaseDirectory, "Fixtures", "IntuneWinAppUtil", "reference.intunewin");
+        var tampered = IndependentDecryptor.RewritePayload(File.ReadAllBytes(path), p => Flip(p, p.Length - 1));
+
+        var ex = Assert.Throws<CryptographicException>(() => IndependentDecryptor.Open(tampered));
+        Assert.Equal(IndependentDecryptor.MacFailure, ex.Message);
     }
 
     /// <summary>
-    /// Write-only capture stream with a hook on the first write, optionally refusing synchronous
-    /// writes so a test can prove the writer never uses them on the caller's stream. Wraps rather
-    /// than derives from MemoryStream: MemoryStream implements WriteAsync by calling the virtual
+    /// Write-only capture stream. <c>onWrite</c> runs before each write with its zero-based index,
+    /// and may throw or cancel. Optionally refuses synchronous writes, so a test can prove the
+    /// writer never uses them on the caller's stream, or fails every flush. Wraps rather than
+    /// derives from MemoryStream: MemoryStream implements WriteAsync by calling the virtual
     /// synchronous Write, which would make the probe accuse the writer of its own behavior.
     /// </summary>
-    private sealed class ProbeStream(Action? onFirstWrite, bool rejectSyncWrites = false) : Stream
+    private sealed class ProbeStream(
+        Action<int>? onWrite = null, bool rejectSyncWrites = false, bool failFlush = false) : Stream
     {
         private readonly MemoryStream _data = new();
-        private bool _fired;
         private bool _disposed;
 
-        public byte[] ToArray() => _data.ToArray();
+        /// <summary>Writes that completed and persisted.</summary>
+        public int Writes { get; private set; }
 
-        private void Fire()
-        {
-            if (_fired) return;
-            _fired = true;
-            onFirstWrite?.Invoke();
-        }
+        public byte[] ToArray() => _data.ToArray();
 
         public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
 
         public override void Write(ReadOnlySpan<byte> buffer)
         {
             if (rejectSyncWrites) throw new NotSupportedException("synchronous write");
-            Fire();
+            onWrite?.Invoke(Writes);
             _data.Write(buffer);
+            Writes++;
         }
 
         public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken ct) =>
@@ -414,9 +539,10 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
 
         public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken ct = default)
         {
-            Fire();
+            onWrite?.Invoke(Writes);
             ct.ThrowIfCancellationRequested();
             _data.Write(buffer.Span);
+            Writes++;
             return ValueTask.CompletedTask;
         }
 
@@ -425,8 +551,9 @@ public sealed class IntuneWinPackageWriterTests : IDisposable
         public override bool CanWrite => !_disposed;
         public override long Length => _data.Length;
         public override long Position { get => _data.Length; set => throw new NotSupportedException(); }
-        public override void Flush() { }
-        public override Task FlushAsync(CancellationToken ct) => Task.CompletedTask;
+        public override void Flush() { if (failFlush) throw new IOException("flush failed"); }
+        public override Task FlushAsync(CancellationToken ct) =>
+            failFlush ? Task.FromException(new IOException("flush failed")) : Task.CompletedTask;
         public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
         public override void SetLength(long value) => throw new NotSupportedException();

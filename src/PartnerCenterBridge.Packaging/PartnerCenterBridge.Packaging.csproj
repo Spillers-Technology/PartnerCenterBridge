@@ -6,6 +6,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="PartnerCenterBridge.Tests" />
+  </ItemGroup>
+
   <!--
     Deliberately has NO ProjectReference to Graph, PartnerCenter, or Data, and no external SDK
     dependency. Win32 content prep is a pure format/crypto concern; keeping it isolated is what

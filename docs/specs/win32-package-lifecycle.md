@@ -1,6 +1,6 @@
 # Spec — Win32 app lifecycle ownership (package generation, versioning, in-place update)
 
-**Status:** draft r3. Phase A approved to implement; 0 and C1 unblocked by r3 decisions (§13). Written as the contract first, per STD-001.
+**Status:** draft r3. Phase A implemented; round-4 findings closed in §14.2 pending re-review. 0 and C1 unblocked by r3 decisions (§13). Written as the contract first, per STD-001.
 **Review history:** r1 adversarially reviewed by Codex `gpt-6-astra` (high), 2026-09-10 -- 11
 findings, all adjudicated and accepted after reproducing each code claim against source (§12).
 r2 re-reviewed by the same model: 5 of 11 r1 findings fully resolved, 6 partially; 10 new
@@ -463,7 +463,10 @@ From `CLAUDE.md`: no AI attribution in commits or PRs; `feat/*` branch -> PR -> 
   independently verified (post-dates the orchestrator's knowledge and needs live docs). The r3
   per-app mechanism is correct whether or not the claim holds, so it is adopted on that basis.
 - **U4** -- that a PCB-built package installs on a real Windows endpoint (§3.0). No offline test
-  can substitute.
+  can substitute. Includes one observed difference from the reference tool (§14.2): PCB writes
+  `/` in inner zip entry names, IntuneWinAppUtil 1.8.7 writes `\`. `/` is what the ZIP
+  specification requires and what .NET extraction on Windows accepts, but whether the Intune
+  Management Extension extracts it identically is part of this check, not assumed.
 
 ## 12. r1 adversarial review -- adjudication
 
@@ -575,14 +578,68 @@ orchestrator and holds.
 
 | # | Sev | Finding | Status |
 |---|---|---|---|
-| R4-1 | P2 | `ReservedNames` lacks `COM1`-`COM3` and `LPT1`-`LPT3` written with superscript digits (U+00B9, U+00B2, U+00B3), which Windows also reserves; leading ASCII spaces accepted (Windows strips them, so `" config.ini"` and `"config.ini"` can collide on extract) | **open** |
-| R4-2 | P2 | `MaxEntries` counts files only, so a staging tree of empty directories is unbounded; no cancellation check inside the enumeration loop | **open** |
-| R4-3 | P2 | Regression: inner zip, payload, and outer zip are all live at once -- peak scratch ~3N, spec §5 budgets 2x. Dispose the inner zip after encryption, before outer assembly | **open** |
-| R4-4 | P2 | "Cancelled midway" test cancels on the first write before any byte persists; partial-output failure, cancellation after a written prefix, and flush failure are uncovered | **open** |
-| R4-5 | P3 | `char.IsControl` also rejects DEL and C1 controls, stricter than Windows' 0-31 rule. Decide: intentional portability policy or narrow it | **open** |
+| R4-1 | P2 | `ReservedNames` lacks `COM1`-`COM3` and `LPT1`-`LPT3` written with superscript digits (U+00B9, U+00B2, U+00B3), which Windows also reserves; leading ASCII spaces accepted (Windows strips them, so `" config.ini"` and `"config.ini"` can collide on extract) | **fixed** -- superscript forms plus `COM0`/`LPT0` (also documented as reserved) added; a leading space is refused |
+| R4-2 | P2 | `MaxEntries` counts files only, so a staging tree of empty directories is unbounded; no cancellation check inside the enumeration loop | **fixed** -- the bound counts every entry; cancellation is checked per entry |
+| R4-3 | P2 | Regression: inner zip, payload, and outer zip are all live at once -- peak scratch ~3N, spec §5 budgets 2x. Dispose the inner zip after encryption, before outer assembly | **fixed** -- inner is deleted before outer exists, payload before copy-out; a test asserts the live set at every scratch creation and at copy-out |
+| R4-4 | P2 | "Cancelled midway" test cancels on the first write before any byte persists; partial-output failure, cancellation after a written prefix, and flush failure are uncovered | **fixed** -- I/O failure and cancellation at write 0 and after a persisted prefix, plus flush failure, each assert propagation and scratch removal |
+| R4-5 | P3 | `char.IsControl` also rejects DEL and C1 controls, stricter than Windows' 0-31 rule. Decide: intentional portability policy or narrow it | **fixed** -- operator decision: match Windows; only U+0000-U+001F is refused, and DEL/C1 names are tested as accepted |
 | R4-6 | -- | Round-3 adjudication overstated ".NET cannot detect" FIFOs/hardlinks; interop could. Wording corrected in §7 and the class doc | **fixed (wording)** |
-| R4-7 | -- | When the #4 fixture lands, the test project needs a copy-to-output rule for `Fixtures/**` | **open, part of #4** |
+| R4-7 | -- | When the #4 fixture lands, the test project needs a copy-to-output rule for `Fixtures/**` | **fixed** with #4 (§14.2) |
 
 The reviewer confirmed there was no regression in the collision sets (every combination of files
 and directories colliding, in any enumeration order), ADS handling, disposal ordering,
 `OpenScratch`, or `CopyHashedAsync`. It recommended **against** Unicode compatibility normalization.
+
+### 14.2 Round-5 fixes and the reference fixture
+
+Finding #4 is closed. `tests/PartnerCenterBridge.Tests/Fixtures/IntuneWinAppUtil/reference.intunewin`
+was built on a Windows 11 host by `IntuneWinAppUtil.exe` **1.8.7** (release asset sha256
+`c1ba45b5cb939e84af064bb7ff4b38fb3dfe33c8dc1078fd9b157672eae671f6`) from a three-file folder
+(`setup.cmd` that only writes a marker file, `config/settings.json`, 5,000 random bytes in
+`config/blob.bin`). It was decrypted twice before being trusted: once by a throwaway
+Python + OpenSSL script sharing nothing with this repo, and once by the test oracle. Both agree:
+MAC over `IV || ciphertext`, IV echoed in the header, SHA-256 `FileDigest` of the plaintext zip,
+`UnencryptedContentSize` = plaintext zip length, `ProfileVersion1`. The oracle is now calibrated
+against the reference tool, and a tampered copy of the fixture is rejected at MAC verification.
+
+What the fixture showed that the spec did not predict:
+
+- **Inner entry separators differ.** The reference tool writes `config\blob.bin`; PCB writes
+  `config/blob.bin`. PCB keeps `/` (ZIP APPNOTE 4.4.17). Tracked under U4 rather than silently
+  matched, because copying the tool's quirk would make PCB packages non-conformant everywhere
+  else.
+- **Detection.xml carries extras PCB does not emit:** `xsi`/`xsd` namespace declarations and a
+  `ToolVersion="1.8.7.0"` attribute on `ApplicationInfo`, and no XML declaration. (No BOM -- an
+  earlier draft of this section claimed one; round 5 caught it, see §14.3.) None are read by
+  this repo's reader or by the oracle. Both outer entries are stored uncompressed; PCB deflates
+  `Detection.xml`, which any zip reader handles.
+
+Mutation check for the round-5 tests (orchestrator-run, each mutant built and run against the 48
+writer tests then present): leading-space check removed -- 1 fails; superscript `COM` names removed
+-- 1 fails; directories not counted toward the bound -- 1 fails; strict `char.IsControl` restored --
+2 fail; outer zip created before the inner zip is deleted -- 1 fails; an extra scratch file kept
+alive through copy-out -- 2 fail. All killed; most by a single assertion, which is thin but
+targeted.
+
+Still not covered: multi-GB / ZIP64 streaming, cancellation observed *during* directory
+enumeration (the check exists; a deterministic test for it would need a filesystem hook), and U4.
+
+### 14.3 Round-5 review -- adjudication
+
+Same reviewer, against the round-5 diff and the fixture. It independently decrypted the fixture
+with Python/OpenSSL and confirmed the MAC, IV, digest, size, content hashes, and tamper rejection.
+Status of the carried items: **R4-1, R4-2, R4-3, R4-4, R4-5, R4-7 and #4 all resolved.**
+Test re-grade: **B** (A- crypto construction, B adversarial input/lifetime, D scale).
+Verdict: **approve Phase A** after the P3s below. **Stable stays blocked on U4.**
+
+| # | Sev | Finding | Reproduced | Fix |
+|---|---|---|---|---|
+| R5-1 | P3 | A throwing `ScratchCreated` observer leaked the just-opened scratch handle, because the stream had not yet reached an owning `using` | yes, by reading `OpenScratch` | dispose the stream before rethrowing; a theory throws from the observer for each scratch purpose and asserts scratch is empty |
+| R5-2 | P3 | Moving outer disposal into `finally` meant a throwing `DisposeAsync` skipped the directory delete | yes, by reading `WriteAsync` | nested `try/finally`, so the directory delete always runs |
+| R5-3 | P3 | §14.2 claimed the reference `Detection.xml` starts with a UTF-8 BOM; it does not | yes -- the orchestrator's own check decoded with `utf-8-sig`, which accepts either, so it never actually looked | claim removed |
+
+Reviewer's note on U4, adopted: closing U4 must show that **nested** files land in their intended
+directories on a real endpoint. A marker-only setup script succeeding does not establish that.
+
+Not covered, still: asynchronous output that fails while a write is genuinely pending, and
+multi-GB / ZIP64 streaming.

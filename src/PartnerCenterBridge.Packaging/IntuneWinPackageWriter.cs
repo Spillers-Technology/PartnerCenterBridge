@@ -72,7 +72,10 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
     public const string MetadataEntry = "IntuneWinPackage/Metadata/Detection.xml";
     public const string PayloadEntry = "IntuneWinPackage/Contents/IntunePackage.intunewin";
 
-    /// <summary>Upper bound on files in one package; bounds memory and time spent walking.</summary>
+    /// <summary>
+    /// Upper bound on entries (files and directories) in one source tree; bounds memory and time
+    /// spent walking, including a tree made only of empty directories.
+    /// </summary>
     public const int MaxEntries = 100_000;
 
     private const string PayloadFileName = "IntunePackage.intunewin";
@@ -88,14 +91,29 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
 
     private static readonly char[] InvalidNameChars = { '<', '>', ':', '"', '/', '\\', '|', '?', '*' };
 
+    // Windows' documented reserved device names, including COM0/LPT0 and the superscript-digit
+    // forms (U+00B9, U+00B2, U+00B3), which Windows also treats as devices. Escaped to keep the
+    // literals ASCII-only (CLAUDE.md).
     private static readonly HashSet<string> ReservedNames = new(StringComparer.OrdinalIgnoreCase)
     {
         "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "COM\u00B9", "COM\u00B2", "COM\u00B3",
+        "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "LPT\u00B9", "LPT\u00B2", "LPT\u00B3",
     };
 
     private readonly string _scratchRoot;
+
+    /// <summary>
+    /// Test seam: called with the path of each scratch file right after it is created, before any
+    /// plaintext is written to it. Lets tests observe scratch permissions and the peak number of
+    /// live scratch files without a filesystem watcher.
+    /// </summary>
+    internal Action<string>? ScratchCreated { get; init; }
+
+    /// <summary>Test seam: lowers <see cref="MaxEntries"/> so the bound can be exercised cheaply.</summary>
+    internal int EntryLimit { get; init; } = MaxEntries;
 
     /// <param name="scratchPath">
     /// Root under which each build creates its own owner-only (0700) working directory. Those hold
@@ -113,49 +131,69 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
         ArgumentNullException.ThrowIfNull(output);
         var root = ResolveSourceRoot(sourceFolder);
         ValidateSetupFile(root, setupFile);
-        var files = CollectFiles(root, ct);
+        var files = CollectFiles(root, EntryLimit, ct);
 
         var buildDir = CreatePrivateDirectory(Path.Combine(_scratchRoot, $"pcb-build-{Guid.NewGuid():N}"));
+        FileStream? outer = null;
         try
         {
-            await using var innerZip = OpenScratch(buildDir, "inner");
-            await using var payload = OpenScratch(buildDir, "payload");
-            await using var outer = OpenScratch(buildDir, "outer");
+            // Each scratch file is disposed (and so deleted) as soon as the next stage has consumed
+            // it, so no more than two source-sized files are ever on disk at once (spec §5 budgets
+            // 2x): inner + payload while encrypting, payload + outer while assembling, then outer
+            // alone while copying out.
+            IntuneWinBuildResult result;
+            await using (var payload = OpenScratch(buildDir, "payload"))
+            {
+                var key = RandomNumberGenerator.GetBytes(KeySize);
+                var iv = RandomNumberGenerator.GetBytes(IvSize);
+                var macKey = RandomNumberGenerator.GetBytes(KeySize);
+                long unencryptedSize;
+                byte[] mac, fileDigest;
 
-            await WriteInnerZipAsync(files, innerZip, ct);
-            var unencryptedSize = innerZip.Length;
-            innerZip.Position = 0;
+                await using (var innerZip = OpenScratch(buildDir, "inner"))
+                {
+                    await WriteInnerZipAsync(files, innerZip, ct);
+                    unencryptedSize = innerZip.Length;
+                    innerZip.Position = 0;
+                    (mac, fileDigest) = await EncryptAsync(innerZip, payload, key, iv, macKey, ct);
+                }
 
-            var key = RandomNumberGenerator.GetBytes(KeySize);
-            var iv = RandomNumberGenerator.GetBytes(IvSize);
-            var macKey = RandomNumberGenerator.GetBytes(KeySize);
-            var (mac, fileDigest) = await EncryptAsync(innerZip, payload, key, iv, macKey, ct);
+                result = new IntuneWinBuildResult(
+                    SetupFile: setupFile,
+                    UnencryptedContentSize: unencryptedSize,
+                    EncryptedPayloadSize: payload.Length,
+                    EncryptionKey: Convert.ToBase64String(key),
+                    MacKey: Convert.ToBase64String(macKey),
+                    InitializationVector: Convert.ToBase64String(iv),
+                    Mac: Convert.ToBase64String(mac),
+                    ProfileIdentifier: ProfileIdentifier,
+                    FileDigest: Convert.ToBase64String(fileDigest),
+                    FileDigestAlgorithm: DigestAlgorithm,
+                    ArtifactSha256: string.Empty,
+                    BuilderVersion: Version);
 
-            var result = new IntuneWinBuildResult(
-                SetupFile: setupFile,
-                UnencryptedContentSize: unencryptedSize,
-                EncryptedPayloadSize: payload.Length,
-                EncryptionKey: Convert.ToBase64String(key),
-                MacKey: Convert.ToBase64String(macKey),
-                InitializationVector: Convert.ToBase64String(iv),
-                Mac: Convert.ToBase64String(mac),
-                ProfileIdentifier: ProfileIdentifier,
-                FileDigest: Convert.ToBase64String(fileDigest),
-                FileDigestAlgorithm: DigestAlgorithm,
-                ArtifactSha256: string.Empty,
-                BuilderVersion: Version);
+                payload.Position = 0;
+                outer = OpenScratch(buildDir, "outer");
+                await WriteOuterZipAsync(result, payload, outer, ct);
+            }
 
-            payload.Position = 0;
-            await WriteOuterZipAsync(result, payload, outer, ct);
             outer.Position = 0;
             var artifactDigest = await CopyHashedAsync(outer, output, ct);
             return result with { ArtifactSha256 = Convert.ToHexString(artifactDigest).ToLowerInvariant() };
         }
         finally
         {
-            // Scratch files delete themselves on dispose (end of the try scope, before this runs);
-            // this removes the now-empty per-build directory.
-            try { Directory.Delete(buildDir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            try
+            {
+                if (outer is not null)
+                    await outer.DisposeAsync();
+            }
+            finally
+            {
+                // Scratch files delete themselves on dispose; this removes the per-build directory,
+                // even if disposing the outer zip threw while flushing.
+                try { Directory.Delete(buildDir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
         }
     }
 
@@ -194,13 +232,14 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
     /// is extracted on Windows: a Linux file literally named <c>..\x.exe</c> must be refused, not
     /// turned into a traversal entry.
     /// </summary>
-    private static List<(string FullPath, string EntryName)> CollectFiles(string root, CancellationToken ct)
+    private static List<(string FullPath, string EntryName)> CollectFiles(string root, int entryLimit, CancellationToken ct)
     {
         var files = new List<(string, string)>();
         var fileNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var dirNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pending = new Stack<(DirectoryInfo Dir, string Prefix)>();
         pending.Push((new DirectoryInfo(root), ""));
+        var entries = 0;
 
         while (pending.Count > 0)
         {
@@ -210,6 +249,10 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
 
             foreach (var entry in dir.EnumerateFileSystemInfos())
             {
+                ct.ThrowIfCancellationRequested();
+                if (++entries > entryLimit)
+                    throw new InvalidOperationException(
+                        $"Source folder has more than {entryLimit} entries (files and directories).");
                 var relative = prefix + entry.Name;
                 if (entry.LinkTarget is not null)
                     throw new InvalidOperationException(
@@ -230,8 +273,6 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
                     if (dirNames.Contains(relative) || !fileNames.Add(relative))
                         throw new InvalidOperationException(
                             $"Source folder contains names that collide on Windows (case-insensitive): '{relative}'.");
-                    if (files.Count >= MaxEntries)
-                        throw new InvalidOperationException($"Source folder has more than {MaxEntries} files.");
                     files.Add((entry.FullName, relative));
                 }
             }
@@ -257,17 +298,25 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
                 "packaging requires a private staging directory.");
     }
 
-    /// <summary>Why <paramref name="name"/> is not a valid single Windows path segment, or null.</summary>
+    /// <summary>
+    /// Why <paramref name="name"/> is not a valid single Windows path segment, or null. Control
+    /// characters follow Windows' own rule (U+0000-U+001F only), so DEL and C1 controls are
+    /// accepted exactly as NTFS accepts them.
+    /// </summary>
     private static string? WindowsNameProblem(string name)
     {
         if (name.Length == 0 || name is "." or "..")
             return "empty or a relative-directory name";
         if (name.Length > 255)
             return "longer than 255 characters";
-        if (name.IndexOfAny(InvalidNameChars) >= 0 || name.Any(char.IsControl))
+        if (name.IndexOfAny(InvalidNameChars) >= 0 || name.Any(c => c < ' '))
             return "contains a path separator or a character Windows does not allow";
         if (name.EndsWith('.') || name.EndsWith(' '))
             return "ends with a dot or a space";
+        // Windows' shell and many installers strip leading spaces, so " a.ini" and "a.ini" can
+        // collide on extraction even though the case-insensitive set treats them as distinct.
+        if (name.StartsWith(' '))
+            return "starts with a space";
         var stem = name.Split('.')[0].TrimEnd(' ');
         if (ReservedNames.Contains(stem))
             return "is a reserved Windows device name";
@@ -422,7 +471,7 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
     /// failure path. A hard process kill can still strand one; sweeping the scratch root at startup
     /// is the build queue's job (spec §5).
     /// </summary>
-    private static FileStream OpenScratch(string buildDir, string purpose)
+    private FileStream OpenScratch(string buildDir, string purpose)
     {
         var options = new FileStreamOptions
         {
@@ -434,6 +483,18 @@ public sealed class IntuneWinPackageWriter : IIntuneWinPackageWriter
         };
         if (!OperatingSystem.IsWindows())
             options.UnixCreateMode = OwnerOnlyFile;
-        return new FileStream(Path.Combine(buildDir, $"{purpose}.tmp"), options);
+        var path = Path.Combine(buildDir, $"{purpose}.tmp");
+        var stream = new FileStream(path, options);
+        try
+        {
+            ScratchCreated?.Invoke(path);
+        }
+        catch
+        {
+            // The caller never receives the stream, so nothing else would dispose (and delete) it.
+            stream.Dispose();
+            throw;
+        }
+        return stream;
     }
 }
