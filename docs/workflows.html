@@ -3,7 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Workflows - Partner Center Bridge</title>
+<title>Workflows - Partner Center Bridge docs</title>
+<meta name="description" content="The known-fix workflow catalog - MFA reset, password reset, compromised-account lockdown, license repair, mailbox archive repair - and how to add one.">
+<meta name="theme-color" content="#ffffff">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/workflows.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Workflows - Partner Center Bridge docs">
+<meta property="og:description" content="The known-fix workflow catalog - MFA reset, password reset, compromised-account lockdown, license repair, mailbox archive repair - and how to add one.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/workflows.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
@@ -35,20 +44,59 @@
 </head>
 <body>
 
-<nav class="topnav">
-  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
-  <a class="nav-link" href="getting-started.html">Getting started</a>
-  <a class="nav-link" href="architecture.html">Architecture</a>
-  <a class="nav-link" href="authentication.html">Authentication</a>
-  <a class="nav-link active" href="workflows.html">Workflows</a>
-  <a class="nav-link" href="mcp-server.html">MCP Server</a>
-  <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
-  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
-  <a class="nav-link" href="deployment.html">Deployment</a>
-  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
-</nav>
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#screens">Screens</a>
+      <a href="index.html#status">Status</a>
+      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
 
-<main>
+<div class="docs-shell">
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Workflows</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Concepts</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Features</p>
+        <ul>
+          <li><a href="workflows.html" aria-current="page">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Features</span></p>
 <h1>The workflow library</h1>
 <p>
   Known-fix workflows are the tickets your queue sees every week, encoded once, done right
@@ -57,7 +105,7 @@
   proves (or disproves) the result. Every run is recorded with the operator's identity.
 </p>
 
-<h2>Identity</h2>
+<h2 id="identity">Identity</h2>
 
 <h3>MFA / auth method reset <span class="badge accent">mfa-reset</span></h3>
 <p>The "lost phone" ticket. Diagnose lists the user's registered authentication methods and
@@ -83,7 +131,7 @@ trick. Remediate blocks sign-in, revokes every session, and disables the risky r
 usual silent culprit) and finds stuck SKUs. Remediate sets the usage location and reprocesses
 the assignment.</p>
 
-<h2>Mailbox</h2>
+<h2 id="mailbox">Mailbox</h2>
 
 <h3>Mailbox archive repair <span class="badge accent">mailbox-archive</span></h3>
 <p>The "mailbox full / not archiving" fix that replaces a ~10-cmdlet Exchange Online dance.
@@ -94,7 +142,7 @@ ensures a retention policy, clears the blockers, and kicks the assistant. The ac
 runs asynchronously on Microsoft's side - <strong>re-running remediate doubles as the
 nudge</strong>, which this problem routinely needs.</p>
 
-<h2>Run history &amp; notifications</h2>
+<h2 id="run-history-notifications">Run history &amp; notifications</h2>
 <p>
   The Workflows tab shows recent runs: when, which workflow, which tenant, which operator, and
   the outcome. The full findings and steps of every run persist in Postgres - ticket-ready
@@ -107,7 +155,7 @@ nudge</strong>, which this problem routinely needs.</p>
   "NotifyOnSuccess": false
 }</code></pre>
 
-<h2>Writing your own</h2>
+<h2 id="writing-your-own">Writing your own</h2>
 <p>
   Implement <code>IWorkflow</code> in the project that owns the API you're calling, register it
   in that project's <code>Add*Workflows()</code> extension, and it appears in the catalog, the
@@ -124,12 +172,75 @@ nudge</strong>, which this problem routinely needs.</p>
 <p>See <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>
 for the full conventions.</p>
 
-</main>
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="authentication.html"><span>&larr; Previous</span>Authentication</a>
+  <a class="next" href="config-snapshots.html"><span>Next &rarr;</span>Config snapshots</a>
+</nav>
+</article>
+  </main>
 
-<footer>
-  MIT licensed.
-  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center API</span>
+    <span>Exchange Online PowerShell V3</span>
+  </div>
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center <b>Bridge</b></span>
+      </a>
+      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#status">What's real today</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
 </footer>
-
+<script src="assets/site.js"></script>
 </body>
 </html>
