@@ -17,8 +17,10 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
 import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
+import { formatTimestamp } from "../format";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useToast } from "../hooks/useToast";
 import type { ConfigChangeKind, ConfigSnapshotRun, MeProfile, SectionDiff, Tenant } from "../types";
@@ -29,7 +31,8 @@ function changeChip(kind: ConfigChangeKind) {
 }
 
 function runLabel(r: ConfigSnapshotRun) {
-  return `${new Date(r.startedAt).toLocaleString()} -- ${r.operator}${r.imported ? " (imported)" : ""}`;
+  const { text } = formatTimestamp(r.startedAt);
+  return `${text} – ${r.operator}${r.imported ? " (imported)" : ""}`;
 }
 
 type LastAction = "runs" | "capture" | "viewDiff" | "exportPatch" | "exportRun" | "import" | null;
@@ -141,7 +144,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     const outcome = await captureAction.run();
     if (!outcome) return;
     if (outcome.refreshed) toast("Snapshot captured");
-    else toast("Snapshot captured, but the list couldn't refresh -- reload to see it.", "warning");
+    else toast("Snapshot captured, but the list couldn't refresh; reload to see it.", "warning");
   };
 
   const handleViewDiff = async () => {
@@ -171,7 +174,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     const outcome = await importAction.run();
     if (!outcome) return;
     if (outcome.refreshed) toast("Workbook imported");
-    else toast("Workbook imported, but the list couldn't refresh -- reload to see it.", "warning");
+    else toast("Workbook imported, but the list couldn't refresh; reload to see it.", "warning");
   };
 
   if (tenantsAction.status === "error") {
@@ -201,6 +204,10 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
   }
 
   const runs = runsAction.result ?? [];
+  // The history table reads best newest-first; the Before/After pickers below stay in the API's
+  // chronological (oldest-first) order, since picking an earlier "before" then a later "after" is
+  // the natural order to scan them in.
+  const runsNewestFirst = [...runs].reverse();
 
   return (
     <Box>
@@ -240,7 +247,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
 
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Point-in-time backups of this tenant's configuration (Conditional Access, Named Locations,
-        Device Compliance Policies), diffable against each other. There is no "apply" button --
+        Device Compliance Policies), diffable against each other. There is no "apply" button:
         making changes stays the job of the Deploy wizard and known-fix Workflows, where every
         write is a single reviewed action.
       </Typography>
@@ -263,7 +270,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
             </TableRow>
           </TableHead>
           <TableBody>
-            {runs.map((r) => (
+            {runsNewestFirst.map((r) => (
               <TableRow key={r.id}>
                 <TableCell>{runLabel(r)}</TableCell>
                 <TableCell>{r.sections.map((s) => `${s.sectionName} (${s.failed ? "failed" : s.itemCount})`).join(", ")}</TableCell>
@@ -379,17 +386,15 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
               Bring in a snapshot exported from elsewhere for comparison. Never writes to the tenant.
             </Typography>
             <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2 }}>
-              <Box>
-                <Typography component="label" htmlFor="config-snapshot-import-file" variant="body2" sx={{ display: "block", mb: 0.5 }}>
-                  Workbook file
-                </Typography>
+              <Button component="label" variant="outlined" startIcon={<UploadFileIcon />}>
+                {importFile ? importFile.name : "Workbook file"}
                 <input
-                  id="config-snapshot-import-file"
                   type="file"
                   accept="application/json"
+                  hidden
                   onChange={(e) => setImportFile(e.target.files?.[0] ?? null)}
                 />
-              </Box>
+              </Button>
               <Button onClick={() => void handleImport()} disabled={importAction.busy || !importFile}>
                 Import
               </Button>

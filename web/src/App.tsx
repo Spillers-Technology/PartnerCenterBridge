@@ -117,7 +117,7 @@ export function App() {
       displayName={displayName ?? null}
       onSignOut={showSignOut ? handleSignOut : undefined}
     >
-      {tab === "dashboard" && <Dashboard />}
+      {tab === "dashboard" && <Dashboard onNavigate={(t) => setTab(t)} />}
       {tab === "finduser" && <UserSearch onLaunch={launchWorkflow} />}
       {tab === "tenants" && <Tenants me={me} onProfileChanged={refreshMe} />}
       {tab === "contracts" && <Contracts me={me} />}

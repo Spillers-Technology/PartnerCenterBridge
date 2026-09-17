@@ -64,6 +64,9 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
   const [newPackage, setNewPackage] = useState<File | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<TemplateForm>(emptyForm);
+  // The create form starts collapsed -- the template list is the primary content on this screen,
+  // so creation lives behind a button instead of pushing the list below an always-open form.
+  const [showCreate, setShowCreate] = useState(false);
   const canManage = hasInstancePermission(me, "instance.catalog.manage");
   const confirm = useConfirm();
   const showToast = useToast();
@@ -98,7 +101,7 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
         showToast("Template created and package uploaded.", "success");
       } catch (e) {
         showToast(
-          `"${created.displayName}" was created, but the package upload failed -- use its Upload action below to retry: ${e instanceof Error ? e.message : String(e)}`,
+          `"${created.displayName}" was created, but the package upload failed; use its Upload action below to retry: ${e instanceof Error ? e.message : String(e)}`,
           "warning"
         );
         return;
@@ -106,6 +109,7 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
     } else {
       showToast("Template created.", "success");
     }
+    setShowCreate(false);
   });
 
   const updateAction = useAsyncAction(async (id: string, next: TemplateForm) => {
@@ -159,11 +163,18 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
 
   return (
     <Box>
-      <Typography variant="h5" component="h2" gutterBottom>
-        App Templates
-      </Typography>
+      <Stack direction="row" sx={{ alignItems: "center", justifyContent: "space-between", mb: 2 }}>
+        <Typography variant="h5" component="h2">
+          App Templates
+        </Typography>
+        {canManage && !showCreate && (
+          <Button variant="contained" onClick={() => setShowCreate(true)}>
+            New template
+          </Button>
+        )}
+      </Stack>
 
-      {canManage && (
+      {canManage && showCreate && (
         <Stack
           component="form"
           spacing={2}
@@ -189,9 +200,17 @@ export function AppTemplates({ me }: { me: MeProfile | null }) {
               onChange={(e) => setNewPackage(e.target.files?.[0] ?? null)}
             />
           </Button>
-          <Button type="submit" variant="contained" disabled={createAction.busy || !isFormValid(form)} sx={{ alignSelf: "flex-start" }}>
-            {createAction.busy ? (newPackage ? "Creating and uploading..." : "Creating...") : "Create template"}
-          </Button>
+          <Stack direction="row" spacing={1}>
+            <Button type="submit" variant="contained" disabled={createAction.busy || !isFormValid(form)}>
+              {createAction.busy ? (newPackage ? "Creating and uploading..." : "Creating...") : "Create template"}
+            </Button>
+            <Button
+              disabled={createAction.busy}
+              onClick={() => { setShowCreate(false); setForm(emptyForm); setNewPackage(null); }}
+            >
+              Cancel
+            </Button>
+          </Stack>
           {createAction.error && <Alert severity="error">{createAction.error}</Alert>}
         </Stack>
       )}

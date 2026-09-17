@@ -27,7 +27,8 @@ for the long version.
 
 ```bash
 dotnet build PartnerCenterBridge.sln
-dotnet test PartnerCenterBridge.sln        # 52+ tests, no live tenant needed (WireMock)
+dotnet test PartnerCenterBridge.sln        # ~160 tests, no live tenant needed (WireMock)
+cd web && npx vitest run                   # ~180 SPA component tests
 cd web && npm run build                    # tsc -b && vite build
 ```
 
@@ -40,8 +41,9 @@ dotnet ef migrations add <Name> --project src/PartnerCenterBridge.Data --startup
 
 ## Release checklist
 
-Release process is **manual** -- there are no GitHub Actions workflows. Bumping this list is
-itself a candidate for automation later; until then, work through it by hand:
+Release process is **manual**. The only GitHub Actions workflow is `.github/workflows/ui-overflow.yml`
+(the mobile overflow matrix on PRs and `main`); nothing builds, tests, or publishes .NET or images in CI.
+Automating this list is a candidate for later; until then, work through it by hand:
 
 1. Bump `web/package.json` version.
 2. `dotnet build` + `dotnet test` + `cd web && npm run build` all green.

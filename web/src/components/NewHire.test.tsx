@@ -218,7 +218,7 @@ describe("NewHire", () => {
     expect(api.directory.skus).toHaveBeenCalledTimes(1);
 
     await user.click(screen.getByLabelText("Tenant"));
-    await user.click(screen.getByRole("option", { name: "-- choose --" }));
+    await user.click(screen.getByRole("option", { name: "Choose..." }));
     await selectTenant(user);
 
     await waitFor(() => expect(api.directory.skus).toHaveBeenCalledTimes(2));

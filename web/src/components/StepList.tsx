@@ -10,7 +10,7 @@ export function StepList({ result }: { result: ProvisioningResult }) {
       await navigator.clipboard.writeText(value);
       toast("Copied");
     } catch {
-      toast("Couldn't copy -- select and copy the text manually.", "warning");
+      toast("Couldn't copy; select and copy the text manually.", "warning");
     }
   };
 

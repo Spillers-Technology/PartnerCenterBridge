@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@mui/material/styles";
@@ -12,7 +12,7 @@ vi.mock("../api", () => ({
   api: {
     templates: { list: vi.fn() },
     tenants: { list: vi.fn() },
-    deployments: { deploy: vi.fn() }
+    deployments: { deploy: vi.fn(), list: vi.fn() }
   }
 }));
 
@@ -69,6 +69,10 @@ async function chooseTemplateAndTenant(user: ReturnType<typeof userEvent.setup>)
 }
 
 describe("DeployWizard", () => {
+  beforeEach(() => {
+    vi.mocked(api.deployments.list).mockResolvedValue([]);
+  });
+
   it("loads templates and tenants and renders them", async () => {
     vi.mocked(api.templates.list).mockResolvedValue([template]);
     vi.mocked(api.tenants.list).mockResolvedValue([tenant]);
@@ -100,7 +104,7 @@ describe("DeployWizard", () => {
     vi.mocked(api.tenants.list).mockResolvedValue([tenant]);
     renderComponent();
 
-    expect(await screen.findByRole("button", { name: "Deploy to 0 tenant(s)" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Select tenants to deploy to" })).toBeDisabled();
   });
 
   it("gates deploy behind confirm -- cancel does not call deploy, confirm does", async () => {
@@ -113,15 +117,15 @@ describe("DeployWizard", () => {
     await screen.findByLabelText("Template");
     await chooseTemplateAndTenant(user);
 
-    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant(s)" }));
+    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant" }));
     await screen.findByText("Deploy template?");
-    expect(screen.getByText('Deploy "Company Portal" to 1 tenant(s)?')).toBeInTheDocument();
+    expect(screen.getByText('Deploy "Company Portal" to 1 tenant?')).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(api.deployments.deploy).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByText("Deploy template?")).not.toBeInTheDocument());
 
-    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant(s)" }));
+    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant" }));
     await screen.findByText("Deploy template?");
     await user.click(screen.getByRole("button", { name: "Deploy" }));
 
@@ -137,11 +141,11 @@ describe("DeployWizard", () => {
 
     await screen.findByLabelText("Template");
     await chooseTemplateAndTenant(user);
-    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant(s)" }));
+    await user.click(screen.getByRole("button", { name: "Deploy to 1 tenant" }));
     await screen.findByText("Deploy template?");
     await user.click(screen.getByRole("button", { name: "Deploy" }));
 
-    expect(await screen.findByText("Deployed to 1 tenant(s).")).toBeInTheDocument();
+    expect(await screen.findByText("Deployed to 1 tenant.")).toBeInTheDocument();
     expect(screen.getByText("Succeeded")).toBeInTheDocument();
     expect(screen.getByText("app-1")).toBeInTheDocument();
   });
@@ -156,12 +160,40 @@ describe("DeployWizard", () => {
     await screen.findByLabelText("Template");
     await chooseTemplateAndTenant(user);
     await user.click(screen.getByLabelText("Contoso Ltd"));
-    await user.click(screen.getByRole("button", { name: "Deploy to 2 tenant(s)" }));
+    await user.click(screen.getByRole("button", { name: "Deploy to 2 tenants" }));
     await screen.findByText("Deploy template?");
     await user.click(screen.getByRole("button", { name: "Deploy" }));
 
-    expect(await screen.findByText("Deployed to 1 of 2 tenant(s) - 1 failed.")).toBeInTheDocument();
+    expect(await screen.findByText("Deployed to 1 of 2 tenants - 1 failure.")).toBeInTheDocument();
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("409 conflict")).toBeInTheDocument();
+  });
+
+  it("offers Select all / Clear controls for the tenant list", async () => {
+    vi.mocked(api.templates.list).mockResolvedValue([template]);
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant, tenant2]);
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByLabelText("Template");
+    await user.click(screen.getByRole("button", { name: "Select all" }));
+    expect(await screen.findByRole("button", { name: "Deploy to 2 tenants" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(await screen.findByRole("button", { name: "Select tenants to deploy to" })).toBeInTheDocument();
+  });
+
+  it("shows an 'installed vN' hint for a tenant that already has this template deployed", async () => {
+    vi.mocked(api.templates.list).mockResolvedValue([template]);
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant]);
+    vi.mocked(api.deployments.list).mockResolvedValue([succeeded]);
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByLabelText("Template");
+    await user.click(screen.getByLabelText("Template"));
+    await user.click(await screen.findByRole("option", { name: "Company Portal v3" }));
+
+    expect(await screen.findByText("installed v3")).toBeInTheDocument();
   });
 });

@@ -228,7 +228,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
     ev.preventDefault();
     const ok = await confirm({
       title: "Disable two-factor authentication?",
-      message: "This lowers your account's security -- password sign-ins will no longer require a code from your authenticator app. You can re-enable it at any time.",
+      message: "This lowers your account's security: password sign-ins will no longer require a code from your authenticator app. You can re-enable it at any time.",
       confirmLabel: "Disable 2FA",
       destructive: true
     });
@@ -248,7 +248,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Signed in as {me.displayName} ({me.email})
-        {me.instanceRoles?.length ? ` -- ${me.instanceRoles.join(", ")}` : ""}
+        {me.instanceRoles?.length ? ` \u2013 ${me.instanceRoles.join(", ")}` : ""}
       </Typography>
 
       {hasInstancePermission(me, "instance.roles.manage") && <InstanceAccessCard me={me} />}
@@ -260,7 +260,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Primary sign-in method: a single tap, no password typed. Password stays as your
-            permanent fallback -- it's never removable, so you can't lock yourself out.
+            permanent fallback; it's never removable, so you can't lock yourself out.
           </Typography>
 
           {passkeysError && (
@@ -341,7 +341,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           {recoveryCodes ? (
             <Box>
               <Typography sx={{ mb: 1 }}>
-                <strong>Save these recovery codes now -- they will not be shown again.</strong>
+                <strong>Save these recovery codes now; they will not be shown again.</strong>
               </Typography>
               <Typography sx={{ fontFamily: "monospace", wordBreak: "break-word", mb: 1 }}>
                 {recoveryCodes.join("  ")}
@@ -413,7 +413,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             For headless/scripted MCP clients that can't do an interactive login. Each token has the
-            same access as your account -- revoke one immediately if a client using it is
+            same access as your account; revoke one immediately if a client using it is
             decommissioned or compromised.
           </Typography>
 
@@ -426,7 +426,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           {issuedJwt ? (
             <Box sx={{ mb: 2 }}>
               <Typography sx={{ mb: 1 }}>
-                <strong>Copy this token now -- it will not be shown again.</strong>
+                <strong>Copy this token now; it will not be shown again.</strong>
               </Typography>
               <Typography sx={{ fontFamily: "monospace", wordBreak: "break-word", mb: 1 }}>{issuedJwt}</Typography>
               <Button variant="contained" onClick={() => setIssuedJwt(null)}>

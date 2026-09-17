@@ -12,6 +12,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { Timestamp } from "../format";
 import type { PendingAction } from "../types";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
@@ -92,8 +93,8 @@ function ApprovalRow({ item, onDecided }: { item: PendingAction; onDecided: () =
           </Typography>
         )}
       </TableCell>
-      <TableCell>{new Date(item.createdAt).toLocaleString()}</TableCell>
-      <TableCell>{new Date(item.expiresAt).toLocaleString()}</TableCell>
+      <TableCell><Timestamp value={item.createdAt} /></TableCell>
+      <TableCell><Timestamp value={item.expiresAt} /></TableCell>
       <TableCell>
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
           {failed ? (

@@ -10,10 +10,10 @@ import TableCell from "@mui/material/TableCell";
 import TableContainer from "@mui/material/TableContainer";
 import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
-import Tooltip from "@mui/material/Tooltip";
 import Typography from "@mui/material/Typography";
 import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
+import { humanizeEnum, Timestamp } from "../format";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
@@ -50,7 +50,7 @@ function DeploymentRow({
     if (result?.status === "Succeeded") {
       toast(`${templateName} redeployed to ${tenantName}.`, "success");
     } else {
-      toast(`Redeploy to ${tenantName} did not succeed${result?.lastError ? ` -- ${result.lastError}` : ""}.`, "warning");
+      toast(`Redeploy to ${tenantName} did not succeed${result?.lastError ? `: ${result.lastError}` : ""}.`, "warning");
     }
     await onRetried();
     return results;
@@ -70,23 +70,19 @@ function DeploymentRow({
 
   return (
     <TableRow>
-      <TableCell sx={{ maxWidth: 160 }}>
-        <Tooltip title={templateName}>
-          <Typography variant="body2" noWrap>
-            {templateName}
-          </Typography>
-        </Tooltip>
+      <TableCell sx={{ maxWidth: 320 }}>
+        <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+          {templateName}
+        </Typography>
       </TableCell>
-      <TableCell sx={{ maxWidth: 160 }}>
-        <Tooltip title={tenantName}>
-          <Typography variant="body2" noWrap>
-            {tenantName}
-          </Typography>
-        </Tooltip>
+      <TableCell sx={{ maxWidth: 320 }}>
+        <Typography variant="body2" sx={{ wordBreak: "break-word" }}>
+          {tenantName}
+        </Typography>
       </TableCell>
       <TableCell>v{d.deployedTemplateVersion}</TableCell>
       <TableCell sx={{ maxWidth: 240 }}>
-        <Chip size="small" label={d.status} color={statusColor(d.status)} />
+        <Chip size="small" label={humanizeEnum(d.status)} color={statusColor(d.status)} />
         {d.status === "Failed" && d.lastError && (
           <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>
             {d.lastError}
@@ -98,7 +94,7 @@ function DeploymentRow({
           </Typography>
         )}
       </TableCell>
-      <TableCell>{d.lastSyncedAt ? new Date(d.lastSyncedAt).toLocaleString() : "-"}</TableCell>
+      <TableCell><Timestamp value={d.lastSyncedAt} /></TableCell>
       <TableCell>
         {needsAction && (
           <Button size="small" variant="outlined" disabled={!canRetry || retryAction.busy} onClick={() => void retry()}>

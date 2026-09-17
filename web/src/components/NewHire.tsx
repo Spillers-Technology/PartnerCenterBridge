@@ -167,7 +167,7 @@ export function NewHire() {
           }}
           displayEmpty
         >
-          <MenuItem value="">-- choose --</MenuItem>
+          <MenuItem value=""><em>Choose...</em></MenuItem>
           {tenants.map((t) => <MenuItem key={t.id} value={t.id}>{t.displayName}</MenuItem>)}
         </Select>
       </FormControl>

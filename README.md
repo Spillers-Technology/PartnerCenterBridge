@@ -1,7 +1,7 @@
 # Partner Center Bridge
 <img width="1448" height="1086" alt="image" src="https://github.com/user-attachments/assets/523a6fca-c896-452a-83e3-9ef560b8f17a" />
 
-**Docs:** <https://spillers-technology.github.io/PartnerCenterBridge/>
+**Docs:** <https://spillerstech.us/PartnerCenterBridge/>
 
 A two-part MSP bridge — an ASP.NET Core Web API plus a React SPA — that fronts Microsoft Graph
 and the Partner Center REST API to make cross-tenant Intune + identity work repeatable. Each
@@ -18,7 +18,8 @@ reconciles every tenant on the contract to it.
 > | Known-fix workflow library (MFA reset, password reset, compromised lockdown, license repair) | **Beta** |
 > | Exchange Online mailbox ops via EXO PowerShell V3 (mailbox archive repair) | **Beta** |
 > | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
-> | Two-way LDAP sync (Phase 4) | **Planned** — scaffolded, not implemented |
+> | MCP server (Streamable HTTP at `/mcp`) with a per-tenant human approval queue | **Beta** |
+> | Two-way LDAP sync (Phase 4) | **Planned** — not implemented; no code exists yet |
 >
 > **Known-fix workflows** run one **Diagnose → Fix → Verify** loop: the diagnosis is shown
 > verbatim before anything changes, the fix is applied step by step, and a fresh diagnosis proves
@@ -33,7 +34,7 @@ reconciles every tenant on the contract to it.
 Two independent auth planes:
 
 - **Operator plane** — the SPA + API authenticate *you*. Three modes, picked with `Auth:Mode`.
-  Full detail: [Authentication](https://spillers-technology.github.io/PartnerCenterBridge/authentication.html).
+  Full detail: [Authentication](https://spillerstech.us/PartnerCenterBridge/authentication.html).
   - `Oidc` (default) — Authentik or any OIDC provider (JWT bearer). Every authenticated user has
     full operator access; there's no external IdP to run this way without standing one up first.
   - `Local` — self-registered accounts, no external IdP required. Registration is open (no invite
@@ -69,7 +70,7 @@ web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (c
 | `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory, Identity workflows (MFA/password reset, lockdown, license repair). |
 | `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`; the mailbox-archive workflow. |
 | `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration, workflow dispatch + run recording. |
-| `web/` | React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy wizard, History, New Hire, Offboard, Workflows. |
+| `web/` | React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy wizard, History, New Hire, Offboard, Workflows, Approvals, Config Snapshots, plus sign-in, registration and account security for Local mode. |
 
 ## Run locally (docker-compose)
 
@@ -100,7 +101,9 @@ cd web && npm install && npm run dev
 ## Tests
 
 ```bash
-dotnet test          # reconcile logic, .intunewin parsing, SAM token rotation
+dotnet test                     # API, workflows, auth/RBAC, Graph flows against WireMock -- no tenant needed
+cd web && npx vitest run        # SPA component tests
+cd web && npm run build         # type-check + production build
 ```
 
 ## Config snapshots
@@ -112,7 +115,7 @@ portable file (JSON workbook / patch-style text) and can be re-imported for comp
 is deliberately no "apply this to a tenant" path; making changes stays the job of the Deploy wizard
 and known-fix workflows. Set `GitSync:RepoUrl` to also mirror every capture into a real git repo
 (one file per section, committed and pushed) for history you can browse and diff outside the app.
-Full detail: [Config Snapshots](https://spillers-technology.github.io/PartnerCenterBridge/config-snapshots.html).
+Full detail: [Config Snapshots](https://spillerstech.us/PartnerCenterBridge/config-snapshots.html).
 
 ## The Win32 deploy flow
 
@@ -172,7 +175,7 @@ Check status any time: `GET /api/admin/sam/status` → `{ "bootstrapped": true|f
 After the token is stored it is rotated automatically on every use (well inside the 90-day
 window). Per-customer admin consent + a GDAP relationship are still required before the bridge
 can act in a given tenant. The delegated permissions the multi-tenant app registration needs
-are listed in the [getting-started guide](https://spillers-technology.github.io/PartnerCenterBridge/getting-started.html).
+are listed in the [getting-started guide](https://spillerstech.us/PartnerCenterBridge/getting-started.html).
 
 ## License
 

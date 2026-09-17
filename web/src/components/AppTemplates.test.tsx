@@ -85,6 +85,7 @@ describe("AppTemplates", () => {
     await screen.findByText("No templates yet.");
     vi.mocked(api.templates.list).mockResolvedValue([template]);
 
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -103,6 +104,7 @@ describe("AppTemplates", () => {
     renderComponent();
 
     await screen.findByText("No templates yet.");
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -180,6 +182,7 @@ describe("AppTemplates", () => {
     await screen.findByText("No templates yet.");
     vi.mocked(api.templates.list).mockResolvedValue([{ ...template, hasPackage: true }]);
 
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -212,6 +215,7 @@ describe("AppTemplates", () => {
     // Second refresh (after the upload succeeds) reflects the now-attached package.
     vi.mocked(api.templates.list).mockResolvedValueOnce([{ ...template, hasPackage: true }]);
 
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -236,6 +240,7 @@ describe("AppTemplates", () => {
     renderComponent();
 
     await screen.findByText("No templates yet.");
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -270,6 +275,7 @@ describe("AppTemplates", () => {
     await screen.findByText("No templates yet.");
     vi.mocked(api.templates.list).mockResolvedValue([template]);
 
+    await user.click(screen.getByRole("button", { name: "New template" }));
     await user.type(screen.getByLabelText("Display name"), "Company Portal");
     await user.type(screen.getByLabelText("Install command line"), "install.exe");
     await user.type(screen.getByLabelText("Uninstall command line"), "uninstall.exe");
@@ -300,7 +306,27 @@ describe("AppTemplates", () => {
     renderComponent(viewer);
 
     await screen.findByText("Company Portal");
+    expect(screen.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit Company Portal" })).not.toBeInTheDocument();
+  });
+
+  it("New template opens the create form, and Cancel closes it without creating anything", async () => {
+    vi.mocked(api.templates.list).mockResolvedValue([template]);
+    const user = userEvent.setup();
+    renderComponent();
+
+    await screen.findByText("Company Portal");
+    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "New template" }));
+    expect(screen.getByLabelText("Display name")).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Display name"), "Something");
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByLabelText("Display name")).not.toBeInTheDocument();
+    expect(api.templates.create).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "New template" })).toBeInTheDocument();
   });
 });
