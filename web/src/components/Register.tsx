@@ -28,7 +28,7 @@ export function Register({ onAuthenticated, onGoLogin }: { onAuthenticated: (r: 
           Create an account
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Registration is open -- your new account starts with no tenant access. Someone who
+          Registration is open; your new account starts with no tenant access. Someone who
           already has access to a customer tenant can share it with you afterward, from Tenants.
         </Typography>
 

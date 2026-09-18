@@ -3,8 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MCP Server - Partner Center Bridge</title>
+<title>MCP server - Partner Center Bridge docs</title>
+<meta name="description" content="The Partner Center Bridge MCP server: the tool catalog, personal access tokens, and human approval before an LLM client changes a tenant.">
+<meta name="theme-color" content="#ffffff">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/mcp-server.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="MCP server - Partner Center Bridge docs">
+<meta property="og:description" content="The Partner Center Bridge MCP server: the tool catalog, personal access tokens, and human approval before an LLM client changes a tenant.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/mcp-server.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
   var initOpts = {
@@ -35,22 +45,61 @@
 </head>
 <body>
 
-<nav class="topnav">
-  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
-  <a class="nav-link" href="getting-started.html">Getting started</a>
-  <a class="nav-link" href="architecture.html">Architecture</a>
-  <a class="nav-link" href="authentication.html">Authentication</a>
-  <a class="nav-link" href="workflows.html">Workflows</a>
-  <a class="nav-link active" href="mcp-server.html">MCP Server</a>
-  <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
-  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
-  <a class="nav-link" href="deployment.html">Deployment</a>
-  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
-</nav>
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#screens">Screens</a>
+      <a href="index.html#status">Status</a>
+      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
 
-<main>
-<h1>MCP Server</h1>
-<p class="tagline" style="text-align:left;max-width:none;margin:0 0 1.5rem;">
+<div class="docs-shell">
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>MCP server</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Concepts</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Features</p>
+        <ul>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html" aria-current="page">MCP server</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Features</span></p>
+<h1>MCP server</h1>
+<p class="lead">
   The bridge exposes a <a href="https://modelcontextprotocol.io/" target="_blank" rel="noopener">Model
   Context Protocol</a> server so an LLM can drive it the same way a human operator does through the
   SPA -- same tools, same tenant-access model, same audit trail. Every tool call that changes
@@ -59,9 +108,13 @@
   tenant out of that.
 </p>
 
-<img src="assets/screenshots/pcbridge-approvals.jpg" alt="Approvals tab listing a pending MFA reset action awaiting approval, with Approve and Reject buttons and a preview of what will change." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-approvals.jpg" alt="Approvals tab listing a pending MFA reset action awaiting approval, with Approve and Reject buttons and a preview of what will change." loading="lazy">
+  </button>
+</figure>
 
-<h2>Transport and connecting</h2>
+<h2 id="transport-and-connecting">Transport and connecting</h2>
 <p>
   Streamable HTTP at <code>POST /mcp</code>, via the official <code>ModelContextProtocol.AspNetCore</code>
   SDK, stateless (no server-side session pinning between calls). It sits behind the same
@@ -77,7 +130,7 @@
   with it directly.
 </div>
 
-<h2>Personal access tokens</h2>
+<h2 id="personal-access-tokens">Personal access tokens</h2>
 <p>
   MCP clients are machine callers, not interactive browser sessions, so they authenticate with a
   <strong>personal access token (PAT)</strong> instead of a normal login -- a long-lived, individually
@@ -96,8 +149,9 @@
   <code>jti</code> claim that has nothing to do with this app's PATs.
 </div>
 
-<h2>The tool catalog</h2>
+<h2 id="the-tool-catalog">The tool catalog</h2>
 <p>Seven tools today, covering read access and the one mutating action (workflow remediation):</p>
+<div class="table-wrap">
 <table>
   <tr><th>Tool</th><th>Does</th></tr>
   <tr><td><code>who_am_i</code></td><td>Identity the server resolved for this call -- useful for a client to confirm it's authenticated as the account it expects.</td></tr>
@@ -108,17 +162,19 @@
   <tr><td><code>remediate_workflow</code></td><td>Runs a workflow's fix. This is the one tool that can change something in a tenant -- see Approval modes below for what actually happens when it's called.</td></tr>
   <tr><td><code>check_pending_action</code></td><td>Polls a staged action's current status and any execution error, so a client that just staged something in Queue mode can find out what happened to it.</td></tr>
 </table>
+</div>
 <p>
   Every tool is annotated with MCP's <code>readOnlyHint</code>/<code>destructiveHint</code>
   metadata, so a well-behaved client can tell <code>remediate_workflow</code> apart from the other
   six without guessing from its name.
 </p>
 
-<h2>Approval modes: Queue and ClientTrust</h2>
+<h2 id="approval-modes-queue-and-clienttrust">Approval modes: Queue and ClientTrust</h2>
 <p>
   Each tenant has an <code>McpApprovalMode</code>, defaulting to <strong>Queue</strong>. This is
   the whole point of the human-in-the-loop design:
 </p>
+<div class="table-wrap">
 <table>
   <tr><th>Mode</th><th>What <code>remediate_workflow</code> does</th></tr>
   <tr>
@@ -136,6 +192,7 @@
         not a default.</td>
   </tr>
 </table>
+</div>
 <div class="callout">
   Switching a tenant to ClientTrust requires the <strong>Automation policy manager</strong>
   instance role (or Administrator)
@@ -146,7 +203,7 @@
   models.
 </div>
 
-<h2>The approval workflow</h2>
+<h2 id="the-approval-workflow">The approval workflow</h2>
 <p>
   A staged action shows up in the Approvals tab (and the Dashboard's "needs attention" tile) for
   anyone with Operator+ access to that tenant. Approving or rejecting is an atomically claimed
@@ -162,7 +219,7 @@
   status change with no audit record behind it.
 </p>
 
-<h2>Access control</h2>
+<h2 id="access-control">Access control</h2>
 <p>
   MCP tools use the exact same <code>ITenantAccessService</code> the REST API does -- there is no
   separate MCP permission model. <code>list_tenants</code>, <code>get_dashboard</code>, and the
@@ -170,12 +227,75 @@
   requires Viewer+ on the staged action's tenant before it will say anything about it.
 </p>
 
-</main>
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="config-snapshots.html"><span>&larr; Previous</span>Config snapshots</a>
+</nav>
+</article>
+  </main>
 
-<footer>
-  MIT licensed.
-  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center API</span>
+    <span>Exchange Online PowerShell V3</span>
+  </div>
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center <b>Bridge</b></span>
+      </a>
+      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#status">What's real today</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
 </footer>
-
+<script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
 </body>
 </html>

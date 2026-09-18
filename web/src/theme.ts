@@ -14,6 +14,20 @@ export const theme = createTheme({
   shape: { borderRadius: 8 },
   typography: {
     fontFamily: "system-ui, sans-serif"
+  },
+  components: {
+    // The default `color="default"` AppBar renders a flat mid-grey in dark mode, regardless of
+    // the rest of the palette -- it clashes with this app's navy background. Pin it to the same
+    // surface color as Cards/Dialogs instead, with a hairline border to separate it from the page.
+    MuiAppBar: {
+      styleOverrides: {
+        colorDefault: {
+          backgroundColor: "#1e293b",
+          color: "#e2e8f0",
+          borderBottom: "1px solid #334155"
+        }
+      }
+    }
   }
 });
 

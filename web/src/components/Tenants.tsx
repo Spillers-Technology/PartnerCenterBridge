@@ -17,6 +17,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { humanizeEnum, Timestamp } from "../format";
 import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
@@ -116,7 +117,7 @@ function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
                   <TableRow key={g.userId}>
                     <TableCell>{g.email}</TableCell>
                     <TableCell>{g.role}</TableCell>
-                    <TableCell>{new Date(g.grantedAt).toLocaleDateString()}</TableCell>
+                    <TableCell><Timestamp value={g.grantedAt} /></TableCell>
                     <TableCell>
                       <Button
                         size="small"
@@ -296,14 +297,12 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
                   <TableCell>{t.displayName}</TableCell>
                   <TableCell>{t.defaultDomain ?? "--"}</TableCell>
                   <TableCell>
-                    <Chip size="small" label={t.status} color={STATUS_COLOR[t.status]} />
+                    <Chip size="small" label={humanizeEnum(t.status)} color={STATUS_COLOR[t.status]} />
                   </TableCell>
                   <TableCell>
                     <FormControl size="small" sx={{ minWidth: 160 }}>
-                      <InputLabel id={`contract-label-${t.id}`}>Contract</InputLabel>
                       <Select
-                        labelId={`contract-label-${t.id}`}
-                        label="Contract"
+                        aria-label={`Contract for ${t.displayName}`}
                         size="small"
                         value={t.contractId ?? ""}
                         onChange={(e) => {
@@ -313,7 +312,9 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
                         disabled={assignAction.busy || !canAssign(t.id)}
                         displayEmpty
                       >
-                        <MenuItem value="">-- none --</MenuItem>
+                        <MenuItem value="">
+                          <em>none</em>
+                        </MenuItem>
                         {contracts.map((c) => (
                           <MenuItem key={c.id} value={c.id}>
                             {c.name}
@@ -354,7 +355,7 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Already have a GDAP relationship with a customer? Register it directly instead of
-          waiting for a full sync -- you become its Owner immediately and can share it from there.
+          waiting for a full sync — you become its Owner immediately and can share it from there.
         </Typography>
         <Stack
           component="form"

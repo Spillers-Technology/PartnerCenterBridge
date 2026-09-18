@@ -6,6 +6,7 @@ import { theme } from "../theme";
 import { ConfirmDialogProvider } from "../hooks/useConfirm";
 import { ToastProvider } from "../hooks/useToast";
 import { Approvals } from "./Approvals";
+import { formatTimestamp } from "../format";
 import type { PendingAction } from "../types";
 
 vi.mock("../api", () => ({
@@ -82,8 +83,8 @@ describe("Approvals", () => {
     expect(screen.getByText("Reset MFA")).toBeInTheDocument();
     expect(screen.getByText("Pending")).toBeInTheDocument();
     expect(screen.getByText("Reset MFA for ada@contoso.com")).toBeInTheDocument();
-    expect(screen.getByText(new Date(PENDING.createdAt).toLocaleString())).toBeInTheDocument();
-    expect(screen.getByText(new Date(PENDING.expiresAt).toLocaleString())).toBeInTheDocument();
+    expect(screen.getByText(formatTimestamp(PENDING.createdAt).text)).toBeInTheDocument();
+    expect(screen.getByText(formatTimestamp(PENDING.expiresAt).text)).toBeInTheDocument();
   });
 
   it("gates Approve behind useConfirm: cancel does not call approve", async () => {

@@ -142,7 +142,7 @@ export function Offboard() {
             setResult(null);
           }}
         >
-          <MenuItem value="">-- choose --</MenuItem>
+          <MenuItem value=""><em>Choose...</em></MenuItem>
           {tenants.map((tenant) => <MenuItem key={tenant.id} value={tenant.id}>{tenant.displayName}</MenuItem>)}
         </Select>
       </FormControl>
@@ -166,7 +166,7 @@ export function Offboard() {
                   setForwardingSmtpAddress("");
                 }}
               >
-                <MenuItem value="">-- choose --</MenuItem>
+                <MenuItem value=""><em>Choose...</em></MenuItem>
                 {users.map((user) => <MenuItem key={user.id} value={user.id}>{user.displayName} ({user.userPrincipalName})</MenuItem>)}
               </Select>
             </FormControl>

@@ -14,18 +14,38 @@ import TableRow from "@mui/material/TableRow";
 import Typography from "@mui/material/Typography";
 import { visuallyHidden } from "@mui/utils";
 import { api } from "../api";
+import { Timestamp } from "../format";
+import { useIsPhone } from "../hooks/useIsPhone";
 import type { Dashboard as DashboardData } from "../types";
 
 type Tone = "default" | "success" | "warning" | "error";
 
-function Stat({ label, value, tone = "default" }: { label: string; value: number; tone?: Tone }) {
+function Stat({ label, value, tone = "default", onClick, compact }: {
+  label: string; value: number; tone?: Tone; onClick?: () => void; compact?: boolean;
+}) {
   return (
-    <Card variant="outlined" sx={{ minWidth: 140, flex: "1 1 140px" }}>
-      <CardContent>
-        <Typography variant="h4" color={tone === "default" ? "text.primary" : `${tone}.main`}>
+    <Card
+      variant="outlined"
+      component={onClick ? "button" : "div"}
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      sx={{
+        minWidth: compact ? 0 : 140,
+        flex: compact ? "1 1 30%" : "1 1 140px",
+        textAlign: "left",
+        ...(onClick && {
+          cursor: "pointer",
+          font: "inherit",
+          color: "inherit",
+          "&:hover": { borderColor: "primary.main" }
+        })
+      }}
+    >
+      <CardContent sx={compact ? { p: 1, "&:last-child": { pb: 1 } } : undefined}>
+        <Typography variant={compact ? "h6" : "h4"} color={tone === "default" ? "text.primary" : `${tone}.main`}>
           {value}
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant={compact ? "caption" : "body2"} color="text.secondary" sx={compact ? { display: "block", lineHeight: 1.2 } : undefined}>
           {label}
         </Typography>
       </CardContent>
@@ -33,7 +53,8 @@ function Stat({ label, value, tone = "default" }: { label: string; value: number
   );
 }
 
-export function Dashboard() {
+export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "history" | "workflows") => void } = {}) {
+  const isPhone = useIsPhone();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,27 +87,26 @@ export function Dashboard() {
   }
 
   const s = data.stats;
-  return (
-    <Box>
-      <Typography variant="h5" component="h2" gutterBottom>
-        Dashboard
-      </Typography>
 
-      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 3 }}>
-        <Stat label="Tenants" value={s.tenants} />
-        <Stat label="No delegation" value={s.tenantsNoDelegation} tone={s.tenantsNoDelegation > 0 ? "warning" : "success"} />
-        <Stat label="Deployments" value={s.deployments} />
-        <Stat label="Failed deployments" value={s.deploymentsFailed} tone={s.deploymentsFailed > 0 ? "error" : "success"} />
-        <Stat label="Updates available" value={s.deploymentsUpdateAvailable} tone={s.deploymentsUpdateAvailable > 0 ? "warning" : "success"} />
-        <Stat label="Runs (24h)" value={s.runsLast24h} />
-        <Stat label="Failed runs (7d)" value={s.runsFailedLast7d} tone={s.runsFailedLast7d > 0 ? "error" : "success"} />
-      </Box>
+  const statGrid = (
+    <Box sx={{ display: "flex", flexWrap: "wrap", gap: isPhone ? 1 : 1.5, mb: 3 }}>
+      <Stat label="Tenants" value={s.tenants} compact={isPhone} onClick={onNavigate && (() => onNavigate("tenants"))} />
+      <Stat label="No delegation" value={s.tenantsNoDelegation} tone={s.tenantsNoDelegation > 0 ? "warning" : "success"} compact={isPhone} />
+      <Stat label="Deployments" value={s.deployments} compact={isPhone} />
+      <Stat label="Failed deployments" value={s.deploymentsFailed} tone={s.deploymentsFailed > 0 ? "error" : "success"} compact={isPhone} onClick={onNavigate && (() => onNavigate("history"))} />
+      <Stat label="Updates available" value={s.deploymentsUpdateAvailable} tone={s.deploymentsUpdateAvailable > 0 ? "warning" : "success"} compact={isPhone} onClick={onNavigate && (() => onNavigate("history"))} />
+      <Stat label="Runs (24h)" value={s.runsLast24h} compact={isPhone} onClick={onNavigate && (() => onNavigate("workflows"))} />
+      <Stat label="Failed runs (7d)" value={s.runsFailedLast7d} tone={s.runsFailedLast7d > 0 ? "error" : "success"} compact={isPhone} onClick={onNavigate && (() => onNavigate("workflows"))} />
+    </Box>
+  );
 
+  const needsAttentionSection = (
+    <Box sx={{ mb: 3 }}>
       <Typography variant="h6" component="h3" gutterBottom>
         Needs attention
       </Typography>
       {data.needsAttention.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        <Typography variant="body2" color="text.secondary">
           Nothing - all quiet.
         </Typography>
       ) : (
@@ -110,14 +130,18 @@ export function Dashboard() {
                   <TableCell>{a.tenantName}</TableCell>
                   <TableCell>{a.subject}</TableCell>
                   <TableCell sx={{ color: "text.secondary" }}>{a.detail}</TableCell>
-                  <TableCell>{a.when ? new Date(a.when).toLocaleString() : ""}</TableCell>
+                  <TableCell><Timestamp value={a.when} fallback="" /></TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </TableContainer>
       )}
+    </Box>
+  );
 
+  const recentRunsSection = (
+    <Box>
       <Typography variant="h6" component="h3" gutterBottom>
         Recent workflow runs
       </Typography>
@@ -141,7 +165,7 @@ export function Dashboard() {
             <TableBody>
               {data.recentRuns.map((r) => (
                 <TableRow key={r.id}>
-                  <TableCell>{new Date(r.startedAt).toLocaleString()}</TableCell>
+                  <TableCell><Timestamp value={r.startedAt} /></TableCell>
                   <TableCell>{r.workflowName}</TableCell>
                   <TableCell>{r.tenantName}</TableCell>
                   <TableCell>{r.kind}</TableCell>
@@ -161,6 +185,28 @@ export function Dashboard() {
             </TableBody>
           </Table>
         </TableContainer>
+      )}
+    </Box>
+  );
+
+  return (
+    <Box>
+      <Typography variant="h5" component="h2" gutterBottom>
+        Dashboard
+      </Typography>
+
+      {isPhone ? (
+        <>
+          {needsAttentionSection}
+          {statGrid}
+          {recentRunsSection}
+        </>
+      ) : (
+        <>
+          {statGrid}
+          {needsAttentionSection}
+          {recentRunsSection}
+        </>
       )}
     </Box>
   );

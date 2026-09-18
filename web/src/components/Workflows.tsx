@@ -23,6 +23,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { Timestamp } from "../format";
 import type { DiagnosisResult, Finding, Tenant, WorkflowRunRecord, WorkflowRunResult, WorkflowSummary } from "../types";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
@@ -173,15 +174,15 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
         // never displayed.
         toast(
           r.succeeded
-            ? "A fix you started earlier finished successfully -- see Recent runs below."
-            : "A fix you started earlier did not fully succeed -- see Recent runs below.",
+            ? "A fix you started earlier finished successfully; see Recent runs below."
+            : "A fix you started earlier did not fully succeed; see Recent runs below.",
           r.succeeded ? "success" : "warning"
         );
       }
       return r;
     } catch (e) {
       if (currentContextRef.current !== requestContext) {
-        toast("A fix you started earlier failed to complete -- see Recent runs below.", "warning");
+        toast("A fix you started earlier failed to complete; see Recent runs below.", "warning");
         return null;
       }
       throw e;
@@ -211,7 +212,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
       await navigator.clipboard.writeText(value);
       toast("Copied");
     } catch {
-      toast("Couldn't copy -- select and copy the text manually.", "warning");
+      toast("Couldn't copy; select and copy the text manually.", "warning");
     }
   };
 
@@ -350,7 +351,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
               <TableBody>
                 {runs.map((r) => (
                   <TableRow key={r.id} title={r.error ?? undefined}>
-                    <TableCell>{new Date(r.startedAt).toLocaleString()}</TableCell>
+                    <TableCell><Timestamp value={r.startedAt} /></TableCell>
                     <TableCell>{r.workflowName}</TableCell>
                     <TableCell>{r.tenantName}</TableCell>
                     <TableCell>{r.kind}</TableCell>

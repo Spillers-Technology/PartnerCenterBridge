@@ -51,7 +51,7 @@ export function AppShell({
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
-      <AppBar position="static" color="default" enableColorOnDark>
+      <AppBar position="static" color="default" enableColorOnDark elevation={0}>
         <Toolbar sx={{ px: { xs: 1, sm: 3 } }}>
           {isPhone && (
             <IconButton aria-label="Open navigation" edge="start" onClick={() => setDrawerOpen(true)} sx={{ mr: 1 }}>
@@ -63,8 +63,12 @@ export function AppShell({
             component="h1"
             sx={{
               flexGrow: isPhone ? 1 : 0,
+              // On phone the drawer carries navigation, so the brand can shrink/ellipsize under an
+              // overlong viewport-relative width without losing anything -- on desktop it must
+              // never lose width to the Tabs beside it (which can scroll if they run out of room).
+              flexShrink: isPhone ? 1 : 0,
               minWidth: 0,
-              mr: { xs: 0, sm: 3 },
+              mr: { xs: 0, sm: 2 },
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap"
@@ -85,6 +89,15 @@ export function AppShell({
                 "& .MuiTabs-scroller": {
                   maskImage: "linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)",
                   WebkitMaskImage: "linear-gradient(to right, transparent, black 16px, black calc(100% - 16px), transparent)"
+                },
+                "& .MuiTab-root": {
+                  textTransform: "none",
+                  minWidth: 0,
+                  minHeight: 48,
+                  px: 1.25,
+                  py: 0,
+                  fontSize: "0.8125rem",
+                  whiteSpace: "nowrap"
                 }
               }}
             >

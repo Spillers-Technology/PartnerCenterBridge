@@ -193,7 +193,9 @@ const AUTHENTICATED_VIEWS = {
     // resolves. Wait for a real status badge value instead -- only rendered once the mocked
     // deployments data has actually loaded into the table.
     await gotoTab(page, "History");
-    await page.getByText("UpdateAvailable", { exact: false }).first().waitFor({ timeout: 20_000 });
+    // The UI now humanizes this status ("Update available") instead of showing the raw API enum
+    // value ("UpdateAvailable") -- wait on the display text, not the wire value.
+    await page.getByText("Update available", { exact: false }).first().waitFor({ timeout: 20_000 });
   },
   newhire: async (page) => {
     // NewHire's own wide content (SKU/group checkboxes) is gated behind manually selecting a

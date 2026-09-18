@@ -6,9 +6,10 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
 
 The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all 15 current
 views across five touch device profiles (Galaxy/iPhone/Pixel/folded-foldable/unfolded-foldable) and
-asserts no page-level horizontal overflow at each -- see `docs/mobile.md`. Still open: this only
-runs manually today, not as a first-class part of the test suite alongside `npm run build`/`npx
-vitest run` -- wiring it into CI (or at least a pre-PR automated gate) is the remaining piece.
+asserts no page-level horizontal overflow at each -- see `docs/mobile.md`. CI now runs the overflow
+check on three of the five profiles for every PR (`.github/workflows/ui-overflow.yml`). Still open:
+the screenshots themselves are only reviewed by a human, and `dotnet test` / `vitest` / `npm run
+build` are not in CI at all.
 
 ## Config Snapshots v2
 

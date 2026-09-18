@@ -3,8 +3,18 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Authentication - Partner Center Bridge</title>
+<title>Authentication - Partner Center Bridge docs</title>
+<meta name="description" content="Operator sign-in for Partner Center Bridge: OIDC, self-registered local accounts with passkeys and TOTP, tenant sharing, and MCP access tokens.">
+<meta name="theme-color" content="#ffffff">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/authentication.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Authentication - Partner Center Bridge docs">
+<meta property="og:description" content="Operator sign-in for Partner Center Bridge: OIDC, self-registered local accounts with passkeys and TOTP, tenant sharing, and MCP access tokens.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/authentication.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
   var initOpts = {
@@ -35,34 +45,78 @@
 </head>
 <body>
 
-<nav class="topnav">
-  <a class="brand" href="index.html">Partner Center <span>Bridge</span></a>
-  <a class="nav-link" href="getting-started.html">Getting started</a>
-  <a class="nav-link" href="architecture.html">Architecture</a>
-  <a class="nav-link active" href="authentication.html">Authentication</a>
-  <a class="nav-link" href="workflows.html">Workflows</a>
-  <a class="nav-link" href="mcp-server.html">MCP Server</a>
-  <a class="nav-link" href="config-snapshots.html">Config Snapshots</a>
-  <a class="nav-link" href="sam-bootstrap.html">SAM bootstrap</a>
-  <a class="nav-link" href="deployment.html">Deployment</a>
-  <a class="nav-link gh" href="https://github.com/Spillers-Technology/PartnerCenterBridge">GitHub</a>
-</nav>
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#screens">Screens</a>
+      <a href="index.html#status">Status</a>
+      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
 
-<main>
+<div class="docs-shell">
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Authentication</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Concepts</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html" aria-current="page">Authentication</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Features</p>
+        <ul>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Concepts</span></p>
 <h1>Authentication</h1>
-<p class="tagline" style="text-align:left;max-width:none;margin:0 0 1.5rem;">
+<p class="lead">
   The operator plane -- <em>who is allowed to use the bridge, and against which tenants</em> --
   is independent of the Microsoft plane (the SAM app that gives the bridge access to customer
   tenants; see <a href="architecture.html">Architecture</a>). This page covers the operator
   plane's three modes, and the self-service account model that ships with the local one.
 </p>
 
-<img src="assets/screenshots/pcbridge-login.jpg" alt="Login screen with a primary Sign in with a passkey button above a password fallback form and a Register link." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-login.jpg" alt="Login screen with a primary Sign in with a passkey button above a password fallback form and a Register link." loading="lazy">
+  </button>
+</figure>
 
-<h2>Three modes</h2>
+<h2 id="three-modes">Three modes</h2>
 <p>Set with <code>Auth:Mode</code>. Nothing else in the app changes based on the mode --
 controllers use the same <code>[Authorize]</code> attribute and the same
 <code>User.Identity.Name</code> regardless of which one issued the token.</p>
+<div class="table-wrap">
 <table>
   <tr><th>Mode</th><th>Who can sign in</th><th>When to use it</th></tr>
   <tr>
@@ -86,8 +140,9 @@ controllers use the same <code>[Authorize]</code> attribute and the same
         see the warning on <a href="getting-started.html">Getting started</a>.</td>
   </tr>
 </table>
+</div>
 
-<h2>Local accounts: open signup, scoped power</h2>
+<h2 id="local-accounts-open-signup-scoped-power">Local accounts: open signup, scoped power</h2>
 <p>
   Registration (<code>POST /api/auth/register</code>) is deliberately open: no invite code, no
   admin approval queue. The safety story isn't the signup gate, it's that a fresh account starts
@@ -108,6 +163,7 @@ controllers use the same <code>[Authorize]</code> attribute and the same
   below. Role changes take effect on the next request even for an already-issued login token or MCP
   PAT; roles are resolved from the database rather than trusted from stale token claims.
 </p>
+<div class="table-wrap">
 <table>
   <tr><th>Instance role</th><th>Can do</th></tr>
   <tr><td><span class="badge ok">Administrator</span></td><td>Delegate instance roles and onboard/sync tenants, plus every delegated permission below.</td></tr>
@@ -115,6 +171,7 @@ controllers use the same <code>[Authorize]</code> attribute and the same
   <tr><td><span class="badge">Credential manager</span></td><td>View and rotate the shared Secure Application Model credential.</td></tr>
   <tr><td><span class="badge warn">Automation policy manager</span></td><td>Change a tenant's MCP approval policy between Queue and ClientTrust without gaining access to that tenant's data.</td></tr>
 </table>
+</div>
 
 <h3>Owning a tenant</h3>
 <p>An Administrator becomes a tenant's <strong>Owner</strong> automatically when bringing it into
@@ -133,15 +190,17 @@ the system, two ways:</p>
   An Owner can grant another registered user access to that tenant, self-service, from the
   Tenants screen -- no central admin has to be the bottleneck for every hand-off:
 </p>
+<div class="table-wrap">
 <table>
   <tr><th>Role</th><th>Can do</th></tr>
   <tr><td><span class="badge">Viewer</span></td><td>Read dashboard, history, and diagnosis output for that tenant. Cannot remediate or deploy.</td></tr>
   <tr><td><span class="badge accent">Operator</span></td><td>Everything a Viewer can, plus run known-fix workflows and Win32 deployments.</td></tr>
   <tr><td><span class="badge ok">Owner</span></td><td>Everything an Operator can, plus grant or revoke other users' access to that tenant, and reassign its contract.</td></tr>
 </table>
+</div>
 <p>Grants can carry an optional expiry -- useful for a contractor or a temporary engagement.</p>
 
-<h2>Two-factor authentication (TOTP)</h2>
+<h2 id="two-factor-authentication-totp">Two-factor authentication (TOTP)</h2>
 <p>
   Any local account can enable RFC&nbsp;6238 TOTP from the Security screen. Enrollment is a
   two-step confirm: the app shows a secret (and an <code>otpauth://</code> URI you can paste into
@@ -158,7 +217,7 @@ the system, two ways:</p>
   WebAuthn possession-plus-verification is already MFA-equivalent.
 </p>
 
-<h2>Passkeys (primary sign-in)</h2>
+<h2 id="passkeys-primary-sign-in">Passkeys (primary sign-in)</h2>
 <p>
   Passkeys are the primary way to sign in, not a bolt-on: registered as <em>discoverable</em>
   (resident) credentials, so the login screen's "Sign in with a passkey" button needs no email
@@ -171,9 +230,13 @@ the system, two ways:</p>
 -- no proprietary protocol, works with platform authenticators (Windows Hello, Touch ID) and
 roaming ones (security keys) alike.</p>
 
-<img src="assets/screenshots/pcbridge-security.jpg" alt="Security screen listing a registered passkey, TOTP enabled, and an MCP access token named Claude Desktop." style="width:100%;border:1px solid var(--line);border-radius:10px;margin:0 0 1.5rem;">
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-security.jpg" alt="Security screen listing a registered passkey, TOTP enabled, and an MCP access token named Claude Desktop." loading="lazy">
+  </button>
+</figure>
 
-<h2>MCP personal access tokens</h2>
+<h2 id="mcp-personal-access-tokens">MCP personal access tokens</h2>
 <p>
   A fourth credential type, layered on top of Local mode rather than a fourth <code>Auth:Mode</code>:
   a <strong>personal access token (PAT)</strong> is a long-lived, individually revocable JWT for
@@ -189,7 +252,7 @@ roaming ones (security keys) alike.</p>
   approval modes that gate what an MCP client is actually allowed to change.
 </div>
 
-<h2>Audit trail</h2>
+<h2 id="audit-trail">Audit trail</h2>
 <p>
   Every security-relevant event is recorded to an append-only <code>AuditEvents</code> table:
   registration, login success/failure, logout, TOTP enable/disable, a recovery code being spent,
@@ -200,7 +263,8 @@ roaming ones (security keys) alike.</p>
   instead of, the workflow-run history described in <a href="architecture.html">Architecture</a>.
 </p>
 
-<h2>Configuration reference</h2>
+<h2 id="configuration-reference">Configuration reference</h2>
+<div class="table-wrap">
 <table>
   <tr><th>Key</th><th>Applies to</th><th>Notes</th></tr>
   <tr><td><code>Auth:Mode</code></td><td>All</td><td><code>Oidc</code> (default) / <code>Local</code> / <code>Dev</code>. <code>Auth:Enabled=true|false</code> is still read as a fallback for config predating this key.</td></tr>
@@ -211,13 +275,78 @@ roaming ones (security keys) alike.</p>
   <tr><td><code>Auth:Local:Passkey:RelyingPartyName</code></td><td>Local</td><td>Display name shown by the OS passkey prompt.</td></tr>
   <tr><td><code>Auth:Local:Passkey:Origins</code></td><td>Local</td><td>Exact origin(s) (scheme+host+port) the browser sends, e.g. <code>https://pcbridge.example.com</code>. A mismatch fails every ceremony.</td></tr>
 </table>
+</div>
 
-</main>
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="architecture.html"><span>&larr; Previous</span>Architecture</a>
+  <a class="next" href="workflows.html"><span>Next &rarr;</span>Workflows</a>
+</nav>
+</article>
+  </main>
 
-<footer>
-  MIT licensed.
-  <a href="https://github.com/Spillers-Technology/PartnerCenterBridge">github.com/Spillers-Technology/PartnerCenterBridge</a>
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center API</span>
+    <span>Exchange Online PowerShell V3</span>
+  </div>
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center <b>Bridge</b></span>
+      </a>
+      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#status">What's real today</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
 </footer>
-
+<script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
 </body>
 </html>

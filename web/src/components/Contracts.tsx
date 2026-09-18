@@ -249,7 +249,7 @@ export function Contracts({ me }: { me: MeProfile | null }) {
                   <TableRow>
                     <TableCell colSpan={4}>
                       <Box id={`manage-apps-${contract.id}`} sx={{ py: 1 }}>
-                        <Typography variant="h6" component="h3" gutterBottom>Manage apps -- {contract.name}</Typography>
+                        <Typography variant="h6" component="h3" gutterBottom>Manage apps for {contract.name}</Typography>
                         <FormControlLabel
                           control={<Switch checked={showNoPackage} onChange={(event) => setShowNoPackage(event.target.checked)} />}
                           label="Show templates without a package"
