@@ -12,8 +12,21 @@ namespace PartnerCenterBridge.Graph;
 /// <summary>
 /// Drives the full Graph beta Win32 LOB upload + assignment flow for a single (tenant, template):
 /// create app -> content version -> file -> poll for SAS -> block-blob upload -> commit -> poll ->
-/// set committed version -> assign. Idempotent-ish: pass an existing <see cref="Deployment"/> to
-/// push a new content version to an app that already exists in the tenant.
+/// set committed version -> assign. Pass an existing <see cref="Deployment"/> to push a new
+/// content version to an app that already exists in the tenant.
+///
+/// <para><b>Updating an existing app</b> (docs/specs/win32-package-lifecycle.md §8.1). The step-8
+/// PATCH that switches the committed content version also carries the fields the template owns
+/// (<see cref="OwnedFieldPatch"/>), so a changed install command or detection rule ships with the
+/// content it belongs to. Everything else on the app -- install experience, architectures, return
+/// codes, requirement rules -- is left as the tenant has it. Known limitation: if the app has
+/// <c>activeInstallScript</c>/<c>activeUninstallScript</c> set, those override the command lines
+/// and patching the command lines has no effect; this is not detected.</para>
+///
+/// <para><b>Assignments</b> are applied only until the deployment first succeeds.
+/// <c>/assign</c> replaces the app's entire assignment set, so calling it on every redeploy would
+/// silently revert assignment changes made in the Intune portal. Changing assignments on an
+/// existing app is a separate operation, not a side effect of a content push.</para>
 /// </summary>
 public class IntuneWin32Service : IIntuneWin32Service
 {
@@ -43,9 +56,22 @@ public class IntuneWin32Service : IIntuneWin32Service
         Stream intuneWinPackage,
         Deployment? existing = null,
         IDeploymentProgress? progress = null,
+        Func<Deployment, CancellationToken, Task>? checkpoint = null,
         CancellationToken ct = default)
     {
         var deployment = existing ?? new Deployment { AppTemplateId = template.Id, TenantId = tenant.Id };
+        // LastSyncedAt is only set once a deploy has completed, assignment included, so a deployment
+        // without it has never been assigned -- including one whose app was created before a crash.
+        var initialAssignmentPending = deployment.LastSyncedAt is null;
+
+        async Task Stage(DeploymentStatus status, string detail)
+        {
+            deployment.Status = status;
+            progress?.Report(status, detail);
+            if (checkpoint is not null)
+                await checkpoint(deployment, ct);
+        }
+
         try
         {
             var token = await _tokens.GetAccessTokenAsync(tenant.TenantId, Resources.Graph, ct);
@@ -56,22 +82,27 @@ public class IntuneWin32Service : IIntuneWin32Service
 
             // 1. Create (or reuse) the app.
             string appId;
+            var isUpdate = deployment.IntuneAppId is not null;
             if (deployment.IntuneAppId is { } id)
             {
                 appId = id;
             }
             else
             {
-                progress?.Report(DeploymentStatus.Pending, "Creating app");
+                await Stage(DeploymentStatus.Pending, "Creating app");
                 using var created = await graph.PostAsync("/deviceAppManagement/mobileApps", BuildWin32App(template, content), ct);
                 appId = created.RootElement.GetProperty("id").GetString()!;
                 deployment.IntuneAppId = appId;
+                // Persist the id now, so a retry after a later failure reuses this app instead of
+                // creating a duplicate.
+                if (checkpoint is not null)
+                    await checkpoint(deployment, ct);
             }
 
             var basePath = $"/deviceAppManagement/mobileApps/{appId}/microsoft.graph.win32LobApp";
 
             // 2. Content version + 3. file entry.
-            progress?.Report(DeploymentStatus.Uploading, "Creating content version");
+            await Stage(DeploymentStatus.Uploading, "Creating content version");
             using var cv = await graph.PostAsync($"{basePath}/contentVersions", new { }, ct);
             var contentVersionId = cv.RootElement.GetProperty("id").GetString()!;
 
@@ -107,26 +138,32 @@ public class IntuneWin32Service : IIntuneWin32Service
             }
 
             // 6. Commit with the file encryption info + 7. wait for success.
-            progress?.Report(DeploymentStatus.Committing, "Committing");
+            await Stage(DeploymentStatus.Committing, "Committing");
             using (var _ = await graph.PostAsync($"{filePath}/commit", new { fileEncryptionInfo = BuildEncryptionInfo(content) }, ct))
             { }
             await WaitForStateAsync(graph, filePath, "commitFileSuccess", null, ct);
 
-            // 8. Point the app at the committed content version.
-            using (var _ = await graph.PatchAsync(
-                $"/deviceAppManagement/mobileApps/{appId}",
-                new { odataType = "#microsoft.graph.win32LobApp", committedContentVersion = contentVersionId }.ToGraph(),
-                ct))
+            // 8. Point the app at the committed content version. On an update the same PATCH
+            //    carries the template-owned fields, so new content never runs under an old
+            //    command line or an old detection rule that still matches the previous version.
+            var patch = isUpdate
+                ? OwnedFieldPatch(template, content)
+                : new Dictionary<string, object?> { ["@odata.type"] = "#microsoft.graph.win32LobApp" };
+            patch["committedContentVersion"] = contentVersionId;
+            using (var _ = await graph.PatchAsync($"/deviceAppManagement/mobileApps/{appId}", patch, ct))
             { }
             deployment.CommittedContentVersionId = contentVersionId;
 
-            // 9. Assign.
-            progress?.Report(DeploymentStatus.Assigning, "Assigning");
-            using (var _ = await graph.PostAsync(
-                $"/deviceAppManagement/mobileApps/{appId}/assign",
-                new { mobileAppAssignments = template.Assignments.Select(BuildAssignment).ToArray() },
-                ct))
-            { }
+            // 9. Assign -- only until the deployment first succeeds (see the class remarks).
+            if (initialAssignmentPending)
+            {
+                await Stage(DeploymentStatus.Assigning, "Assigning");
+                using (var _ = await graph.PostAsync(
+                    $"/deviceAppManagement/mobileApps/{appId}/assign",
+                    new { mobileAppAssignments = template.Assignments.Select(BuildAssignment).ToArray() },
+                    ct))
+                { }
+            }
 
             deployment.DeployedTemplateVersion = template.ContentVersion;
             deployment.Status = DeploymentStatus.Succeeded;
@@ -181,6 +218,24 @@ public class IntuneWin32Service : IIntuneWin32Service
         ["installExperience"] = new { runAsAccount = "system", deviceRestartBehavior = "suppress" },
         ["detectionRules"] = t.DetectionRules.Select(BuildDetectionRule).ToArray(),
         ["returnCodes"] = DefaultReturnCodes()
+    };
+
+    /// <summary>
+    /// The fields <see cref="AppTemplate"/> actually models, and nothing else. Deliberately not
+    /// <see cref="BuildWin32App"/>: the create body also hardcodes run-as account, restart
+    /// behavior, architecture, and return codes, and re-sending those on update would overwrite
+    /// values an admin adjusted in the portal (spec §8.1).
+    /// </summary>
+    internal static Dictionary<string, object?> OwnedFieldPatch(AppTemplate t, Win32ContentInfo c) => new()
+    {
+        ["@odata.type"] = "#microsoft.graph.win32LobApp",
+        ["displayName"] = t.DisplayName,
+        ["description"] = t.Description ?? t.DisplayName,
+        ["publisher"] = t.Publisher ?? "Unknown",
+        ["installCommandLine"] = t.InstallCommandLine,
+        ["uninstallCommandLine"] = t.UninstallCommandLine,
+        ["setupFilePath"] = c.FileName,
+        ["detectionRules"] = t.DetectionRules.Select(BuildDetectionRule).ToArray(),
     };
 
     private static object BuildDetectionRule(DetectionRule r) => r.Type switch

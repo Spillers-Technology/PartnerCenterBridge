@@ -33,6 +33,12 @@ public class DeploymentOrchestrator
     /// Deploy <paramref name="templateId"/> to each tenant in <paramref name="tenantIds"/>, reusing
     /// existing deployment records so an update pushes a new content version to apps that exist.
     /// Runs sequentially per tenant to keep Graph throttling and progress reporting simple.
+    ///
+    /// Each deployment is saved as it progresses (before each stage, and as soon as its Intune app
+    /// id exists) and again when its tenant finishes, so a crash mid-fan-out leaves earlier tenants
+    /// recorded and the current one visibly in progress. This narrows, but does not close, the
+    /// window between a remote write and the save that records it -- that needs a durable operation
+    /// journal (docs/specs/win32-package-lifecycle.md §5.1, Phase B).
     /// </summary>
     public async Task<IReadOnlyList<Deployment>> DeployAsync(
         Guid templateId, IReadOnlyCollection<Guid> tenantIds, CancellationToken ct = default)
@@ -51,20 +57,27 @@ public class DeploymentOrchestrator
 
         foreach (var tenant in tenants)
         {
-            var existing = await _db.Deployments
+            var deployment = await _db.Deployments
                 .FirstOrDefaultAsync(d => d.TenantId == tenant.Id && d.AppTemplateId == template.Id, ct);
+            if (deployment is null)
+            {
+                // Tracked before any remote call, so checkpoints can persist it.
+                deployment = new Deployment { AppTemplateId = template.Id, TenantId = tenant.Id };
+                _db.Deployments.Add(deployment);
+            }
 
             // Each deploy needs its own package stream (the reader consumes it twice).
             await using var package = await _packages.OpenAsync(template.Content.StagedPayloadRef!, ct);
 
-            var deployment = await _intune.DeployAsync(tenant, template, package, existing, progress: null, ct);
-            if (existing is null)
-                _db.Deployments.Add(deployment);
+            deployment = await _intune.DeployAsync(
+                tenant, template, package, deployment, progress: null,
+                checkpoint: async (_, c) => await _db.SaveChangesAsync(c),
+                ct: ct);
+            await _db.SaveChangesAsync(ct);
 
             results.Add(deployment);
         }
 
-        await _db.SaveChangesAsync(ct);
         return results;
     }
 }

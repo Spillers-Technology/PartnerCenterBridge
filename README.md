@@ -122,6 +122,22 @@ block-blob upload → `commit` (with the encryption info parsed from `Detection.
 set `committedContentVersion` → `assign`. Passing an existing `Deployment` pushes a *new*
 content version to an app that already exists, which is how "update every tenant" works.
 
+What an update changes, and what it leaves alone:
+
+- **Changes, together with the new content:** display name, description, publisher, install and
+  uninstall command lines, setup file, and detection rules -- the fields a template owns. They ride
+  in the same PATCH that switches the committed content version, so new content never runs under
+  an old command line or an old detection rule.
+- **Leaves as the tenant has it:** install experience, architectures, return codes, requirement
+  rules, and **assignments**. Assignments are applied when an app is first deployed; a redeploy
+  does not re-send them, so group changes made in the Intune portal survive it. If an app has an
+  `activeInstallScript` set in the portal, that script still overrides the command lines.
+- **Saved as it goes:** each tenant's deployment is recorded as it progresses, so an interrupted
+  fan-out leaves finished tenants recorded and the current one visibly in progress with a reusable
+  app id. A crash in the instant between a Graph write and its save can still go unrecorded.
+
+Update behavior is covered by WireMock tests; it has not yet been exercised against a live tenant.
+
 > `.intunewin` packages must be produced by the Microsoft **Win32 Content Prep Tool**
 > (`IntuneWinAppUtil.exe`) — the bridge consumes them, it doesn't repackage.
 
