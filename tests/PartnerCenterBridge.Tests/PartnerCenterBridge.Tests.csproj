@@ -38,12 +38,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Binary reference artifacts (e.g. a package built by Microsoft's IntuneWinAppUtil.exe). -->
+    <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Core\PartnerCenterBridge.Core.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Data\PartnerCenterBridge.Data.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Graph\PartnerCenterBridge.Graph.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.PartnerCenter\PartnerCenterBridge.PartnerCenter.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Exchange\PartnerCenterBridge.Exchange.csproj" />
     <ProjectReference Include="..\..\src\PartnerCenterBridge.Api\PartnerCenterBridge.Api.csproj" />
+    <ProjectReference Include="..\..\src\PartnerCenterBridge.Packaging\PartnerCenterBridge.Packaging.csproj" />
   </ItemGroup>
 
 </Project>

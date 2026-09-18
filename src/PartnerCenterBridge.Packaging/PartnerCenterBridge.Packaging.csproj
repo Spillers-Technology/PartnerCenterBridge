@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="PartnerCenterBridge.Tests" />
+  </ItemGroup>
+
+  <!--
+    Deliberately has NO ProjectReference to Graph, PartnerCenter, or Data, and no external SDK
+    dependency. Win32 content prep is a pure format/crypto concern; keeping it isolated is what
+    makes a future lift-out of the packaging capability a move rather than a rewrite
+    (corporate-strategy D-0043). Do not add a Graph or Data reference here.
+  -->
+
+</Project>
