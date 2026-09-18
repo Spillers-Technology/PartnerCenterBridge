@@ -8,7 +8,7 @@ and the Partner Center REST API to make cross-tenant Intune + identity work repe
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Maturity (v0.7.0), feature by feature:**
+> **Maturity (v0.8.0), feature by feature:**
 >
 > | Capability | Status |
 > |---|---|
