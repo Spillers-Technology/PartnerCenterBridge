@@ -39,13 +39,24 @@ EF Core migrations (needs the Api project as `--startup-project`; it's the one w
 dotnet ef migrations add <Name> --project src/PartnerCenterBridge.Data --startup-project src/PartnerCenterBridge.Api
 ```
 
+Every model change needs a migration for **both** providers: the Postgres set above and the SQLite
+set used by the Local Workbench (its own design-time factory, so it is its own startup project):
+
+```bash
+dotnet ef migrations add <Name> --project src/PartnerCenterBridge.Data.Sqlite --startup-project src/PartnerCenterBridge.Data.Sqlite
+```
+
+Local Workbench single-file build (`artifacts/local/win-x64/PartnerCenterBridge.exe`, needs Node for
+the SPA): `./scripts/publish-local.ps1`. Run it with `--help` for the CLI (`doctor`, `--port`, ...).
+
 ## Release checklist
 
 Release process is **manual**. The only GitHub Actions workflow is `.github/workflows/ui-overflow.yml`
 (the mobile overflow matrix on PRs and `main`); nothing builds, tests, or publishes .NET or images in CI.
 Automating this list is a candidate for later; until then, work through it by hand:
 
-1. Bump `web/package.json` version.
+1. Bump `web/package.json` version and `<Version>` in `src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj`
+   (reported by `/api/system/status` and `--version`).
 2. `dotnet build` + `dotnet test` + `cd web && npm run build` all green.
 3. Build and push both images, tagged `vX.Y.Z` and `latest`:
    ```bash

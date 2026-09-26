@@ -124,3 +124,6 @@ dist
 
 # Mobile capture-matrix working artifacts -- not part of the shipped repo
 docs/assets/screenshots/mobile/
+
+# Local Workbench publish output (scripts/publish-local.*)
+artifacts/
