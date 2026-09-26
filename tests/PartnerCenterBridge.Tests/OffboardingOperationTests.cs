@@ -391,21 +391,68 @@ public class OffboardingOperationTests : IDisposable
     {
         StubUser(CloudUser());
         StubMemberOf([Group("g1", "Finance")], []);
-        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        using var cts = new CancellationTokenSource();
+        // Blocking sign-in answers and starts the cancellation clock; the revoke is sent next and
+        // hangs, so the run is cancelled while it waits for Graph's answer.
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch())
+            .RespondWith(Response.Create().WithStatusCode(204).WithBody(_ => { cts.CancelAfter(TimeSpan.FromSeconds(2)); return ""; }));
         _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = true }).WithDelay(TimeSpan.FromSeconds(30)));
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
         var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
             () => Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy(), cts.Token));
 
         var e = ex.Partial;
         Assert.True(e.Changes.Single(c => c.PlanItemId == "block-sign-in") is { Attempted: true, Succeeded: true });
+        // The revoke was sent: it may or may not have been applied.
+        var revoke = e.Changes.Single(c => c.PlanItemId == "revoke-sessions");
+        Assert.True(revoke.Attempted);
+        Assert.False(revoke.Succeeded);
+        Assert.Equal(ChangeResult.InterruptedInFlight, revoke.Detail);
+        Assert.Contains("Revoke sessions: request sent, but the run was interrupted", e.TicketNotes);
+        // The group removal was never sent.
         var group = e.Changes.Single(c => c.PlanItemId == "group:g1");
         Assert.False(group.Attempted);
         Assert.StartsWith("Interrupted", group.Detail);
         Assert.Empty(Calls("DELETE"));
+        Assert.All(e.Verification.Where(v => v.PlanItemId is "block-sign-in" or "revoke-sessions"), v => Assert.False(v.Passed));
         Assert.NotEqual(Outcome.Succeeded, e.Outcome);
         Assert.Contains("interrupted", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_the_verification_reread_keeps_the_applied_changes()
+    {
+        // User reads: the plan and the pre-revoke cutoff answer; the verification re-read hangs.
+        var user = System.Text.Json.JsonSerializer.Serialize(CloudUser());
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WillSetStateTo("planned")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user));
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WhenStateIs("planned").WillSetStateTo("applied")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user));
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WhenStateIs("applied")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user).WithDelay(TimeSpan.FromSeconds(30)));
+        _server.Given(Request.Create().WithPath("/users/u1/licenseDetails").UsingGet())
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = Array.Empty<object>() }));
+        using var cts = new CancellationTokenSource();
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json")
+                .WithBody(_ => { cts.CancelAfter(TimeSpan.FromSeconds(2)); return "{\"value\":true}"; }));
+
+        var ex = await Assert.ThrowsAsync<OperationInterruptedException>(() => Op().ApplyAsync(Tenant(), "u1",
+            new OffboardingPolicy { RemoveLicenses = false, GroupCleanup = GroupCleanupMode.None }, cts.Token));
+
+        var e = ex.Partial;
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "block-sign-in") is { Attempted: true, Succeeded: true });
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "revoke-sessions") is { Attempted: true, Succeeded: true });
+        foreach (var id in new[] { "block-sign-in", "revoke-sessions" })
+        {
+            var check = e.Verification.Single(v => v.PlanItemId == id);
+            Assert.False(check.Passed);
+            Assert.Contains("interrupted", check.Detail);
+        }
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("interrupted", e.TicketNotes);
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
     }
 }

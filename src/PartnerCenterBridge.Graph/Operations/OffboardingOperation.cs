@@ -312,22 +312,48 @@ public class OffboardingOperation : IOffboardingService
             Limitations = plan.Limitations.ToList()
         };
         var changes = new Dictionary<string, ChangeResult>(StringComparer.OrdinalIgnoreCase);
+        // Items whose request has been sent and whose answer has not arrived yet.
+        var inFlight = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ChangeResult Record(PlanItem item, bool attempted, bool ok, string? detail)
         {
-            var c = new ChangeResult { PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = attempted, Succeeded = ok, Detail = detail };
-            changes[item.Id] = c;
-            e.Changes.Add(c);
+            if (!inFlight.Remove(item.Id) || !changes.TryGetValue(item.Id, out var c))
+            {
+                c = new ChangeResult { PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName };
+                changes[item.Id] = c;
+                e.Changes.Add(c);
+            }
+            c.Attempted = attempted;
+            c.Succeeded = ok;
+            c.Detail = detail;
             if (attempted && !ok) e.Failures.Add($"{Label(item)}: {detail}");
             return c;
         }
+        // Recorded as attempted before the request is sent: if the run is interrupted while it is in
+        // flight, Microsoft may already have applied it, and the evidence must say so.
+        void Sending(PlanItem item)
+        {
+            var c = new ChangeResult
+            {
+                PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName,
+                Attempted = true, Succeeded = false, Detail = ChangeResult.InterruptedInFlight
+            };
+            changes[item.Id] = c;
+            e.Changes.Add(c);
+            inFlight.Add(item.Id);
+        }
         async Task Run(PlanItem item, Func<Task<string>> action)
         {
+            Sending(item);
             try { Record(item, true, true, await action()); }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (GraphRequestException ex)
             {
                 Record(item, true, false, GraphErrors.IsForbidden(ex)
                     ? $"Insufficient privileges ({GraphErrors.Describe(ex)})"
                     : GraphErrors.Describe(ex));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Record(item, true, false, ChangeResult.NoResponse(ex)); // no answer: it may still have been applied
             }
         }
         var uid = Uri.EscapeDataString(user.Id);
@@ -379,6 +405,8 @@ public class OffboardingOperation : IOffboardingService
             // anything that can remove a license.
             if (convert is not null)
             {
+                Sending(convert);
+                if (forward is not null) Sending(forward);
                 try
                 {
                     var exo = await _exchange.ConvertToSharedAsync(tenant, convert.ObjectId,
@@ -436,6 +464,7 @@ public class OffboardingOperation : IOffboardingService
                     foreach (var item in licenseItems) Record(item, false, false, gateReason);
                 else
                 {
+                    foreach (var item in licenseItems) Sending(item);
                     try
                     {
                         await graph.PostAsync($"/users/{uid}/assignLicense", new
@@ -445,9 +474,13 @@ public class OffboardingOperation : IOffboardingService
                         }, ct);
                         foreach (var item in licenseItems) Record(item, true, true, "removed");
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    catch (GraphRequestException ex)
                     {
                         foreach (var item in licenseItems) Record(item, true, false, GraphErrors.Describe(ex));
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        foreach (var item in licenseItems) Record(item, true, false, ChangeResult.NoResponse(ex));
                     }
                 }
             }
@@ -459,139 +492,143 @@ public class OffboardingOperation : IOffboardingService
                     await graph.PostAsync($"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}/retire", new { }, ct);
                     return "retire issued";
                 });
+
+            // --- Verification: re-read everything that was attempted, plus every requested license. ---
+            var needUser = Attempted(block) || Attempted(revoke) || requestedLicenses.Count > 0;
+            JsonElement? userAfter = null;
+            string? userVerifyError = null;
+            if (needUser)
+            {
+                try
+                {
+                    using var doc = await graph.GetAsync($"/users/{uid}?$select=id,accountEnabled,signInSessionsValidFromDateTime,assignedLicenses,licenseAssignmentStates", ct);
+                    userAfter = doc.RootElement.Clone();
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { userVerifyError = GraphErrors.Describe(ex); }
+            }
+            if (Attempted(block))
+            {
+                if (userAfter is { } u)
+                {
+                    var disabled = u.TryGetProperty("accountEnabled", out var ae) && ae.ValueKind == JsonValueKind.False;
+                    Check(block!, disabled, disabled ? "accountEnabled is false on re-read." : "Account is still enabled on re-read.");
+                }
+                else Check(block!, false, $"Could not re-read the user: {userVerifyError}");
+            }
+            if (Attempted(revoke))
+            {
+                if (userAfter is { } u)
+                {
+                    var (ok, detail) = WorkflowVerify.EvaluateCutoff(
+                        cutoffBefore ?? new SessionCutoff(false, null, "not read"), WorkflowVerify.ParseCutoff(u), startedAt);
+                    Check(revoke!, ok, detail);
+                }
+                else Check(revoke!, false, $"Could not re-read the user: {userVerifyError}");
+            }
+            if (Attempted(convert))
+                Check(convert!, conversionVerified, conversionVerified
+                    ? "Mailbox is a SharedMailbox on re-read."
+                    : mailboxVerifyError ?? $"Mailbox type on re-read is {mailboxAfter?.RecipientTypeDetails ?? "unknown"}.");
+            if (Attempted(forward))
+            {
+                // Exact address (Exchange may prefix "smtp:"), and the requested delivery mode: forward
+                // only, no copy kept in the mailbox.
+                var fwd = mailboxAfter?.ForwardingSmtpAddress ?? "";
+                var addressOk = string.Equals(BareSmtp(fwd), policy.ForwardTo!.Trim(), StringComparison.OrdinalIgnoreCase);
+                var deliverOk = mailboxAfter is { DeliverToMailboxAndForward: false };
+                var ok = addressOk && deliverOk;
+                Check(forward!, ok,
+                    ok ? $"Forwarding to {BareSmtp(fwd)} (no copy kept in the mailbox) on re-read."
+                    : mailboxAfter is null ? mailboxVerifyError ?? "Mailbox could not be re-read."
+                    : !addressOk ? $"Forwarding on re-read is '{fwd}', not {policy.ForwardTo!.Trim()}."
+                    : "DeliverToMailboxAndForward is true on re-read; forward-only was requested.");
+            }
+
+            var groupItems = plan.Items.Where(i => i.Action == RemoveMember && Attempted(i)).ToList();
+            if (groupItems.Count > 0)
+            {
+                HashSet<string>? after = null;
+                string? err = null;
+                try
+                {
+                    after = (await GroupClassifier.DirectMembershipsAsync(graph, user.Id, ct)).Select(m => m.Id)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException) { err = GraphErrors.Describe(ex); }
+                foreach (var item in groupItems)
+                {
+                    if (after is null) { Check(item, false, $"Could not re-read memberships: {err}"); continue; }
+                    var gone = !after.Contains(item.ObjectId);
+                    Check(item, gone, gone ? "No longer a member on re-read." : "Still a member on re-read.");
+                }
+            }
+
+            // Every requested SKU's final state, including group-inherited ones: a license still assigned
+            // after offboarding is unfinished work whichever way it was assigned.
+            var remainingInherited = new List<PlanItem>();
+            foreach (var item in requestedLicenses)
+            {
+                var inherited = !item.Eligible && IsGroupBased(item);
+                if (!Attempted(item) && !inherited) continue; // gated/skipped direct SKUs are already reported as not done
+                if (userAfter is not { } u) { Check(item, false, $"Could not re-read licenses: {userVerifyError}"); continue; }
+                var still = u.TryGetProperty("assignedLicenses", out var al) && al.ValueKind == JsonValueKind.Array
+                            && al.EnumerateArray().Any(l => string.Equals(Str(l, "skuId"), item.ObjectId, StringComparison.OrdinalIgnoreCase));
+                if (!inherited)
+                    Check(item, !still, still ? "License still assigned on re-read." : "License no longer assigned on re-read.");
+                else if (still)
+                {
+                    remainingInherited.Add(item);
+                    Check(item, false, "Still assigned through group-based licensing on re-read. It is removed only by removing the user from the licensing group (or changing that group's licenses); group license changes can also take a few minutes to process.");
+                }
+                else
+                    Check(item, true, "No longer assigned on re-read (removed with the licensing group membership).");
+            }
+            if (remainingInherited.Count > 0)
+                e.Warnings.Add($"{Count(remainingInherited.Count, "license")} still assigned through group-based licensing ({string.Join(", ", remainingInherited.Select(i => i.ObjectName))}). " +
+                               "Group-based licenses cannot be removed directly: remove the user from the licensing group, or change the group's license assignment.");
+
+            foreach (var item in plan.Items.Where(i => i.Action == RetireDevice && Attempted(i)))
+            {
+                try
+                {
+                    using var doc = await graph.GetAsync(
+                        $"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}?$select=id,managementState", ct);
+                    var ms = Str(doc.RootElement, "managementState") ?? "";
+                    switch (ms.ToLowerInvariant())
+                    {
+                        case "retired":
+                            Check(item, true, $"managementState={ms}");
+                            break;
+                        case "retirepending" or "retireissued":
+                            Pending(item, $"Retire issued, not yet completed (managementState={ms}); the device completes it at its next check-in.");
+                            break;
+                        case "retirefailed" or "retirecanceled":
+                            Check(item, false, $"Retire did not complete: managementState={ms}.");
+                            break;
+                        default:
+                            Check(item, false, $"managementState on re-read is '{ms}'; the retire is not reflected.");
+                            break;
+                    }
+                }
+                catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { Check(item, true, "Device record is gone (retired)."); }
+                catch (Exception ex) when (ex is not OperationCanceledException) { Check(item, false, $"Could not re-read device: {GraphErrors.Describe(ex)}"); }
+            }
+
         }
         catch (Exception ex)
         {
-            // Cancelled (or an unexpected error) mid-apply: keep the evidence of what already changed.
+            // Cancelled (or an unexpected error) mid-apply or mid-verification: keep the evidence of
+            // what already changed and of what was already verified.
             foreach (var item in plan.Items.Where(i => i.Eligible && !changes.ContainsKey(i.Id)))
-                Record(item, false, false, "Interrupted: the run stopped before this step was confirmed applied; its state is unknown until re-checked.");
-            foreach (var item in plan.Items.Where(i => Attempted(i)))
-                e.Verification.Add(new VerificationCheck(Label(item), false, "Not verified: the run was interrupted before the verification re-read.", item.Id));
+                Record(item, false, false, "Interrupted: the run stopped before this step's request was sent; nothing was changed for it.");
+            foreach (var id in inFlight)
+                e.Failures.Add($"{Label(plan.Items.First(i => i.Id == id))}: {ChangeResult.InterruptedInFlight}");
+            foreach (var item in plan.Items.Where(i => (Attempted(i) || (i.Action == RemoveLicense && IsGroupBased(i))) && !verified.ContainsKey(i.Id)))
+                Check(item, false, "Not verified: the run was interrupted before the verification re-read.");
             e.Failures.Add($"Interrupted: {(ex is OperationCanceledException ? "the request was cancelled" : ex.Message)}.");
             Finish();
             e.TicketNotes += " The run was interrupted before it finished; re-run the plan to see the current state.";
             throw new OperationInterruptedException(e, ex);
-        }
-
-        // --- Verification: re-read everything that was attempted, plus every requested license. ---
-        var needUser = Attempted(block) || Attempted(revoke) || requestedLicenses.Count > 0;
-        JsonElement? userAfter = null;
-        string? userVerifyError = null;
-        if (needUser)
-        {
-            try
-            {
-                using var doc = await graph.GetAsync($"/users/{uid}?$select=id,accountEnabled,signInSessionsValidFromDateTime,assignedLicenses,licenseAssignmentStates", ct);
-                userAfter = doc.RootElement.Clone();
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException) { userVerifyError = GraphErrors.Describe(ex); }
-        }
-        if (Attempted(block))
-        {
-            if (userAfter is { } u)
-            {
-                var disabled = u.TryGetProperty("accountEnabled", out var ae) && ae.ValueKind == JsonValueKind.False;
-                Check(block!, disabled, disabled ? "accountEnabled is false on re-read." : "Account is still enabled on re-read.");
-            }
-            else Check(block!, false, $"Could not re-read the user: {userVerifyError}");
-        }
-        if (Attempted(revoke))
-        {
-            if (userAfter is { } u)
-            {
-                var (ok, detail) = WorkflowVerify.EvaluateCutoff(
-                    cutoffBefore ?? new SessionCutoff(false, null, "not read"), WorkflowVerify.ParseCutoff(u), startedAt);
-                Check(revoke!, ok, detail);
-            }
-            else Check(revoke!, false, $"Could not re-read the user: {userVerifyError}");
-        }
-        if (Attempted(convert))
-            Check(convert!, conversionVerified, conversionVerified
-                ? "Mailbox is a SharedMailbox on re-read."
-                : mailboxVerifyError ?? $"Mailbox type on re-read is {mailboxAfter?.RecipientTypeDetails ?? "unknown"}.");
-        if (Attempted(forward))
-        {
-            // Exact address (Exchange may prefix "smtp:"), and the requested delivery mode: forward
-            // only, no copy kept in the mailbox.
-            var fwd = mailboxAfter?.ForwardingSmtpAddress ?? "";
-            var addressOk = string.Equals(BareSmtp(fwd), policy.ForwardTo!.Trim(), StringComparison.OrdinalIgnoreCase);
-            var deliverOk = mailboxAfter is { DeliverToMailboxAndForward: false };
-            var ok = addressOk && deliverOk;
-            Check(forward!, ok,
-                ok ? $"Forwarding to {BareSmtp(fwd)} (no copy kept in the mailbox) on re-read."
-                : mailboxAfter is null ? mailboxVerifyError ?? "Mailbox could not be re-read."
-                : !addressOk ? $"Forwarding on re-read is '{fwd}', not {policy.ForwardTo!.Trim()}."
-                : "DeliverToMailboxAndForward is true on re-read; forward-only was requested.");
-        }
-
-        var groupItems = plan.Items.Where(i => i.Action == RemoveMember && Attempted(i)).ToList();
-        if (groupItems.Count > 0)
-        {
-            HashSet<string>? after = null;
-            string? err = null;
-            try
-            {
-                after = (await GroupClassifier.DirectMembershipsAsync(graph, user.Id, ct)).Select(m => m.Id)
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException) { err = GraphErrors.Describe(ex); }
-            foreach (var item in groupItems)
-            {
-                if (after is null) { Check(item, false, $"Could not re-read memberships: {err}"); continue; }
-                var gone = !after.Contains(item.ObjectId);
-                Check(item, gone, gone ? "No longer a member on re-read." : "Still a member on re-read.");
-            }
-        }
-
-        // Every requested SKU's final state, including group-inherited ones: a license still assigned
-        // after offboarding is unfinished work whichever way it was assigned.
-        var remainingInherited = new List<PlanItem>();
-        foreach (var item in requestedLicenses)
-        {
-            var inherited = !item.Eligible && IsGroupBased(item);
-            if (!Attempted(item) && !inherited) continue; // gated/skipped direct SKUs are already reported as not done
-            if (userAfter is not { } u) { Check(item, false, $"Could not re-read licenses: {userVerifyError}"); continue; }
-            var still = u.TryGetProperty("assignedLicenses", out var al) && al.ValueKind == JsonValueKind.Array
-                        && al.EnumerateArray().Any(l => string.Equals(Str(l, "skuId"), item.ObjectId, StringComparison.OrdinalIgnoreCase));
-            if (!inherited)
-                Check(item, !still, still ? "License still assigned on re-read." : "License no longer assigned on re-read.");
-            else if (still)
-            {
-                remainingInherited.Add(item);
-                Check(item, false, "Still assigned through group-based licensing on re-read. It is removed only by removing the user from the licensing group (or changing that group's licenses); group license changes can also take a few minutes to process.");
-            }
-            else
-                Check(item, true, "No longer assigned on re-read (removed with the licensing group membership).");
-        }
-        if (remainingInherited.Count > 0)
-            e.Warnings.Add($"{Count(remainingInherited.Count, "license")} still assigned through group-based licensing ({string.Join(", ", remainingInherited.Select(i => i.ObjectName))}). " +
-                           "Group-based licenses cannot be removed directly: remove the user from the licensing group, or change the group's license assignment.");
-
-        foreach (var item in plan.Items.Where(i => i.Action == RetireDevice && Attempted(i)))
-        {
-            try
-            {
-                using var doc = await graph.GetAsync(
-                    $"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}?$select=id,managementState", ct);
-                var ms = Str(doc.RootElement, "managementState") ?? "";
-                switch (ms.ToLowerInvariant())
-                {
-                    case "retired":
-                        Check(item, true, $"managementState={ms}");
-                        break;
-                    case "retirepending" or "retireissued":
-                        Pending(item, $"Retire issued, not yet completed (managementState={ms}); the device completes it at its next check-in.");
-                        break;
-                    case "retirefailed" or "retirecanceled":
-                        Check(item, false, $"Retire did not complete: managementState={ms}.");
-                        break;
-                    default:
-                        Check(item, false, $"managementState on re-read is '{ms}'; the retire is not reflected.");
-                        break;
-                }
-            }
-            catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { Check(item, true, "Device record is gone (retired)."); }
-            catch (Exception ex) when (ex is not OperationCanceledException) { Check(item, false, $"Could not re-read device: {GraphErrors.Describe(ex)}"); }
         }
 
         Finish();
@@ -697,7 +734,7 @@ public class OffboardingOperation : IOffboardingService
             var c = changes.GetValueOrDefault(item.Id);
             if (c is null || !c.Attempted)
                 return IsGroupBased(item) && verified.TryGetValue(item.Id, out var gone) ? (gone ? "group-removed" : "remaining") : "skipped";
-            if (!c.Succeeded) return "failed";
+            if (!c.Succeeded) return c.Detail == ChangeResult.InterruptedInFlight ? "unknown" : "failed";
             if (pending.Contains(item.Id)) return "pending";
             return verified.GetValueOrDefault(item.Id) ? "verified" : "unverified";
         }
@@ -710,6 +747,7 @@ public class OffboardingOperation : IOffboardingService
                 "verified" => $"{label}: done and verified. ",
                 "unverified" => $"{label}: reported done but NOT confirmed on re-read. ",
                 "failed" => $"{label}: failed ({changes[item.Id].Detail?.TrimEnd('.')}). ",
+                "unknown" => $"{label}: request sent, but the run was interrupted before Microsoft answered; it may or may not have been applied. ",
                 _ => $"{label}: not performed - {(item.Reason ?? changes.GetValueOrDefault(item.Id)?.Detail)?.TrimEnd('.')}. "
             });
         }
@@ -725,6 +763,8 @@ public class OffboardingOperation : IOffboardingService
             if (byStatus.TryGetValue("verified", out var v)) parts.Add($"{verb} {Count(v.Count, noun)} (verified)");
             if (byStatus.TryGetValue("unverified", out var uv)) parts.Add($"{Count(uv.Count, noun)} reported {verb.ToLowerInvariant()} but not confirmed");
             if (byStatus.TryGetValue("failed", out var f)) parts.Add($"{Count(f.Count, noun)} failed ({string.Join(", ", f.Select(i => i.ObjectName))})");
+            if (byStatus.TryGetValue("unknown", out var un))
+                parts.Add($"{Count(un.Count, noun)} sent but interrupted before Microsoft answered, so may or may not have been {verb.ToLowerInvariant()} ({string.Join(", ", un.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("pending", out var p)) parts.Add($"{(action == RetireDevice ? "retire issued for " : "")}{Count(p.Count, noun)}{(action == RetireDevice ? "" : " requested")} but not yet completed ({string.Join(", ", p.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("group-removed", out var gr)) parts.Add($"{Count(gr.Count, noun)} removed with the licensing group membership (verified)");
             if (byStatus.TryGetValue("remaining", out var rem)) parts.Add($"{Count(rem.Count, noun)} still assigned through group-based licensing ({string.Join(", ", rem.Select(i => i.ObjectName))})");

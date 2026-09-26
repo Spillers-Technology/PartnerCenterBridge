@@ -52,10 +52,6 @@ internal sealed class AccessParityOperation : IPlannedOperation
         public bool Verified { get; set; }
     }
 
-    /// <summary>Detail for a request that was sent but whose response never arrived.</summary>
-    internal const string InterruptedInFlight =
-        "Interrupted after the request was sent; the change may or may not have been applied -- re-run the plan to see current state.";
-
     private sealed record UserRef(string Id, string DisplayName, string? Upn, bool? AccountEnabled);
 
     private sealed class PlanState
@@ -255,7 +251,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
             var change = new ChangeResult
             {
                 PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = true,
-                Succeeded = false, Detail = InterruptedInFlight
+                Succeeded = false, Detail = ChangeResult.InterruptedInFlight
             };
             var attempt = new Attempt(item, change) { InFlight = true };
             e.Changes.Add(change);
@@ -290,7 +286,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
             {
                 // No answer (connection dropped, timeout): the request may still have been applied.
                 change.Succeeded = false;
-                change.Detail = $"No response from Microsoft ({ex.Message}); the change may or may not have been applied -- re-run the plan to see current state.";
+                change.Detail = ChangeResult.NoResponse(ex);
                 e.Failures.Add($"{item.ObjectName}: {change.Detail}");
             }
             attempt.InFlight = false;
@@ -312,7 +308,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
             }
             // Sent, but the response never arrived: it may or may not have been applied.
             foreach (var attempt in attempts.Where(a => a.InFlight))
-                e.Failures.Add($"{attempt.Item.ObjectName}: {InterruptedInFlight}");
+                e.Failures.Add($"{attempt.Item.ObjectName}: {ChangeResult.InterruptedInFlight}");
             // Sent, but not verified before the interruption.
             foreach (var attempt in attempts.Where(a => !checkedAttempts.Contains(a)))
             {
