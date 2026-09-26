@@ -19,7 +19,7 @@ import { Dashboard } from "../components/Dashboard";
 import { DiagnosticsList, needsAttention } from "../components/DiagnosticsList";
 import { PageHeader } from "../components/PageHeader";
 import { useDiagnostics } from "../hooks/useDiagnostics";
-import { hasAnyTenantAccess } from "../permissions";
+import { hasAnyTenantAccess, hasInstancePermission } from "../permissions";
 import { useWorkbench } from "../workbench";
 
 function EntryCard({ to, icon, title, detail }: { to: string; icon: ReactNode; title: string; detail: string }) {
@@ -97,12 +97,24 @@ export default function Home() {
     <Box>
       <PageHeader title="Home" subtitle="Start from the person, the tenant, or the outcome you need." />
 
-      {!hasAnyTenantAccess(me) && (
+      {!hasAnyTenantAccess(me) && (hasInstancePermission(me, "instance.tenant-registry.manage") ? (
+        // Typically the first administrator of a fresh workbench: nobody else can share a tenant
+        // yet, so point at the steps that actually get one here.
+        <Alert
+          severity="info"
+          variant="outlined"
+          sx={{ mb: 2 }}
+          action={<Button component={RouterLink} to="/tenants" color="inherit" size="small">Tenants</Button>}
+        >
+          No tenants in your workbench yet. Connect Microsoft (Settings, Microsoft), then add or sync
+          customer tenants from Tenants; you become Owner of each tenant you add.
+        </Alert>
+      ) : (
         <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
           No tenants have been shared with you yet. Ask a tenant Owner to grant you access from the
           tenant's Access tab; everything tenant-scoped appears here once they do.
         </Alert>
-      )}
+      ))}
 
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>

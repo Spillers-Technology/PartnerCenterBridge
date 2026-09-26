@@ -403,5 +403,18 @@ describe("App routing", () => {
       expect(await screen.findByText("Needs the SAM credentials role")).toBeInTheDocument();
       expect(api.sam.status).not.toHaveBeenCalled();
     });
+
+    it("tells a first administrator how to get tenants, and anyone else whom to ask", async () => {
+      localStorage.setItem("pcb.local.accessToken", "tok");
+      vi.mocked(api.auth.me).mockResolvedValue({ ...ME, tenantAccess: [], instancePermissions: ["instance.tenant-registry.manage"] });
+      const first = renderApp("/");
+      expect(await screen.findByText(/No tenants in your workbench yet/)).toBeInTheDocument();
+      expect(screen.queryByText(/Ask a tenant Owner/)).not.toBeInTheDocument();
+      first.unmount();
+
+      vi.mocked(api.auth.me).mockResolvedValue({ ...ME, tenantAccess: [], instancePermissions: [] });
+      renderApp("/");
+      expect(await screen.findByText(/Ask a tenant Owner/)).toBeInTheDocument();
+    });
   });
 });
