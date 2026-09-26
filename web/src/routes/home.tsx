@@ -97,8 +97,6 @@ export default function Home() {
     <Box>
       <PageHeader title="Home" subtitle="Start from the person, the tenant, or the outcome you need." />
 
-      <SetupChecklist />
-
       {!hasAnyTenantAccess(me) && (
         <Alert severity="info" variant="outlined" sx={{ mb: 2 }}>
           No tenants have been shared with you yet. Ask a tenant Owner to grant you access from the
@@ -133,6 +131,9 @@ export default function Home() {
           </Stack>
         </CardContent>
       </Card>
+
+      {/* Search stays first so a technician can start typing immediately; setup follows. */}
+      <SetupChecklist />
 
       <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1.5, mb: 3 }}>
         <EntryCard to="/operations/onboard" icon={<PersonAddAlt />} title="Onboard" detail="Create a new hire with the contract's licenses and groups." />
