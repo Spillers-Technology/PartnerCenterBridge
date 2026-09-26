@@ -80,4 +80,5 @@ public sealed class GraphRequestException(HttpMethod method, Uri uri, System.Net
     : Exception($"Graph {method} {uri} failed with {(int)status}: {body}")
 {
     public System.Net.HttpStatusCode Status { get; } = status;
+    public string Body { get; } = body;
 }
