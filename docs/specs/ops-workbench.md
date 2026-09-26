@@ -1,6 +1,6 @@
 # Ops Workbench (0.9.0) -- implementation plan and shared contract
 
-**Status:** in progress on `feat/ops-workbench`. Working notes, not user docs. This file is the
+**Status:** implemented on `feat/ops-workbench` (not merged). The "As built" section at the end is authoritative. Working notes, not user docs. This file is the
 contract parallel workstreams build against; change it here first if a shape must move.
 
 ## Goal
@@ -89,7 +89,7 @@ Extends the existing `IWorkflow` / `WorkflowRun` model; it does not replace it.
 
 ```ts
 type Outcome = "Succeeded" | "PartiallySucceeded" | "Failed" | "NoChangeNeeded"
-             | "VerificationFailed" | "Planned";
+             | "VerificationFailed" | "Planned" | "CompletedUnverified";  // accepted by Microsoft, effect not confirmed
 interface PlanItem { id: string; action: string; objectType: string; objectId: string;
   objectName: string; destructive: boolean; eligible: boolean; category: string;
   reason?: string | null; }            // reason: why ineligible / why skipped
