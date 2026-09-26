@@ -42,13 +42,19 @@ internal sealed class AccessParityOperation : IPlannedOperation
         new("targetUserId", "Target user (UPN or id) - give access to", "newhire@contoso.com")
     ];
 
-    private sealed class Attempt(PlanItem item, ChangeResult change, bool alreadyExisted)
+    private sealed class Attempt(PlanItem item, ChangeResult change)
     {
         public PlanItem Item { get; } = item;
         public ChangeResult Change { get; } = change;
-        public bool AlreadyExisted { get; } = alreadyExisted;
+        public bool AlreadyExisted { get; set; }
+        /// <summary>Sent, and no response arrived before the run was interrupted.</summary>
+        public bool InFlight { get; set; }
         public bool Verified { get; set; }
     }
+
+    /// <summary>Detail for a request that was sent but whose response never arrived.</summary>
+    internal const string InterruptedInFlight =
+        "Interrupted after the request was sent; the change may or may not have been applied -- re-run the plan to see current state.";
 
     private sealed record UserRef(string Id, string DisplayName, string? Upn, bool? AccountEnabled);
 
@@ -149,25 +155,70 @@ internal sealed class AccessParityOperation : IPlannedOperation
         var attempts = new List<Attempt>();
         var outcomes = new List<ItemOutcome>();
         var selected = selectedItemIds.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-        var processed = 0;
+        // Selected ids that already have a change record (applied, skipped, or in flight).
+        var handled = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // Attempts whose verification check has been recorded.
+        var checkedAttempts = new HashSet<Attempt>();
+        HashSet<string>? after = null;
+        string? verifyError = null;
+        bool? preserved = null;
         Exception? interrupted = null;
         try
         {
             foreach (var id in selected)
-            {
                 await ApplyOneAsync(id);
-                processed++;
+
+            // Verify by re-reading the target's memberships from Graph, never by trusting the POST.
+            if (attempts.Count > 0)
+            {
+                try
+                {
+                    after = (await GroupClassifier.DirectMembershipsAsync(graph, state.Target.Id, ct))
+                        .Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    verifyError = GraphErrors.Describe(ex);
+                    e.Failures.Add($"Verification re-read of target memberships failed: {verifyError}");
+                }
+            }
+
+            foreach (var attempt in attempts)
+            {
+                var present = after?.Contains(attempt.Item.ObjectId) == true;
+                attempt.Verified = present;
+                string detail = after is null
+                    ? $"Could not re-read memberships: {verifyError}"
+                    : present ? "Target is a direct member on re-read."
+                    : attempt.Change.Succeeded ? "Add was reported, but the target is not a member on re-read."
+                    : "Target is not a member (the add failed).";
+                e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", present, detail, attempt.Item.Id));
+                outcomes.Add(new ItemOutcome(Attempted: true, ReportedOk: attempt.Change.Succeeded, Verified: present));
+                checkedAttempts.Add(attempt);
+            }
+
+            if (after is not null)
+            {
+                var lost = state.TargetMembershipIds.Where(id => !after.Contains(id)).ToList();
+                preserved = lost.Count == 0;
+                e.Verification.Add(new VerificationCheck("Existing target memberships preserved", lost.Count == 0,
+                    lost.Count == 0
+                        ? $"All {Count(state.TargetMembershipIds.Count, "prior membership")} still present."
+                        : $"{Count(lost.Count, "prior membership")} no longer present; PCB issued no removals, so this was changed elsewhere during the run."));
+                if (lost.Count > 0)
+                    e.Warnings.Add("Some of the target's prior memberships disappeared during the run. PCB never removes memberships; check for a concurrent change.");
             }
         }
         catch (Exception ex)
         {
-            // Cancellation or an unexpected error mid-apply: keep what already happened.
+            // Cancellation or an unexpected error mid-apply or mid-verification: keep what already happened.
             interrupted = ex;
         }
 
         async Task ApplyOneAsync(string id)
         {
             var item = plan.Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
+            handled.Add(id);
             if (item is null)
             {
                 e.Changes.Add(new ChangeResult
@@ -199,11 +250,16 @@ internal sealed class AccessParityOperation : IPlannedOperation
                 return;
             }
 
+            // Recorded as attempted before the request is sent: if the run is interrupted while it is
+            // in flight, Graph may already have applied it, and the evidence must say so.
             var change = new ChangeResult
             {
-                PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = true
+                PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = true,
+                Succeeded = false, Detail = InterruptedInFlight
             };
-            var alreadyExisted = false;
+            var attempt = new Attempt(item, change) { InFlight = true };
+            e.Changes.Add(change);
+            attempts.Add(attempt);
             try
             {
                 await graph.PostAsync($"/groups/{Uri.EscapeDataString(item.ObjectId)}/members/$ref",
@@ -213,7 +269,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
             }
             catch (Exception ex) when (GraphErrors.IsAlreadyExists(ex))
             {
-                alreadyExisted = true;
+                attempt.AlreadyExisted = true;
                 change.Succeeded = true;
                 change.Detail = "Graph reported the membership already exists; no change needed.";
             }
@@ -223,30 +279,42 @@ internal sealed class AccessParityOperation : IPlannedOperation
                 change.Detail = "Insufficient privileges to add members to this group (Graph 403).";
                 e.Failures.Add($"{item.ObjectName}: insufficient privileges to add members (Graph 403)");
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (GraphRequestException ex)
             {
+                // Graph answered with an error: the change was refused.
                 change.Succeeded = false;
                 change.Detail = GraphErrors.Describe(ex);
                 e.Failures.Add($"{item.ObjectName}: {GraphErrors.Describe(ex)}");
             }
-            e.Changes.Add(change);
-            attempts.Add(new Attempt(item, change, alreadyExisted));
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                // No answer (connection dropped, timeout): the request may still have been applied.
+                change.Succeeded = false;
+                change.Detail = $"No response from Microsoft ({ex.Message}); the change may or may not have been applied -- re-run the plan to see current state.";
+                e.Failures.Add($"{item.ObjectName}: {change.Detail}");
+            }
+            attempt.InFlight = false;
         }
 
         if (interrupted is not null)
         {
-            foreach (var id in selected.Skip(processed))
+            // Selected but never sent.
+            foreach (var id in selected.Where(id => !handled.Contains(id)))
             {
                 var item = plan.Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
                 if (item is null || !item.Eligible) continue;
                 e.Changes.Add(new ChangeResult
                 {
                     PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = false, Succeeded = false,
-                    Detail = "Interrupted: the run stopped before this item was confirmed applied; its state is unknown until re-checked."
+                    Detail = "Interrupted: the run stopped before this item's request was sent; nothing was changed for it."
                 });
                 outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true));
             }
-            foreach (var attempt in attempts)
+            // Sent, but the response never arrived: it may or may not have been applied.
+            foreach (var attempt in attempts.Where(a => a.InFlight))
+                e.Failures.Add($"{attempt.Item.ObjectName}: {InterruptedInFlight}");
+            // Sent, but not verified before the interruption.
+            foreach (var attempt in attempts.Where(a => !checkedAttempts.Contains(a)))
             {
                 e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", false,
                     "Not verified: the run was interrupted before the verification re-read.", attempt.Item.Id));
@@ -254,52 +322,9 @@ internal sealed class AccessParityOperation : IPlannedOperation
             }
             e.Failures.Add($"Interrupted: {(interrupted is OperationCanceledException ? "the request was cancelled" : interrupted.Message)}.");
             e.Outcome = OutcomeRules.Derive(outcomes);
-            e.TicketNotes = BuildNotes(state, e, attempts, null, "the run was interrupted") +
+            e.TicketNotes = BuildNotes(state, e, attempts, preserved, verifyError ?? "the run was interrupted") +
                             " The run was interrupted before it finished; re-run the plan to see the current state.";
             throw new OperationInterruptedException(e, interrupted);
-        }
-
-        // Verify by re-reading the target's memberships from Graph, never by trusting the POST.
-        HashSet<string>? after = null;
-        string? verifyError = null;
-        if (attempts.Count > 0)
-        {
-            try
-            {
-                after = (await GroupClassifier.DirectMembershipsAsync(graph, state.Target.Id, ct))
-                    .Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                verifyError = GraphErrors.Describe(ex);
-                e.Failures.Add($"Verification re-read of target memberships failed: {verifyError}");
-            }
-        }
-
-        foreach (var attempt in attempts)
-        {
-            var present = after?.Contains(attempt.Item.ObjectId) == true;
-            attempt.Verified = present;
-            string detail = after is null
-                ? $"Could not re-read memberships: {verifyError}"
-                : present ? "Target is a direct member on re-read."
-                : attempt.Change.Succeeded ? "Add was reported, but the target is not a member on re-read."
-                : "Target is not a member (the add failed).";
-            e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", present, detail, attempt.Item.Id));
-            outcomes.Add(new ItemOutcome(Attempted: true, ReportedOk: attempt.Change.Succeeded, Verified: present));
-        }
-
-        bool? preserved = null;
-        if (after is not null)
-        {
-            var lost = state.TargetMembershipIds.Where(id => !after.Contains(id)).ToList();
-            preserved = lost.Count == 0;
-            e.Verification.Add(new VerificationCheck("Existing target memberships preserved", lost.Count == 0,
-                lost.Count == 0
-                    ? $"All {Count(state.TargetMembershipIds.Count, "prior membership")} still present."
-                    : $"{Count(lost.Count, "prior membership")} no longer present; PCB issued no removals, so this was changed elsewhere during the run."));
-            if (lost.Count > 0)
-                e.Warnings.Add("Some of the target's prior memberships disappeared during the run. PCB never removes memberships; check for a concurrent change.");
         }
 
         e.Outcome = OutcomeRules.Derive(outcomes);
@@ -318,7 +343,8 @@ internal sealed class AccessParityOperation : IPlannedOperation
         // "Added" is claimed only for memberships the verification re-read confirmed.
         var confirmed = attempts.Where(a => a.Change.Succeeded && !a.AlreadyExisted && a.Verified).ToList();
         var unconfirmedAdds = attempts.Where(a => a.Change.Succeeded && !a.AlreadyExisted && !a.Verified).ToList();
-        var failed = attempts.Where(a => !a.Change.Succeeded).ToList();
+        var inFlight = attempts.Where(a => a.InFlight).ToList();
+        var failed = attempts.Where(a => !a.Change.Succeeded && !a.InFlight).ToList();
         var alreadyPresent = attempts.Count(a => a.AlreadyExisted)
                              + e.Changes.Count(c => !c.Attempted && c.Succeeded);
 
@@ -327,7 +353,10 @@ internal sealed class AccessParityOperation : IPlannedOperation
         if (unconfirmedAdds.Count > 0)
             sb.Append($"{Count(unconfirmedAdds.Count, "membership")} reported added by Graph but not confirmed: ")
               .Append(string.Join(", ", unconfirmedAdds.Select(a => a.Item.ObjectName))).Append(". ");
-        if (confirmed.Count == 0 && unconfirmedAdds.Count == 0 && failed.Count == 0)
+        if (inFlight.Count > 0)
+            sb.Append($"{Count(inFlight.Count, "membership request")} {(inFlight.Count == 1 ? "was" : "were")} sent but the run was interrupted before Microsoft answered, so {(inFlight.Count == 1 ? "it" : "they")} may or may not have been applied: ")
+              .Append(string.Join(", ", inFlight.Select(a => a.Item.ObjectName))).Append(". ");
+        if (confirmed.Count == 0 && unconfirmedAdds.Count == 0 && failed.Count == 0 && inFlight.Count == 0)
             sb.Append("No group memberships were added. ");
         if (alreadyPresent > 0)
             sb.Append($"{Count(alreadyPresent, "selected group")} {(alreadyPresent == 1 ? "was" : "were")} already present and needed no change. ");

@@ -60,6 +60,15 @@ public class AccessParityOperationTests : IDisposable
         _server.Given(Request.Create().WithPath($"/groups/{groupId}/members/$ref").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(status).WithBody(body));
 
+    /// <summary>An add that succeeds and cancels <paramref name="cts"/> shortly after answering.</summary>
+    private void StubAddThenCancel(string groupId, CancellationTokenSource cts) =>
+        _server.Given(Request.Create().WithPath($"/groups/{groupId}/members/$ref").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(204).WithBody(_ =>
+            {
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+                return "";
+            }));
+
     private IEnumerable<string> Methods() => _server.LogEntries.Select(e => e.RequestMessage.Method.ToUpperInvariant());
 
     [Fact]
@@ -307,27 +316,67 @@ public class AccessParityOperationTests : IDisposable
     public async Task Cancellation_mid_apply_keeps_the_completed_addition_as_partial_evidence()
     {
         StubUsers();
-        StubSource(Group("g1", "Finance"), Group("g2", "Sales"));
+        StubSource(Group("g1", "Finance"), Group("g2", "Sales"), Group("g3", "Support"));
         StubTarget(before: [], after: []);
-        StubAdd("g1");
+        StubAdd("g3");
         using var cts = new CancellationTokenSource();
-        // The second add hangs until the request is cancelled.
+        // The first add answers and starts the cancellation clock; the second add is sent next and
+        // hangs, so the run is cancelled while it waits for Graph's answer.
+        StubAddThenCancel("g1", cts);
         _server.Given(Request.Create().WithPath("/groups/g2/members/$ref").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(204).WithDelay(TimeSpan.FromSeconds(30)));
-        cts.CancelAfter(TimeSpan.FromSeconds(3));
 
         var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
-            () => Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:g2"], cts.Token));
+            () => Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:g2", "group:g3"], cts.Token));
 
         var e = ex.Partial;
         var g1 = e.Changes.Single(c => c.PlanItemId == "group:g1");
         Assert.True(g1.Attempted && g1.Succeeded);
+        // g2's request was sent and may have been applied: attempted, outcome unknown.
         var g2 = e.Changes.Single(c => c.PlanItemId == "group:g2");
-        Assert.False(g2.Attempted);
-        Assert.StartsWith("Interrupted", g2.Detail);
+        Assert.True(g2.Attempted);
+        Assert.False(g2.Succeeded);
+        Assert.Equal("Interrupted after the request was sent; the change may or may not have been applied -- re-run the plan to see current state.", g2.Detail);
+        // g3 was never sent.
+        var g3 = e.Changes.Single(c => c.PlanItemId == "group:g3");
+        Assert.False(g3.Attempted);
+        Assert.StartsWith("Interrupted", g3.Detail);
+        Assert.Contains("request was sent", e.TicketNotes);
+        Assert.DoesNotContain("could not be added: Sales", e.TicketNotes);
+        Assert.DoesNotContain(_server.LogEntries, l => l.RequestMessage.Path == "/groups/g3/members/$ref");
         Assert.False(e.Verification.Single(v => v.PlanItemId == "group:g1").Passed);
+        Assert.False(e.Verification.Single(v => v.PlanItemId == "group:g2").Passed);
         Assert.NotEqual(Outcome.Succeeded, e.Outcome);
         Assert.Contains(e.Failures, f => f.StartsWith("Interrupted"));
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_the_verification_reread_keeps_the_applied_changes()
+    {
+        StubUsers();
+        StubSource(Group("g1", "Finance"));
+        using var cts = new CancellationTokenSource();
+        // The add answers and starts the cancellation clock; the verification re-read that follows
+        // hangs, so the run is cancelled while verifying.
+        StubAddThenCancel("g1", cts);
+        _server.Given(Request.Create().WithPath("/users/tgt/memberOf").UsingGet())
+            .InScenario("target").WillSetStateTo("planned")
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = Array.Empty<object>() }));
+        _server.Given(Request.Create().WithPath("/users/tgt/memberOf").UsingGet())
+            .InScenario("target").WhenStateIs("planned")
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { Group("g1", "Finance") } }).WithDelay(TimeSpan.FromSeconds(30)));
+
+        var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
+            () => Op().ApplyAsync(Tenant(), In(), ["group:g1"], cts.Token));
+
+        var e = ex.Partial;
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "group:g1") is { Attempted: true, Succeeded: true });
+        var check = e.Verification.Single(v => v.PlanItemId == "group:g1");
+        Assert.False(check.Passed);
+        Assert.Contains("interrupted", check.Detail);
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("interrupted", e.TicketNotes);
         Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
     }
 }
