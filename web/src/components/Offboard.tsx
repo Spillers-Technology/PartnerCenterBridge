@@ -111,6 +111,9 @@ export function Offboard({
   // and, if the user confirms it after the first terminate has already finished, fire a duplicate
   // destructive submission. This local guard covers that whole window, not just the API call.
   const [confirming, setConfirming] = useState(false);
+  // The state above drives rendering; this ref closes the same window synchronously, since two
+  // calls in one tick would both read the pre-update state.
+  const confirmingRef = useRef(false);
   const currentTenantRef = useRef("");
   const confirm = useConfirm();
   const toast = useToast();
@@ -240,7 +243,8 @@ export function Offboard({
   };
 
   const submit = async () => {
-    if (!tenantId || !selectedUser || confirming) return;
+    if (!tenantId || !selectedUser || confirming || confirmingRef.current) return;
+    confirmingRef.current = true;
     setConfirming(true);
     try {
       const enabledActions = ACTIONS.filter(([key]) => opts[key]).map(([, label]) => label.toLowerCase());
@@ -263,6 +267,7 @@ export function Offboard({
       setLastAction("submit");
       await submitAction.run();
     } finally {
+      confirmingRef.current = false;
       setConfirming(false);
     }
   };

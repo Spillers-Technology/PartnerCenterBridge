@@ -80,6 +80,9 @@ export function AccessParity({
   const [busy, setBusy] = useState<"plan" | "apply" | null>(null);
   const [unsupported, setUnsupported] = useState(false);
   const generation = useRef(0);
+  // Synchronous re-entry guard: `busy` only updates on the next render, so two calls in the same
+  // tick could both pass the state check and queue two confirmations.
+  const applying = useRef(false);
 
   useEffect(() => {
     api.tenants.list().then(setTenants).catch((e) => setTenantsError(e instanceof Error ? e.message : String(e)));
@@ -162,7 +165,8 @@ export function AccessParity({
   const sourceName = source?.displayName ?? "the source";
 
   const apply = async () => {
-    if (!plan || !canApply || busy || chosen.length === 0) return;
+    if (!plan || !canApply || busy || applying.current || chosen.length === 0) return;
+    applying.current = true;
     setBusy("apply");
     try {
       const ok = await confirm({
@@ -170,7 +174,8 @@ export function AccessParity({
         message: `In ${tenantName}, PCB will add ${targetName} to exactly these groups, then re-read their memberships to verify. Nothing is removed.`,
         items: chosen.map((i) => i.objectName),
         itemsLabel: "Groups to add",
-        confirmLabel: `Add to ${pluralize(chosen.length, "group")}`
+        confirmLabel: `Add to ${pluralize(chosen.length, "group")}`,
+        mutating: true
       });
       if (!ok) return;
       const gen = generation.current;
@@ -182,6 +187,7 @@ export function AccessParity({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      applying.current = false;
       setBusy(null);
     }
   };

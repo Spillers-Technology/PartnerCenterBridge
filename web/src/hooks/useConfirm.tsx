@@ -15,6 +15,11 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /**
+   * A real mutation that is not destructive (e.g. adding group memberships): keeps the neutral
+   * styling but, like destructive, autofocuses Cancel so a stray Enter cannot apply it.
+   */
+  mutating?: boolean;
   /** The exact things that will change, listed under the message (e.g. the groups being added). */
   items?: string[];
   /** Accessible name for the items list. */
@@ -51,6 +56,8 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
     setClosing(false);
   };
 
+  const safeFocus = !!(pending?.options.destructive || pending?.options.mutating);
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
@@ -76,17 +83,17 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
           )}
         </DialogContent>
         <DialogActions>
-          {/* Destructive dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
+          {/* Destructive and mutating dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
               the dialog opens (e.g. a stray keypress carried over from what triggered it) lands
               on the safe choice instead of defaulting to the destructive one. */}
-          <Button onClick={() => close(false)} autoFocus={pending?.options.destructive}>
+          <Button onClick={() => close(false)} autoFocus={safeFocus}>
             {pending?.options.cancelLabel ?? "Cancel"}
           </Button>
           <Button
             onClick={() => close(true)}
             color={pending?.options.destructive ? "error" : "primary"}
             variant="contained"
-            autoFocus={!pending?.options.destructive}
+            autoFocus={!safeFocus}
           >
             {pending?.options.confirmLabel ?? "Confirm"}
           </Button>
