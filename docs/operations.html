@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations - Partner Center Bridge docs</title>
+<meta name="description" content="How the Operations area works from the operator's chair: mirroring access, offboarding a leaver, and the evidence every planned operation leaves behind.">
+<meta name="theme-color" content="#ffffff">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/operations.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Operations - Partner Center Bridge docs">
+<meta property="og:description" content="How the Operations area works from the operator's chair: mirroring access, offboarding a leaver, and the evidence every planned operation leaves behind.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/operations.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-access-parity.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
+<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
+<script>
+  var initOpts = {
+    projectKey: "vQsdaVKqB3x2jUBKW4xd",
+    ingestPoint: "https://replay.spillerstech.us/ingest",
+    defaultInputMode: 0,
+    obscureTextNumbers: false,
+    obscureTextEmails: false,
+  };
+  var startOpts = { userID: "" };
+  (function(A,s,a,y,e,r){
+    r=window.OpenReplay=[e,r,y,[s-1, e]];
+    s=document.createElement('script');s.src=A;s.async=!a;
+    document.getElementsByTagName('head')[0].appendChild(s);
+    r.start=function(v){r.push([0])};
+    r.stop=function(v){r.push([1])};
+    r.setUserID=function(id){r.push([2,id])};
+    r.setUserAnonymousID=function(id){r.push([3,id])};
+    r.setMetadata=function(k,v){r.push([4,k,v])};
+    r.event=function(k,p,i){r.push([5,k,p,i])};
+    r.issue=function(k,p){r.push([6,k,p])};
+    r.isActive=function(){return false};
+    r.getSessionToken=function(){};
+  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
+  OpenReplay.start();
+  OpenReplay.setMetadata("project", "PartnerCenterBridge");
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#screens">Screens</a>
+      <a href="index.html#status">Status</a>
+      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Operations</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Concepts</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Features</p>
+        <ul>
+          <li><a href="operations.html" aria-current="page">Operations</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Features</span></p>
+<h1>Operations</h1>
+<p class="lead">
+  Everything that changes a tenant lives under one of the workbench's six areas, <strong>Operations</strong>,
+  grouped by the outcome an operator is after rather than by which API answers it: people lifecycle
+  (onboard, offboard, mirror access), known fixes, app deployment, and standards (contracts, app
+  templates). This page covers the operator's-eye view of the two <strong>planned operations</strong>
+  -- Access Parity and offboarding -- and the evidence both leave behind. For the API shapes and
+  server-side rules, see <a href="workflows.html">Workflows</a> and
+  <a href="architecture.html#operations-and-evidence-model">Operations and evidence model</a>.
+</p>
+
+<h2 id="two-shapes-of-change">Two shapes of change</h2>
+<p>
+  The known-fix library (MFA reset, password reset, compromised-account lockdown, license repair,
+  mailbox archive repair) runs <strong>Diagnose &rarr; Fix &rarr; Verify</strong>: PCB reads the
+  current state, applies one fixed remediation, and reads again to confirm it. Access Parity and
+  offboarding run a more general <strong>Plan &rarr; Apply &rarr; Verify</strong> shape: the operator
+  sees every item PCB considered -- including the ones it will not touch, and why -- before choosing
+  what to apply, then PCB re-plans server-side at apply time (so a stale plan can never apply
+  something no longer eligible) and verifies every change by re-reading it from Graph or Exchange,
+  never by trusting the write call. Both shapes end at the same place: a recorded run with structured
+  evidence, reachable from <code>/activity/runs/:runId</code>.
+</p>
+
+<h2 id="mirror-access">Mirror access (Access Parity)</h2>
+<p>
+  <code>/operations/access-parity</code> gives a target user the group memberships a source user has
+  and they lack -- <strong>additive only</strong>. A link that already names the tenant and both
+  people compares automatically on load; otherwise the operator picks a tenant and two people and
+  presses <strong>Compare</strong>. Comparing never changes anything: it is a read-only plan, itself
+  recorded as a run.
+</p>
+
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-access-parity.jpg" alt="Mirror access screen showing a comparison between two Contoso users, with an additive-only notice, a list of not-compared limitations, preflight checks, and a list of eligible groups to add." loading="lazy">
+  </button>
+</figure>
+
+<p>The plan splits into three groups, and the reason is always visible, never just the verdict:</p>
+<ul>
+  <li><strong>Eligible</strong> -- cloud, non-dynamic, non-synced, non-role-assignable Security and
+      Microsoft 365 groups the target doesn't already have. Checked by default; the operator can
+      deselect individual groups before applying.</li>
+  <li><strong>Already a member</strong> -- no change needed, so it never appears in the destructive
+      preview or the confirmation.</li>
+  <li><strong>Not copied</strong> -- grouped by why: dynamic membership, synced from on-premises AD,
+      role-assignable, mail-enabled security or distribution, and directory roles. The plan also
+      states plainly what it never compares at all: SharePoint direct site/file permissions, app
+      role assignments granted directly to the user, Exchange mailbox/calendar permissions, and
+      Teams-only private/shared channel membership.</li>
+</ul>
+<p>
+  Applying shows a confirmation naming the exact groups about to be added, then re-plans and applies
+  server-side, and re-reads the target's memberships afterward to verify. Comparing needs the
+  tenant's <strong>Viewer</strong> role; applying needs <strong>Operator</strong>.
+</p>
+
+<h2 id="offboarding">Offboarding</h2>
+<p>
+  <code>/operations/offboard</code> starts from the tenant's contract offboarding policy: block
+  sign-in, revoke sessions, remove licenses, remove group memberships, and (optionally) convert the
+  mailbox to shared, all pre-checked or unchecked the way the contract's policy defaults them. An
+  operator can still adjust any of them for one leaver without touching the contract. <strong>Preview
+  plan</strong> shows the ordered list of steps before anything runs.
+</p>
+
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-offboard-plan.jpg" alt="Offboard screen for Priya Shah in Contoso Ltd, showing the contract policy defaults as checked actions and an ordered plan of nine steps with a follow-up reminder note." loading="lazy">
+  </button>
+</figure>
+
+<p>
+  The plan is ordered for a reason the UI states, not just enforces silently: sign-in is blocked and
+  sessions revoked first; the mailbox is converted to shared (and forwarding set) before anything
+  that can remove a license; group cleanup and license removal wait for a <em>verified</em> mailbox
+  conversion whenever one was requested, because removing a license from an unconverted mailbox
+  starts Microsoft's own deletion clock on it. Steps the contract's policy has no operation for yet
+  (hiding from the address list, granting a manager full mailbox access) are listed as won't-run items
+  with the reason, not silently dropped. <strong>Offboard user</strong> asks for confirmation naming
+  the steps, including which are destructive, before it runs.
+</p>
+
+<h2 id="the-evidence-every-run-leaves">The evidence every run leaves</h2>
+<p>
+  Applying Access Parity or running an offboarding both end at the same evidence view -- the same one
+  reachable later from Activity, the person's History tab, or a direct link to
+  <code>/activity/runs/:runId</code>. Wording follows the recorded outcome exactly: a change reported
+  successful that a re-read doesn't confirm shows as <strong>Verification failed</strong>, not
+  Succeeded, and a run where nothing changed because it was already correct shows as
+  <strong>No change needed</strong>, not a failure.
+</p>
+
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-evidence.jpg" alt="Evidence view for a Partially succeeded Access Parity run, with a Failures panel, ticket notes ready to copy, and a breakdown of changes attempted, completed and skipped." loading="lazy">
+  </button>
+</figure>
+
+<p>Every evidence view has the same shape:</p>
+<ul>
+  <li><strong>Outcome</strong> -- Succeeded, Partially succeeded, Failed, No change needed,
+      Verification failed, or Planned (a plan-only run, never applied).</li>
+  <li><strong>Who/what/where</strong> -- operator, tenant, target, start and completion time.</li>
+  <li><strong>Failures and warnings</strong> -- called out above the fold, not buried in the changes list.</li>
+  <li><strong>Ticket notes</strong> -- a server-generated narrative with one
+      <strong>Copy ticket notes</strong> button, plus <strong>Download Markdown</strong> and
+      <strong>Download JSON</strong> for the full record.</li>
+  <li><strong>Changes, verification, preflight and plan</strong> -- each attempted change with its
+      result (done, failed, already in place, skipped), each post-change check PCB re-read to
+      confirm it, the findings from before anything changed, and the full plan including items PCB
+      never touched.</li>
+</ul>
+
+<h2 id="permissions">Permissions</h2>
+<p>
+  Both planned operations follow the same per-tenant roles as the rest of the workbench (see
+  <a href="authentication.html">Authentication</a>): <strong>Viewer</strong> can plan/preview,
+  <strong>Operator</strong> can apply, and only a tenant <strong>Owner</strong> can change who has
+  access to it. A contract's offboarding policy itself needs the instance catalog manager role to
+  edit -- see the offboarding policy editor on the Contracts screen under
+  <a href="workflows.html#planned-operations">Workflows: planned operations</a>.
+</p>
+
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="authentication.html"><span>&larr; Previous</span>Authentication</a>
+  <a class="next" href="workflows.html"><span>Next &rarr;</span>Workflows</a>
+</nav>
+</article>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center API</span>
+    <span>Exchange Online PowerShell V3</span>
+  </div>
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center <b>Bridge</b></span>
+      </a>
+      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#status">What's real today</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="operations.html">Operations</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
+</body>
+</html>
