@@ -150,6 +150,35 @@ public class OperationsEndpointsTests
     }
 
     [Fact]
+    public async Task Interrupted_apply_persists_the_partial_evidence_of_completed_changes()
+    {
+        using var db = new TestDb();
+        var tenant = await OpsTest.AddTenantAsync(db);
+        var partial = new OperationEvidence
+        {
+            OperationId = "access-parity", OperationName = "Access parity", Target = new("user", "TGT-ID", "Target User"),
+            Outcome = Outcome.VerificationFailed,
+            Changes =
+            {
+                new ChangeResult { PlanItemId = "group:g1", Action = "AddMember", ObjectName = "Finance", Attempted = true, Succeeded = true },
+                new ChangeResult { PlanItemId = "group:g2", Action = "AddMember", ObjectName = "Sales", Attempted = false, Detail = "Interrupted: ..." }
+            },
+            Failures = { "Interrupted: the request was cancelled." }
+        };
+        var op = new FakePlannedOperation { ApplyThrows = new OperationInterruptedException(partial, new OperationCanceledException()) };
+
+        await Ops(db, TenantRole.Operator, op).ApplyAccessParity(tenant.Id, new("alice", "bob", ["group:g1", "group:g2"]), CancellationToken.None);
+
+        var run = await db.Context.WorkflowRuns.SingleAsync();
+        Assert.False(run.Succeeded);
+        Assert.NotNull(run.Error);
+        Assert.Equal(Outcome.VerificationFailed, run.Outcome);
+        Assert.Contains(run.Evidence!.Changes, c => c.PlanItemId == "group:g1" && c.Attempted && c.Succeeded);
+        Assert.Contains(run.Steps, s => s.Name == "AddMember: Finance");
+        Assert.Equal("tgt-id", run.TargetId);
+    }
+
+    [Fact]
     public async Task Existing_workflow_runs_now_carry_evidence_without_secrets()
     {
         using var db = new TestDb();
@@ -166,9 +195,12 @@ public class OperationsEndpointsTests
         var diag = runs.Single(r => r.Kind == WorkflowRunKind.Diagnose);
         var rem = runs.Single(r => r.Kind == WorkflowRunKind.Remediate);
         Assert.Equal("user@contoso.com", rem.TargetId);
-        Assert.Equal(Outcome.Succeeded, rem.Outcome);
+        // No desired-state verification from this workflow: the post-run "Directory sync: Ok" is not
+        // proof the password changed, so the run is completed but unverified.
+        Assert.Equal(Outcome.CompletedUnverified, rem.Outcome);
         Assert.Equal("Set temporary password", rem.Evidence!.Changes.Single().Action);
-        Assert.Equal("Directory sync", rem.Evidence.Verification.Single().Name);
+        Assert.Empty(rem.Evidence.Verification);
+        Assert.Contains(rem.Evidence.Limitations, l => l.Contains("does not verify its changes"));
         Assert.Contains("1 of 1 step reported success", rem.Evidence.TicketNotes);
         Assert.Equal(Outcome.Planned, diag.Outcome);
         Assert.Equal("Directory sync", diag.Evidence!.Preflight.Single(f => f.Status == FindingStatus.Warning).Name);
@@ -196,8 +228,11 @@ public class OperationsEndpointsTests
 
         var e = Assert.IsType<OperationEvidence>(Assert.IsType<OkObjectResult>(await controller.Evidence(run.Id, null, CancellationToken.None)).Value);
 
-        // Steps reported ok but the re-diagnosis still shows a blocker: never "Succeeded".
-        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
+        // Legacy rows carry no per-change verification: never "Succeeded", and the post-run
+        // diagnosis is surfaced as an observation rather than as a verification result.
+        Assert.Equal(Outcome.CompletedUnverified, e.Outcome);
+        Assert.Empty(e.Verification);
+        Assert.Contains(e.Warnings, w => w.StartsWith("Post-run diagnosis: Usage location"));
         Assert.Equal("op", e.Operator);
     }
 
@@ -227,6 +262,27 @@ public class OperationsEndpointsTests
 
         var viewer = new ContractsController(db.Context, new RoleAccess(null), new FakeTenantAccessService(isSystemAdmin: false));
         Assert.IsType<ForbidResult>((await viewer.PutOffboardingPolicy(contract.Id, new OffboardingPolicy(), CancellationToken.None)).Result);
+    }
+
+    [Fact]
+    public async Task Contract_offboarding_policy_read_needs_a_tenant_grant_even_for_catalog_managers()
+    {
+        using var db = new TestDb();
+        var contract = new Contract { Name = "Gold", OffboardingPolicy = new OffboardingPolicy { ForwardTo = "boss@contoso.com" } };
+        var tenant = new Tenant { TenantId = "t1", DisplayName = "Contoso", Contract = contract };
+        db.Context.AddRange(contract, tenant);
+        await db.Context.SaveChangesAsync();
+
+        // Instance Administrator/CatalogManager with no tenant grants: cannot read the policy...
+        var catalogManager = new ContractsController(db.Context, new RoleAccess(null), new FakeTenantAccessService(isSystemAdmin: true));
+        Assert.IsType<ForbidResult>((await catalogManager.GetOffboardingPolicy(contract.Id, CancellationToken.None)).Result);
+        // ...but can still replace it, and the PUT response carries what was saved.
+        var put = await catalogManager.PutOffboardingPolicy(contract.Id, new OffboardingPolicy { FollowUpDays = 7 }, CancellationToken.None);
+        Assert.Equal(7, Assert.IsType<OffboardingPolicy>(Assert.IsType<OkObjectResult>(put.Result).Value).FollowUpDays);
+
+        // A Viewer on a tenant under the contract reads it without any instance role.
+        var viewer = new ContractsController(db.Context, new RoleAccess(TenantRole.Viewer), new FakeTenantAccessService(isSystemAdmin: false));
+        Assert.IsType<OkObjectResult>((await viewer.GetOffboardingPolicy(contract.Id, CancellationToken.None)).Result);
     }
 
     [Fact]

@@ -74,11 +74,57 @@ public static class WorkflowEvidenceAdapter
         };
     }
 
+    /// <summary>
+    /// Copies a finished remediation's result onto the run: steps, post-run diagnosis, success flag,
+    /// and evidence -- the planned operation's own, or, when the workflow verified its steps against
+    /// their desired state, evidence built from those checks. (Without either, evidence is adapted
+    /// from the run when it is finalized, and records the changes as unverified.)
+    /// </summary>
+    public static void ApplyRemediation(WorkflowRun run, WorkflowRunResult result)
+    {
+        run.Steps = result.Steps;
+        run.Findings = result.PostState?.Findings ?? new();
+        run.Healthy = result.PostState?.Healthy;
+        run.Succeeded = result.Succeeded;
+        run.Evidence = result.Evidence
+                       ?? (result.Verification is null ? null : BuildRemediation(run, result.Verification, result.UnchangedSteps));
+    }
+
     /// <summary>Adapts a classic diagnose/remediate run (new or legacy) into evidence.</summary>
     public static OperationEvidence Build(WorkflowRun run)
     {
         if (run.Evidence is not null) return run.Evidence;
+        var isDiagnosis = run.Kind is WorkflowRunKind.Diagnose or WorkflowRunKind.Plan;
+        if (!isDiagnosis) return BuildRemediation(run, null, Array.Empty<int>());
 
+        var e = new OperationEvidence
+        {
+            OperationId = run.WorkflowId,
+            OperationName = run.WorkflowName,
+            Target = TargetFrom(run)
+        };
+        if (!string.IsNullOrEmpty(run.Error)) e.Failures.Add(run.Error!);
+        e.Preflight = run.Findings.ToList();
+        e.Warnings.AddRange(run.Findings
+            .Where(f => f.Status is FindingStatus.Warning or FindingStatus.Blocker)
+            .Select(f => f.Detail is null ? f.Name : $"{f.Name}: {f.Detail}"));
+        e.Outcome = !string.IsNullOrEmpty(run.Error)
+            ? Outcome.Failed
+            : run.Healthy == true ? Outcome.NoChangeNeeded : Outcome.Planned;
+        e.TicketNotes = EvidenceRenderer.GenericTicketNotes(e, isDiagnosis: true);
+        return e;
+    }
+
+    /// <summary>
+    /// Remediation evidence. With <paramref name="checks"/> (desired-state verification linked to
+    /// steps by plan-item id) a step counts as verified only when its linked checks all passed;
+    /// a failed check is a verification failure; a step with no check, or only unverifiable ones, is
+    /// unverified. Without checks (workflows that do not verify, legacy rows) every change is
+    /// unverified: the post-run diagnosis describes general health, not whether each change took
+    /// effect, so it is recorded as observations only.
+    /// </summary>
+    private static OperationEvidence BuildRemediation(WorkflowRun run, IReadOnlyList<VerificationCheck>? checks, IReadOnlyCollection<int> unchanged)
+    {
         var target = TargetFrom(run);
         var e = new OperationEvidence
         {
@@ -88,69 +134,64 @@ public static class WorkflowEvidenceAdapter
         };
         if (!string.IsNullOrEmpty(run.Error)) e.Failures.Add(run.Error!);
 
-        var isDiagnosis = run.Kind is WorkflowRunKind.Diagnose or WorkflowRunKind.Plan;
-        if (isDiagnosis)
+        var targetName = target?.DisplayName ?? "";
+        var items = new List<ItemOutcome>();
+        for (var i = 0; i < run.Steps.Count; i++)
         {
-            e.Preflight = run.Findings.ToList();
-            e.Warnings.AddRange(run.Findings
-                .Where(f => f.Status is FindingStatus.Warning or FindingStatus.Blocker)
-                .Select(f => f.Detail is null ? f.Name : $"{f.Name}: {f.Detail}"));
-            e.Outcome = !string.IsNullOrEmpty(run.Error)
-                ? Outcome.Failed
-                : run.Healthy == true ? Outcome.NoChangeNeeded : Outcome.Planned;
+            var step = run.Steps[i];
+            var id = WorkflowRunResult.StepId(i);
+            var noChange = step.Success && unchanged.Contains(i);
+            e.Plan.Add(new PlanItem
+            {
+                Id = id,
+                Action = step.Name,
+                ObjectType = target?.Kind ?? "",
+                ObjectId = target?.Id ?? "",
+                ObjectName = targetName,
+                Eligible = true,
+                Category = "WorkflowStep"
+            });
+            e.Changes.Add(new ChangeResult
+            {
+                PlanItemId = id,
+                Action = step.Name,
+                ObjectName = targetName,
+                Attempted = !noChange,
+                Succeeded = step.Success,
+                Detail = step.Detail
+            });
+            if (noChange) continue;
+            if (!step.Success) { items.Add(new ItemOutcome(true, false, false)); continue; }
+
+            var linked = checks?.Where(c => c.PlanItemId == id).ToList() ?? new List<VerificationCheck>();
+            if (linked.Any(c => !c.Passed && !c.Unverifiable))
+                items.Add(new ItemOutcome(true, true, false));
+            else if (linked.Count > 0 && linked.All(c => c.Passed))
+                items.Add(new ItemOutcome(true, true, true));
+            else
+                items.Add(new ItemOutcome(true, true, false, Unverifiable: true));
+        }
+
+        if (checks is not null)
+        {
+            e.Verification = checks.ToList();
+            // A whole-run check that failed still contradicts the reported changes.
+            if (checks.Any(c => c.PlanItemId is null && !c.Passed && !c.Unverifiable))
+                items.Add(new ItemOutcome(true, true, false));
         }
         else
         {
-            var targetName = target?.DisplayName ?? "";
-            for (var i = 0; i < run.Steps.Count; i++)
-            {
-                var step = run.Steps[i];
-                e.Plan.Add(new PlanItem
-                {
-                    Id = $"step-{i + 1}",
-                    Action = step.Name,
-                    ObjectType = target?.Kind ?? "",
-                    ObjectId = target?.Id ?? "",
-                    ObjectName = targetName,
-                    Eligible = true,
-                    Category = "WorkflowStep"
-                });
-                e.Changes.Add(new ChangeResult
-                {
-                    PlanItemId = $"step-{i + 1}",
-                    Action = step.Name,
-                    ObjectName = targetName,
-                    Attempted = true,
-                    Succeeded = step.Success,
-                    Detail = step.Detail
-                });
-            }
-            // Post-fix re-diagnosis is the verification; Info findings are observations, not checks.
-            e.Verification = run.Findings
-                .Where(f => f.Status != FindingStatus.Info)
-                .Select(f => new VerificationCheck(f.Name, f.Status == FindingStatus.Ok, f.Detail))
-                .ToList();
-            e.Outcome = DeriveRemediationOutcome(run, e);
+            e.Limitations.Add("This workflow does not verify its changes individually; the post-run diagnosis is recorded as observations, not as proof that each change took effect.");
+            e.Warnings.AddRange(run.Findings
+                .Where(f => f.Status is FindingStatus.Warning or FindingStatus.Blocker)
+                .Select(f => "Post-run diagnosis: " + (f.Detail is null ? f.Name : $"{f.Name}: {f.Detail}")));
         }
 
-        e.TicketNotes = EvidenceRenderer.GenericTicketNotes(e, isDiagnosis);
-        return e;
-    }
-
-    /// <summary>
-    /// Remediation outcome from steps + post-diagnosis. Workflow verification is whole-run (a fresh
-    /// diagnosis), not per step, so: any step reported ok while the re-diagnosis is unhealthy or
-    /// missing counts as unverified.
-    /// </summary>
-    private static Outcome DeriveRemediationOutcome(WorkflowRun run, OperationEvidence e)
-    {
-        if (!string.IsNullOrEmpty(run.Error) && e.Changes.Count == 0) return Outcome.Failed;
-        var verified = run.Healthy == true && e.Verification.All(v => v.Passed);
-        var items = e.Changes.Select(c => new ItemOutcome(
-            Attempted: true, ReportedOk: c.Succeeded, Verified: c.Succeeded && verified)).ToList();
         if (!string.IsNullOrEmpty(run.Error))
             items.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true));
-        return OutcomeRules.Derive(items);
+        e.Outcome = !string.IsNullOrEmpty(run.Error) && e.Changes.Count == 0 ? Outcome.Failed : OutcomeRules.Derive(items);
+        e.TicketNotes = EvidenceRenderer.GenericTicketNotes(e, isDiagnosis: false);
+        return e;
     }
 
     private static OperationTarget? TargetFrom(WorkflowRun run)

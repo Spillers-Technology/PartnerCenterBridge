@@ -34,6 +34,28 @@ public class WorkflowRunResult
     /// </summary>
     public Operations.OperationEvidence? Evidence { get; set; }
 
+    /// <summary>
+    /// Desired-state verification for the steps, each check linked to its step with
+    /// <see cref="StepId"/>: a re-read of exactly what the step was meant to change (not a general
+    /// health diagnosis). A step with no passing check is never reported as verified. Null when the
+    /// workflow does not verify its steps; its evidence then records every change as unverified.
+    /// </summary>
+    public List<Operations.VerificationCheck>? Verification { get; set; }
+
+    /// <summary>0-based indexes of steps that changed nothing (already in place, read-only).</summary>
+    public List<int> UnchangedSteps { get; set; } = new();
+
+    /// <summary>Plan-item id of the step at <paramref name="index"/> in the adapted evidence.</summary>
+    public static string StepId(int index) => $"step-{index + 1}";
+
+    /// <summary>Records a desired-state check for the step at <paramref name="stepIndex"/>.</summary>
+    public void Verify(int stepIndex, string name, bool passed, string? detail) =>
+        (Verification ??= new()).Add(new Operations.VerificationCheck(name, passed, detail, StepId(stepIndex)));
+
+    /// <summary>Records that the step's change was acknowledged but cannot be confirmed by a read-back.</summary>
+    public void CannotVerify(int stepIndex, string name, string detail) =>
+        (Verification ??= new()).Add(Operations.VerificationCheck.NotVerifiable(name, detail, StepId(stepIndex)));
+
     public bool Succeeded => Steps.Count > 0 && Steps.All(s => s.Success);
 }
 

@@ -210,4 +210,170 @@ public class OffboardingOperationTests : IDisposable
         Assert.Contains("Removed 1 group membership (verified)", e.TicketNotes);
         Assert.Empty(_exchange.Calls);
     }
+
+    // --- Device retire: explicit managementState values (finding 2) ---
+
+    private static OffboardingPolicy DevicesOnly() => new()
+    {
+        BlockSignIn = false, RevokeSessions = false, RemoveLicenses = false, GroupCleanup = GroupCleanupMode.None,
+        WipeDevices = DeviceWipeMode.Retire
+    };
+
+    private void StubDevice(string managementState)
+    {
+        _server.Given(Request.Create().WithPath("/users/u1/managedDevices").UsingGet())
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { new { id = "d1", deviceName = "LAPTOP-1", operatingSystem = "Windows", managementState = "managed" } } }));
+        _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1/retire").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(204));
+        _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1").UsingGet())
+            .RespondWith(Response.Create().WithBodyAsJson(new { id = "d1", managementState }));
+    }
+
+    [Theory]
+    [InlineData("retireFailed")]
+    [InlineData("retireCanceled")]
+    public async Task Failed_or_canceled_retire_fails_verification(string state)
+    {
+        StubUser(CloudUser());
+        StubDevice(state);
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
+
+        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
+        Assert.False(e.Verification.Single(v => v.Name.StartsWith("Retire")).Passed);
+        Assert.DoesNotContain("(verified)", e.TicketNotes);
+    }
+
+    [Theory]
+    [InlineData("retirePending")]
+    [InlineData("retireIssued")]
+    public async Task Pending_retire_is_issued_not_completed(string state)
+    {
+        StubUser(CloudUser());
+        StubDevice(state);
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
+
+        Assert.Equal(Outcome.CompletedUnverified, e.Outcome);
+        var check = e.Verification.Single(v => v.PlanItemId == "device:d1");
+        Assert.False(check.Passed);
+        Assert.True(check.Unverifiable);
+        Assert.Contains("retire issued for 1 device but not yet completed", e.TicketNotes);
+        Assert.False(OffboardingOperation.ToSteps(e).Single(s => s.Name.StartsWith("Retire")).Success);
+    }
+
+    [Fact]
+    public async Task Completed_retire_is_verified()
+    {
+        StubUser(CloudUser());
+        StubDevice("retired");
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
+
+        Assert.Equal(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+    }
+
+    // --- Group-inherited licenses (finding 5) ---
+
+    private static object InheritedUser(bool licensed, bool enabled = true) => new
+    {
+        id = "u1", displayName = "Leaver", userPrincipalName = "leaver@contoso.com", accountEnabled = enabled,
+        assignedLicenses = licensed ? new object[] { new { skuId = "sku-e3" } } : Array.Empty<object>(),
+        licenseAssignmentStates = licensed ? new object[] { new { skuId = "sku-e3", assignedByGroup = "lic", state = "Active" } } : Array.Empty<object>(),
+        signInSessionsValidFromDateTime = DateTimeOffset.UtcNow.ToString("o")
+    };
+
+    [Fact]
+    public async Task Inherited_license_still_assigned_is_not_success()
+    {
+        StubUser(InheritedUser(true));
+        StubWrites();
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy { BlockSignIn = false, GroupCleanup = GroupCleanupMode.None });
+
+        Assert.Equal(Outcome.PartiallySucceeded, e.Outcome); // sessions revoked and verified; the license remains
+        Assert.False(e.Verification.Single(v => v.PlanItemId == "license:sku-e3").Passed);
+        Assert.Contains(e.Warnings, w => w.Contains("group-based licensing") && w.Contains("licensing group"));
+        Assert.Contains("still assigned through group-based licensing", e.TicketNotes);
+        Assert.False(OffboardingOperation.ToSteps(e).Single(s => s.Name == "Remove license ENTERPRISEPACK").Success);
+    }
+
+    [Fact]
+    public async Task Inherited_license_gone_after_group_cleanup_is_verified()
+    {
+        StubUser(InheritedUser(true), InheritedUser(false, enabled: false));
+        StubMemberOf([Group("lic", "Licensing")], []);
+        StubWrites();
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy());
+
+        Assert.Equal(Outcome.Succeeded, e.Outcome);
+        Assert.True(e.Verification.Single(v => v.PlanItemId == "license:sku-e3").Passed);
+    }
+
+    // --- Forwarding verification (finding 6) ---
+
+    [Theory]
+    [InlineData("SMTP:notmanager@contoso.com", false, Outcome.VerificationFailed)]
+    [InlineData("smtp:manager@contoso.com.evil.example", false, Outcome.VerificationFailed)]
+    [InlineData("smtp:manager@contoso.com", true, Outcome.VerificationFailed)]   // copy kept: not what was asked
+    [InlineData("SMTP:Manager@Contoso.com", false, Outcome.Succeeded)]
+    [InlineData("manager@contoso.com", false, Outcome.Succeeded)]
+    public async Task Forwarding_verification_matches_the_exact_address_and_delivery_mode(string forwarding, bool deliverAndForward, Outcome expected)
+    {
+        StubUser(CloudUser(), CloudUser(enabled: false, skus: []));
+        StubMemberOf([], []);
+        StubWrites();
+        _exchange.ConvertResult = new ExoResult { Steps = { new("Connect", true, "contoso"), new("Convert to shared", true, "u"), new("Set forwarding", true, "manager@contoso.com") } };
+        _exchange.MailboxAfter = new MailboxInfo("leaver@contoso.com", "Leaver", "SharedMailbox", forwarding, deliverAndForward);
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy { ConvertMailboxToShared = true, ForwardTo = "manager@contoso.com" });
+
+        Assert.Equal(expected, e.Outcome);
+        Assert.Equal(expected == Outcome.Succeeded, e.Verification.Single(v => v.Name.StartsWith("Forward mail")).Passed);
+    }
+
+    // --- Verification tied to plan-item ids, not names (finding 15) ---
+
+    [Fact]
+    public async Task Duplicate_group_names_get_their_own_verification()
+    {
+        StubUser(CloudUser(), CloudUser(enabled: false, skus: []));
+        StubMemberOf([Group("g1", "Finance"), Group("g2", "Finance")], [Group("g2", "Finance")]); // g2 removal did not take
+        StubWrites();
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy());
+
+        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
+        var finance = OffboardingOperation.ToSteps(e).Where(s => s.Name == "Remove from Finance").ToList();
+        Assert.Equal(2, finance.Count);
+        Assert.Single(finance, s => s.Success);
+        Assert.Single(finance, s => !s.Success && s.Detail!.Contains("Still a member"));
+    }
+
+    // --- Interrupted apply keeps partial evidence (finding 8) ---
+
+    [Fact]
+    public async Task Cancellation_mid_apply_keeps_completed_changes()
+    {
+        StubUser(CloudUser());
+        StubMemberOf([Group("g1", "Finance")], []);
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = true }).WithDelay(TimeSpan.FromSeconds(30)));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+        var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
+            () => Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy(), cts.Token));
+
+        var e = ex.Partial;
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "block-sign-in") is { Attempted: true, Succeeded: true });
+        var group = e.Changes.Single(c => c.PlanItemId == "group:g1");
+        Assert.False(group.Attempted);
+        Assert.StartsWith("Interrupted", group.Detail);
+        Assert.Empty(Calls("DELETE"));
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("interrupted", e.TicketNotes);
+    }
 }

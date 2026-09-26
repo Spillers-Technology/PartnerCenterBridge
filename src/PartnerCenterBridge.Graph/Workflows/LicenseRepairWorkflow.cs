@@ -71,7 +71,7 @@ internal sealed class LicenseRepairWorkflow : IWorkflow
 
     public async Task<WorkflowRunResult> RemediateAsync(Tenant tenant, IReadOnlyDictionary<string, string> inputs, CancellationToken ct = default)
     {
-        var run = new WorkflowRunResult();
+        var run = new WorkflowRunResult { Verification = new() };
         var graph = await _graph.CreateAsync(tenant, ct);
         var upn = inputs["userUpn"];
         var desiredUsageLocation = inputs.TryGetValue("usageLocation", out var loc) && !string.IsNullOrWhiteSpace(loc) ? loc : "US";
@@ -82,12 +82,15 @@ internal sealed class LicenseRepairWorkflow : IWorkflow
         var userId = user.GetProperty("id").GetString()!;
 
         var currentLocation = user.TryGetProperty("usageLocation", out var ul) ? ul.GetString() : null;
+        var locationChanged = string.IsNullOrWhiteSpace(currentLocation);
         await WorkflowSteps.RunAsync(run.Steps, "Set usage location", async () =>
         {
-            if (!string.IsNullOrWhiteSpace(currentLocation)) return $"already {currentLocation}";
+            if (!locationChanged) return $"already {currentLocation}";
             await graph.PatchAsync($"/users/{userId}", new { usageLocation = desiredUsageLocation }, ct);
             return desiredUsageLocation;
         });
+        var locationStep = run.Steps.Count - 1;
+        if (!locationChanged) run.UnchangedSteps.Add(locationStep);
 
         // Reprocess the SKUs in error (or all assigned SKUs if none are flagged) by re-issuing them.
         var errored = ErroredSkus(user);
@@ -102,6 +105,44 @@ internal sealed class LicenseRepairWorkflow : IWorkflow
             }, ct);
             return $"{toReapply.Count} SKU(s) reissued";
         });
+        var reprocessStep = run.Steps.Count - 1;
+        if (toReapply.Count == 0) run.UnchangedSteps.Add(reprocessStep);
+
+        // Desired-state verification: the usage location is set, and every reissued SKU is assigned
+        // without an assignment error.
+        var verifyLocation = locationChanged && run.Steps[locationStep].Success;
+        var verifySkus = toReapply.Count > 0 && run.Steps[reprocessStep].Success;
+        if (verifyLocation || verifySkus)
+        {
+            JsonElement? after = null;
+            string? error = null;
+            try
+            {
+                using var doc = await graph.GetAsync($"/users/{userId}?$select=id,usageLocation,assignedLicenses,licenseAssignmentStates", ct);
+                after = doc.RootElement.Clone();
+            }
+            catch (GraphRequestException ex) { error = ex.Message; }
+
+            if (verifyLocation)
+            {
+                var now = after is { } a && a.TryGetProperty("usageLocation", out var l) && l.ValueKind == JsonValueKind.String ? l.GetString() : null;
+                var ok = string.Equals(now, desiredUsageLocation, StringComparison.OrdinalIgnoreCase);
+                run.Verify(locationStep, "Usage location set", ok,
+                    after is null ? $"Could not re-read the user: {error}" : ok ? $"usageLocation is {now} on re-read." : $"usageLocation on re-read is '{now}'.");
+            }
+            if (verifySkus)
+            {
+                foreach (var sku in toReapply)
+                {
+                    var name = $"License {sku} assigned without error";
+                    if (after is not { } a) { run.Verify(reprocessStep, name, false, $"Could not re-read the user: {error}"); continue; }
+                    var assigned = AssignedSkus(a).Contains(sku, StringComparer.OrdinalIgnoreCase);
+                    var inError = ErroredSkus(a).Contains(sku, StringComparer.OrdinalIgnoreCase);
+                    run.Verify(reprocessStep, name, assigned && !inError,
+                        !assigned ? "SKU is not assigned on re-read." : inError ? "SKU is still in an assignment error on re-read." : "Assigned, no error on re-read.");
+                }
+            }
+        }
 
         run.PostState = await DiagnoseAsync(tenant, inputs, ct);
         return run;

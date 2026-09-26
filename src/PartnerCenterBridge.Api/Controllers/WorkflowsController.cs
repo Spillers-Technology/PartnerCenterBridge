@@ -149,11 +149,7 @@ public class WorkflowsController : ControllerBase
         return await Record(workflow!, tenant!, req, WorkflowRunKind.Remediate, async run =>
         {
             var result = await workflow!.RemediateAsync(tenant!, req.Inputs, ct);
-            run.Steps = result.Steps;
-            run.Findings = result.PostState?.Findings ?? new();
-            run.Healthy = result.PostState?.Healthy;
-            run.Succeeded = result.Succeeded;
-            run.Evidence = result.Evidence; // planned operations bring their own evidence
+            WorkflowEvidenceAdapter.ApplyRemediation(run, result);
             return result;
         });
     }
@@ -193,6 +189,7 @@ public class WorkflowsController : ControllerBase
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             return StatusCode(502, ex.Message);
         }
         finally

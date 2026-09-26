@@ -59,25 +59,29 @@ internal sealed class CompromisedAccountLockdownWorkflow : IWorkflow
 
     public async Task<WorkflowRunResult> RemediateAsync(Tenant tenant, IReadOnlyDictionary<string, string> inputs, CancellationToken ct = default)
     {
-        var run = new WorkflowRunResult();
+        var run = new WorkflowRunResult { Verification = new() };
         var graph = await _graph.CreateAsync(tenant, ct);
 
         using var user = await graph.GetAsync($"/users/{Uri.EscapeDataString(inputs["userUpn"])}?$select=id", ct);
         var userId = user.RootElement.GetProperty("id").GetString()!;
+        var startedAt = DateTimeOffset.UtcNow;
 
         await WorkflowSteps.RunAsync(run.Steps, "Block sign-in", async () =>
         {
             await graph.PatchAsync($"/users/{userId}", new { accountEnabled = false }, ct);
             return "accountEnabled = false";
         });
+        var blockStep = run.Steps.Count - 1;
 
         await WorkflowSteps.RunAsync(run.Steps, "Revoke sign-in sessions", async () =>
         {
             await graph.PostAsync($"/users/{userId}/revokeSignInSessions", new { }, ct);
             return "revoked";
         });
+        var revokeStep = run.Steps.Count - 1;
 
         var risky = await GetRiskyRulesAsync(graph, userId, ct);
+        var ruleSteps = new List<(int Step, RiskyRule Rule)>();
         foreach (var rule in risky.Where(r => r.Enabled))
         {
             await WorkflowSteps.RunAsync(run.Steps, $"Disable inbox rule: {rule.Name}", async () =>
@@ -85,9 +89,43 @@ internal sealed class CompromisedAccountLockdownWorkflow : IWorkflow
                 await graph.PatchAsync($"/users/{userId}/mailFolders/inbox/messageRules/{rule.Id}", new { isEnabled = false }, ct);
                 return rule.Behaviour;
             });
+            ruleSteps.Add((run.Steps.Count - 1, rule));
         }
         if (!risky.Any(r => r.Enabled))
+        {
             run.Steps.Add(new("Disable inbox rules", true, "no enabled forwarding/redirect/delete rules"));
+            run.UnchangedSteps.Add(run.Steps.Count - 1);
+        }
+
+        // Desired-state verification: sign-in blocked, sessions revoked, each rule now disabled.
+        // (The post-run diagnosis still lists disabled risky rules as warnings -- they are kept as
+        // evidence on purpose -- so it is context, not the verification.)
+        if (run.Steps[blockStep].Success)
+        {
+            try
+            {
+                using var after = await graph.GetAsync($"/users/{userId}?$select=id,accountEnabled", ct);
+                var disabled = after.RootElement.TryGetProperty("accountEnabled", out var ae) && ae.ValueKind == JsonValueKind.False;
+                run.Verify(blockStep, "Sign-in blocked", disabled, disabled ? "accountEnabled is false on re-read." : "Account is still enabled on re-read.");
+            }
+            catch (GraphRequestException ex) { run.Verify(blockStep, "Sign-in blocked", false, $"Could not re-read the user: {ex.Message}"); }
+        }
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, startedAt, run, revokeStep, ct);
+        if (ruleSteps.Any(r => run.Steps[r.Step].Success))
+        {
+            List<RiskyRule>? after = null;
+            string? error = null;
+            try { after = await GetRiskyRulesAsync(graph, userId, ct); }
+            catch (GraphRequestException ex) { error = ex.Message; }
+            foreach (var (step, rule) in ruleSteps.Where(r => run.Steps[r.Step].Success))
+            {
+                var name = $"Inbox rule disabled: {rule.Name}";
+                var now = after?.FirstOrDefault(r => r.Id == rule.Id);
+                if (after is null) run.Verify(step, name, false, $"Could not re-read inbox rules: {error}");
+                else if (now is { Enabled: true }) run.Verify(step, name, false, "Rule is still enabled on re-read.");
+                else run.Verify(step, name, true, now is null ? "Rule no longer present on re-read." : "Rule is disabled on re-read.");
+            }
+        }
 
         run.PostState = await DiagnoseAsync(tenant, inputs, ct);
         return run;

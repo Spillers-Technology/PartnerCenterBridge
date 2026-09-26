@@ -238,7 +238,7 @@ public class OffboardingOperation : IOffboardingService
                 if (!direct)
                 {
                     item.Eligible = false;
-                    item.Reason = "Assigned through group-based licensing; it is removed with the licensing group membership, not directly.";
+                    item.Reason = "Assigned through group-based licensing; it goes away only when the licensing group membership is removed, and is re-checked after the run.";
                 }
                 else if (gate is not null)
                 {
@@ -331,125 +331,151 @@ public class OffboardingOperation : IOffboardingService
         }
         var uid = Uri.EscapeDataString(user.Id);
 
-        foreach (var item in plan.Items.Where(i => !i.Eligible))
-            Record(item, false, false, "Not performed: " + item.Reason);
-
-        // 1. Sign-in.
-        var block = plan.Items.FirstOrDefault(i => i.Action == BlockSignIn && i.Eligible);
-        if (block is not null)
-            await Run(block, async () => { await graph.PatchAsync($"/users/{uid}", new { accountEnabled = false }, ct); return "accountEnabled=false"; });
-        var revoke = plan.Items.FirstOrDefault(i => i.Action == RevokeSessions && i.Eligible);
-        if (revoke is not null)
-            await Run(revoke, async () => { await graph.PostAsync($"/users/{uid}/revokeSignInSessions", new { }, ct); return "revoked"; });
-
-        // 2. Mailbox conversion (+ forwarding in the same Exchange call), then verify it before
-        // anything that can remove a license.
-        var convert = plan.Items.FirstOrDefault(i => i.Action == ConvertToShared && i.Eligible);
-        var forward = plan.Items.FirstOrDefault(i => i.Action == SetForwarding && i.Eligible);
-        var conversionVerified = false;
-        MailboxInfo? mailboxAfter = null;
-        string? mailboxVerifyError = null;
-        if (convert is not null)
-        {
-            try
-            {
-                var exo = await _exchange.ConvertToSharedAsync(tenant, convert.ObjectId,
-                    forward is null ? null : policy.ForwardTo!.Trim(), deliverToMailboxAndForward: false, ct);
-                var convStep = exo.Steps.FirstOrDefault(s => s.Name.Contains("shared", StringComparison.OrdinalIgnoreCase));
-                var failedStep = exo.Steps.FirstOrDefault(s => !s.Success);
-                Record(convert, true, convStep?.Success == true,
-                    convStep?.Success == true ? "Set-Mailbox -Type Shared" : failedStep?.Detail ?? "Exchange did not report a conversion step.");
-                if (forward is not null)
-                {
-                    var fwdStep = exo.Steps.FirstOrDefault(s => s.Name.Contains("forward", StringComparison.OrdinalIgnoreCase));
-                    Record(forward, true, fwdStep?.Success == true,
-                        fwdStep?.Success == true ? $"ForwardingSmtpAddress={policy.ForwardTo!.Trim()}" : failedStep?.Detail ?? "Exchange did not report a forwarding step.");
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Record(convert, true, false, ex.Message);
-                if (forward is not null) Record(forward, true, false, ex.Message);
-            }
-
-            try
-            {
-                mailboxAfter = await _exchange.GetMailboxAsync(tenant, convert.ObjectId, ct);
-                if (mailboxAfter is null) mailboxVerifyError = "Exchange returned no mailbox on re-read.";
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                mailboxVerifyError = ex.Message;
-            }
-            conversionVerified = string.Equals(mailboxAfter?.RecipientTypeDetails, "SharedMailbox", StringComparison.OrdinalIgnoreCase);
-        }
-        var gateOpen = !state.ConversionRequested || conversionVerified;
-        const string gateReason = "Skipped: mailbox conversion to shared was not verified; removing licenses now could put the mailbox on the deletion path.";
-
-        // 3. Groups.
-        foreach (var item in plan.Items.Where(i => i.Action == RemoveMember && i.Eligible))
-        {
-            if (!gateOpen) { Record(item, false, false, gateReason); continue; }
-            await Run(item, async () =>
-            {
-                try
-                {
-                    await graph.DeleteAsync($"/groups/{Uri.EscapeDataString(item.ObjectId)}/members/{uid}/$ref", ct);
-                    return "removed";
-                }
-                catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { return "already not a member"; }
-            });
-        }
-
-        // 4. Licenses (one assignLicense call for every eligible SKU).
-        var licenseItems = plan.Items.Where(i => i.Action == RemoveLicense && i.Eligible).ToList();
-        if (licenseItems.Count > 0)
-        {
-            if (!gateOpen)
-                foreach (var item in licenseItems) Record(item, false, false, gateReason);
-            else
-            {
-                try
-                {
-                    await graph.PostAsync($"/users/{uid}/assignLicense", new
-                    {
-                        addLicenses = Array.Empty<object>(),
-                        removeLicenses = licenseItems.Select(i => i.ObjectId).ToArray()
-                    }, ct);
-                    foreach (var item in licenseItems) Record(item, true, true, "removed");
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    foreach (var item in licenseItems) Record(item, true, false, GraphErrors.Describe(ex));
-                }
-            }
-        }
-
-        // 5. Devices.
-        foreach (var item in plan.Items.Where(i => i.Action == RetireDevice && i.Eligible))
-            await Run(item, async () =>
-            {
-                await graph.PostAsync($"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}/retire", new { }, ct);
-                return "retire issued";
-            });
-
-        // --- Verification: re-read everything that was attempted. ---
+        // Verification results, keyed by plan-item id (never by display name: two groups can share one).
         var verified = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var pending = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         void Check(PlanItem item, bool passed, string detail)
         {
             verified[item.Id] = passed;
-            e.Verification.Add(new VerificationCheck(Label(item), passed, detail));
+            e.Verification.Add(new VerificationCheck(Label(item), passed, detail, item.Id));
+        }
+        void Pending(PlanItem item, string detail)
+        {
+            verified[item.Id] = false;
+            pending.Add(item.Id);
+            e.Verification.Add(VerificationCheck.NotVerifiable(Label(item), detail, item.Id));
         }
         bool Attempted(PlanItem? i) => i is not null && changes.TryGetValue(i.Id, out var c) && c.Attempted;
 
-        var needUser = Attempted(block) || Attempted(revoke) || licenseItems.Any(Attempted);
+        foreach (var item in plan.Items.Where(i => !i.Eligible))
+            Record(item, false, false, "Not performed: " + item.Reason);
+
+        var block = plan.Items.FirstOrDefault(i => i.Action == BlockSignIn && i.Eligible);
+        var revoke = plan.Items.FirstOrDefault(i => i.Action == RevokeSessions && i.Eligible);
+        var convert = plan.Items.FirstOrDefault(i => i.Action == ConvertToShared && i.Eligible);
+        var forward = plan.Items.FirstOrDefault(i => i.Action == SetForwarding && i.Eligible);
+        var licenseItems = plan.Items.Where(i => i.Action == RemoveLicense && i.Eligible).ToList();
+        // Every SKU the policy intends to remove, including group-inherited ones PCB cannot remove directly.
+        var requestedLicenses = plan.Items.Where(i => i.Action == RemoveLicense && i.ObjectId.Length > 0).ToList();
+        var conversionVerified = false;
+        MailboxInfo? mailboxAfter = null;
+        string? mailboxVerifyError = null;
+
+        try
+        {
+            // 1. Sign-in.
+            if (block is not null)
+                await Run(block, async () => { await graph.PatchAsync($"/users/{uid}", new { accountEnabled = false }, ct); return "accountEnabled=false"; });
+            if (revoke is not null)
+                await Run(revoke, async () => { await graph.PostAsync($"/users/{uid}/revokeSignInSessions", new { }, ct); return "revoked"; });
+
+            // 2. Mailbox conversion (+ forwarding in the same Exchange call), then verify it before
+            // anything that can remove a license.
+            if (convert is not null)
+            {
+                try
+                {
+                    var exo = await _exchange.ConvertToSharedAsync(tenant, convert.ObjectId,
+                        forward is null ? null : policy.ForwardTo!.Trim(), deliverToMailboxAndForward: false, ct);
+                    var convStep = exo.Steps.FirstOrDefault(s => s.Name.Contains("shared", StringComparison.OrdinalIgnoreCase));
+                    var failedStep = exo.Steps.FirstOrDefault(s => !s.Success);
+                    Record(convert, true, convStep?.Success == true,
+                        convStep?.Success == true ? "Set-Mailbox -Type Shared" : failedStep?.Detail ?? "Exchange did not report a conversion step.");
+                    if (forward is not null)
+                    {
+                        var fwdStep = exo.Steps.FirstOrDefault(s => s.Name.Contains("forward", StringComparison.OrdinalIgnoreCase));
+                        Record(forward, true, fwdStep?.Success == true,
+                            fwdStep?.Success == true ? $"ForwardingSmtpAddress={policy.ForwardTo!.Trim()}" : failedStep?.Detail ?? "Exchange did not report a forwarding step.");
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    Record(convert, true, false, ex.Message);
+                    if (forward is not null) Record(forward, true, false, ex.Message);
+                }
+
+                try
+                {
+                    mailboxAfter = await _exchange.GetMailboxAsync(tenant, convert.ObjectId, ct);
+                    if (mailboxAfter is null) mailboxVerifyError = "Exchange returned no mailbox on re-read.";
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    mailboxVerifyError = ex.Message;
+                }
+                conversionVerified = string.Equals(mailboxAfter?.RecipientTypeDetails, "SharedMailbox", StringComparison.OrdinalIgnoreCase);
+            }
+            var gateOpen = !state.ConversionRequested || conversionVerified;
+            const string gateReason = "Skipped: mailbox conversion to shared was not verified; removing licenses now could put the mailbox on the deletion path.";
+
+            // 3. Groups.
+            foreach (var item in plan.Items.Where(i => i.Action == RemoveMember && i.Eligible))
+            {
+                if (!gateOpen) { Record(item, false, false, gateReason); continue; }
+                await Run(item, async () =>
+                {
+                    try
+                    {
+                        await graph.DeleteAsync($"/groups/{Uri.EscapeDataString(item.ObjectId)}/members/{uid}/$ref", ct);
+                        return "removed";
+                    }
+                    catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { return "already not a member"; }
+                });
+            }
+
+            // 4. Licenses (one assignLicense call for every eligible SKU).
+            if (licenseItems.Count > 0)
+            {
+                if (!gateOpen)
+                    foreach (var item in licenseItems) Record(item, false, false, gateReason);
+                else
+                {
+                    try
+                    {
+                        await graph.PostAsync($"/users/{uid}/assignLicense", new
+                        {
+                            addLicenses = Array.Empty<object>(),
+                            removeLicenses = licenseItems.Select(i => i.ObjectId).ToArray()
+                        }, ct);
+                        foreach (var item in licenseItems) Record(item, true, true, "removed");
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        foreach (var item in licenseItems) Record(item, true, false, GraphErrors.Describe(ex));
+                    }
+                }
+            }
+
+            // 5. Devices.
+            foreach (var item in plan.Items.Where(i => i.Action == RetireDevice && i.Eligible))
+                await Run(item, async () =>
+                {
+                    await graph.PostAsync($"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}/retire", new { }, ct);
+                    return "retire issued";
+                });
+        }
+        catch (Exception ex)
+        {
+            // Cancelled (or an unexpected error) mid-apply: keep the evidence of what already changed.
+            foreach (var item in plan.Items.Where(i => i.Eligible && !changes.ContainsKey(i.Id)))
+                Record(item, false, false, "Interrupted: the run stopped before this step was confirmed applied; its state is unknown until re-checked.");
+            foreach (var item in plan.Items.Where(i => Attempted(i)))
+                e.Verification.Add(new VerificationCheck(Label(item), false, "Not verified: the run was interrupted before the verification re-read.", item.Id));
+            e.Failures.Add($"Interrupted: {(ex is OperationCanceledException ? "the request was cancelled" : ex.Message)}.");
+            Finish();
+            e.TicketNotes += " The run was interrupted before it finished; re-run the plan to see the current state.";
+            throw new OperationInterruptedException(e, ex);
+        }
+
+        // --- Verification: re-read everything that was attempted, plus every requested license. ---
+        var needUser = Attempted(block) || Attempted(revoke) || requestedLicenses.Count > 0;
         JsonElement? userAfter = null;
         string? userVerifyError = null;
         if (needUser)
         {
             try
             {
-                using var doc = await graph.GetAsync($"/users/{uid}?$select=id,accountEnabled,signInSessionsValidFromDateTime,assignedLicenses", ct);
+                using var doc = await graph.GetAsync($"/users/{uid}?$select=id,accountEnabled,signInSessionsValidFromDateTime,assignedLicenses,licenseAssignmentStates", ct);
                 userAfter = doc.RootElement.Clone();
             }
             catch (Exception ex) when (ex is not OperationCanceledException) { userVerifyError = GraphErrors.Describe(ex); }
@@ -483,9 +509,17 @@ public class OffboardingOperation : IOffboardingService
                 : mailboxVerifyError ?? $"Mailbox type on re-read is {mailboxAfter?.RecipientTypeDetails ?? "unknown"}.");
         if (Attempted(forward))
         {
+            // Exact address (Exchange may prefix "smtp:"), and the requested delivery mode: forward
+            // only, no copy kept in the mailbox.
             var fwd = mailboxAfter?.ForwardingSmtpAddress ?? "";
-            var ok = fwd.EndsWith(policy.ForwardTo!.Trim(), StringComparison.OrdinalIgnoreCase);
-            Check(forward!, ok, ok ? $"Forwarding to {fwd} on re-read." : mailboxVerifyError ?? $"Forwarding on re-read is '{fwd}'.");
+            var addressOk = string.Equals(BareSmtp(fwd), policy.ForwardTo!.Trim(), StringComparison.OrdinalIgnoreCase);
+            var deliverOk = mailboxAfter is { DeliverToMailboxAndForward: false };
+            var ok = addressOk && deliverOk;
+            Check(forward!, ok,
+                ok ? $"Forwarding to {BareSmtp(fwd)} (no copy kept in the mailbox) on re-read."
+                : mailboxAfter is null ? mailboxVerifyError ?? "Mailbox could not be re-read."
+                : !addressOk ? $"Forwarding on re-read is '{fwd}', not {policy.ForwardTo!.Trim()}."
+                : "DeliverToMailboxAndForward is true on re-read; forward-only was requested.");
         }
 
         var groupItems = plan.Items.Where(i => i.Action == RemoveMember && Attempted(i)).ToList();
@@ -507,13 +541,29 @@ public class OffboardingOperation : IOffboardingService
             }
         }
 
-        foreach (var item in licenseItems.Where(Attempted))
+        // Every requested SKU's final state, including group-inherited ones: a license still assigned
+        // after offboarding is unfinished work whichever way it was assigned.
+        var remainingInherited = new List<PlanItem>();
+        foreach (var item in requestedLicenses)
         {
+            var inherited = !item.Eligible && IsGroupBased(item);
+            if (!Attempted(item) && !inherited) continue; // gated/skipped direct SKUs are already reported as not done
             if (userAfter is not { } u) { Check(item, false, $"Could not re-read licenses: {userVerifyError}"); continue; }
             var still = u.TryGetProperty("assignedLicenses", out var al) && al.ValueKind == JsonValueKind.Array
                         && al.EnumerateArray().Any(l => string.Equals(Str(l, "skuId"), item.ObjectId, StringComparison.OrdinalIgnoreCase));
-            Check(item, !still, still ? "License still assigned on re-read." : "License no longer assigned on re-read.");
+            if (!inherited)
+                Check(item, !still, still ? "License still assigned on re-read." : "License no longer assigned on re-read.");
+            else if (still)
+            {
+                remainingInherited.Add(item);
+                Check(item, false, "Still assigned through group-based licensing on re-read. It is removed only by removing the user from the licensing group (or changing that group's licenses); group license changes can also take a few minutes to process.");
+            }
+            else
+                Check(item, true, "No longer assigned on re-read (removed with the licensing group membership).");
         }
+        if (remainingInherited.Count > 0)
+            e.Warnings.Add($"{Count(remainingInherited.Count, "license")} still assigned through group-based licensing ({string.Join(", ", remainingInherited.Select(i => i.ObjectName))}). " +
+                           "Group-based licenses cannot be removed directly: remove the user from the licensing group, or change the group's license assignment.");
 
         foreach (var item in plan.Items.Where(i => i.Action == RetireDevice && Attempted(i)))
         {
@@ -522,41 +572,84 @@ public class OffboardingOperation : IOffboardingService
                 using var doc = await graph.GetAsync(
                     $"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}?$select=id,managementState", ct);
                 var ms = Str(doc.RootElement, "managementState") ?? "";
-                var ok = ms.Contains("retire", StringComparison.OrdinalIgnoreCase);
-                Check(item, ok, ok ? $"managementState={ms}" : $"managementState on re-read is '{ms}'.");
+                switch (ms.ToLowerInvariant())
+                {
+                    case "retired":
+                        Check(item, true, $"managementState={ms}");
+                        break;
+                    case "retirepending" or "retireissued":
+                        Pending(item, $"Retire issued, not yet completed (managementState={ms}); the device completes it at its next check-in.");
+                        break;
+                    case "retirefailed" or "retirecanceled":
+                        Check(item, false, $"Retire did not complete: managementState={ms}.");
+                        break;
+                    default:
+                        Check(item, false, $"managementState on re-read is '{ms}'; the retire is not reflected.");
+                        break;
+                }
             }
             catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { Check(item, true, "Device record is gone (retired)."); }
             catch (Exception ex) when (ex is not OperationCanceledException) { Check(item, false, $"Could not re-read device: {GraphErrors.Describe(ex)}"); }
         }
 
-        // --- Outcome and notes ---
-        var outcomes = new List<ItemOutcome>();
-        foreach (var item in plan.Items)
-        {
-            var c = changes.GetValueOrDefault(item.Id);
-            if (c is { Attempted: true })
-                outcomes.Add(new ItemOutcome(true, c.Succeeded, verified.GetValueOrDefault(item.Id)));
-            else if (state.RequiredIds.Contains(item.Id) || (item.Eligible && c is { Attempted: false }))
-                outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true));
-        }
-        e.Outcome = OutcomeRules.Derive(outcomes);
-        e.TicketNotes = BuildNotes(state, e, changes, verified);
+        Finish();
         return e;
+
+        // --- Outcome and notes ---
+        void Finish()
+        {
+            var outcomes = new List<ItemOutcome>();
+            foreach (var item in plan.Items)
+            {
+                var c = changes.GetValueOrDefault(item.Id);
+                if (c is { Attempted: true })
+                    outcomes.Add(new ItemOutcome(true, c.Succeeded, verified.GetValueOrDefault(item.Id), Unverifiable: pending.Contains(item.Id)));
+                else if (state.RequiredIds.Contains(item.Id) || (item.Eligible && c is { Attempted: false })
+                         || (verified.TryGetValue(item.Id, out var ok) && !ok))
+                    outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true));
+            }
+            e.Outcome = OutcomeRules.Derive(outcomes);
+            e.TicketNotes = BuildNotes(state, e, changes, verified, pending);
+        }
+    }
+
+    private static bool IsGroupBased(PlanItem item) =>
+        item.Reason?.StartsWith("Assigned through group-based", StringComparison.Ordinal) == true;
+
+    /// <summary>Exchange reports forwarding as "smtp:user@domain" (or bare); strip only that prefix.</summary>
+    private static string BareSmtp(string address)
+    {
+        var trimmed = address.Trim();
+        return trimmed.StartsWith("smtp:", StringComparison.OrdinalIgnoreCase) ? trimmed[5..] : trimmed;
     }
 
     /// <summary>Legacy-shaped steps for the existing terminate response, one per plan item.</summary>
     public static List<ProvisioningStep> ToSteps(OperationEvidence e)
     {
+        // Checks are matched to items by plan-item id; rows written before checks carried one fall
+        // back to the label.
+        var linked = e.Verification.Any(v => v.PlanItemId is not null);
+        VerificationCheck? CheckFor(PlanItem item) => linked
+            ? e.Verification.FirstOrDefault(v => v.PlanItemId == item.Id)
+            : e.Verification.FirstOrDefault(v => v.Name == Label(item));
+
         var steps = new List<ProvisioningStep>();
         foreach (var item in e.Plan)
         {
             var c = e.Changes.FirstOrDefault(x => x.PlanItemId == item.Id);
-            var check = e.Verification.FirstOrDefault(v => v.Name == Label(item));
+            var check = CheckFor(item);
             if (c is { Attempted: true })
             {
                 var ok = c.Succeeded && check?.Passed == true;
                 steps.Add(new(Label(item), ok,
-                    ok ? $"{c.Detail}; verified" : c.Succeeded ? $"{c.Detail}; not verified: {check?.Detail}" : c.Detail));
+                    ok ? $"{c.Detail}; verified"
+                    : c.Succeeded && check?.Unverifiable == true ? $"{c.Detail}; not yet confirmed: {check.Detail}"
+                    : c.Succeeded ? $"{c.Detail}; not verified: {check?.Detail}" : c.Detail));
+            }
+            else if (IsGroupBased(item) && check is not null)
+            {
+                // Inherited license: what matters is whether it is gone at the end.
+                steps.Add(new(Label(item), check.Passed, (check.Passed ? "Removed with the licensing group: " : "Still assigned: ") + check.Detail));
             }
             else
             {
@@ -567,7 +660,7 @@ public class OffboardingOperation : IOffboardingService
                             or MembershipCategory.MailEnabledSecurity or MembershipCategory.Distribution
                             or MembershipCategory.DirectoryRole or MembershipCategory.RoleAssignable
                             or MembershipCategory.Other or "FollowUp"
-                        || item.Reason?.StartsWith("Assigned through group-based", StringComparison.Ordinal) == true);
+                        || IsGroupBased(item));
                 var why = (c?.Detail ?? item.Reason ?? "").Replace("Not performed: ", "");
                 steps.Add(new(Label(item), informational, (informational ? "Left in place: " : "Not performed: ") + why));
             }
@@ -591,7 +684,7 @@ public class OffboardingOperation : IOffboardingService
     };
 
     private static string BuildNotes(PlanState state, OperationEvidence e,
-        Dictionary<string, ChangeResult> changes, Dictionary<string, bool> verified)
+        Dictionary<string, ChangeResult> changes, Dictionary<string, bool> verified, HashSet<string> pending)
     {
         var sb = new StringBuilder();
         var user = state.User;
@@ -600,8 +693,10 @@ public class OffboardingOperation : IOffboardingService
         string Status(PlanItem item)
         {
             var c = changes.GetValueOrDefault(item.Id);
-            if (c is null || !c.Attempted) return "skipped";
+            if (c is null || !c.Attempted)
+                return IsGroupBased(item) && verified.TryGetValue(item.Id, out var gone) ? (gone ? "group-removed" : "remaining") : "skipped";
             if (!c.Succeeded) return "failed";
+            if (pending.Contains(item.Id)) return "pending";
             return verified.GetValueOrDefault(item.Id) ? "verified" : "unverified";
         }
 
@@ -628,6 +723,9 @@ public class OffboardingOperation : IOffboardingService
             if (byStatus.TryGetValue("verified", out var v)) parts.Add($"{verb} {Count(v.Count, noun)} (verified)");
             if (byStatus.TryGetValue("unverified", out var uv)) parts.Add($"{Count(uv.Count, noun)} reported {verb.ToLowerInvariant()} but not confirmed");
             if (byStatus.TryGetValue("failed", out var f)) parts.Add($"{Count(f.Count, noun)} failed ({string.Join(", ", f.Select(i => i.ObjectName))})");
+            if (byStatus.TryGetValue("pending", out var p)) parts.Add($"{(action == RetireDevice ? "retire issued for " : "")}{Count(p.Count, noun)}{(action == RetireDevice ? "" : " requested")} but not yet completed ({string.Join(", ", p.Select(i => i.ObjectName))})");
+            if (byStatus.TryGetValue("group-removed", out var gr)) parts.Add($"{Count(gr.Count, noun)} removed with the licensing group membership (verified)");
+            if (byStatus.TryGetValue("remaining", out var rem)) parts.Add($"{Count(rem.Count, noun)} still assigned through group-based licensing ({string.Join(", ", rem.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("skipped", out var s))
             {
                 var reasons = s.GroupBy(i => (changes.GetValueOrDefault(i.Id)?.Detail ?? i.Reason ?? "").Replace("Not performed: ", "").TrimEnd('.'));
@@ -637,7 +735,7 @@ public class OffboardingOperation : IOffboardingService
         }
         Summarize(RemoveMember, "group membership", "Removed");
         Summarize(RemoveLicense, "license", "Removed");
-        Summarize(RetireDevice, "device", "Retire issued for");
+        Summarize(RetireDevice, "device", "Retired");
 
         foreach (var w in e.Warnings) sb.Append(w.TrimEnd('.')).Append(". ");
         sb.Append($"Outcome: {Describe(e.Outcome)}.");

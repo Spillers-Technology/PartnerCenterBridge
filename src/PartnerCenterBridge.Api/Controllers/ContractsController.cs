@@ -80,19 +80,19 @@ public class ContractsController : ControllerBase
 
     /// <summary>
     /// The contract's offboarding policy. Returns the built-in defaults (today's offboarding
-    /// behavior) when the contract has none configured. Readable by catalog managers and by anyone
-    /// with a Viewer grant on a tenant served under the contract.
+    /// behavior) when the contract has none configured. This is tenant data (it can name a
+    /// forwarding address), so it needs a Viewer grant on at least one tenant served under the
+    /// contract whatever the caller's instance role: the instance and tenant planes never stand in
+    /// for each other. A catalog manager without such a grant can still replace the policy (PUT);
+    /// the PUT response returns what was saved.
     /// </summary>
     [HttpGet("{id:guid}/offboarding-policy")]
     public async Task<ActionResult<OffboardingPolicy>> GetOffboardingPolicy(Guid id, CancellationToken ct)
     {
-        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct))
-        {
-            var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
-            if (allowed is not null && !await _db.Tenants.AsNoTracking()
-                    .AnyAsync(tenant => tenant.ContractId == id && allowed.Contains(tenant.Id), ct))
-                return Forbid();
-        }
+        var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+        if (allowed is not null && !await _db.Tenants.AsNoTracking()
+                .AnyAsync(tenant => tenant.ContractId == id && allowed.Contains(tenant.Id), ct))
+            return Forbid();
         var contract = await _db.Contracts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
         if (contract is null) return NotFound();
         return Ok(contract.OffboardingPolicy ?? new OffboardingPolicy());

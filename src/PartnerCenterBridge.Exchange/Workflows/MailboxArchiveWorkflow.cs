@@ -55,14 +55,53 @@ internal sealed class MailboxArchiveWorkflow : IWorkflow
 
         var exo = await _exo.RemediateArchiveAsync(tenant, inputs["identity"], options, ct);
 
-        var run = new WorkflowRunResult { Steps = exo.Steps };
+        var run = new WorkflowRunResult { Steps = exo.Steps, Verification = new() };
         if (exo.State is not null)
         {
             var post = new DiagnosisResult();
             post.Findings.AddRange(ToFindings(exo.State));
             run.PostState = post;
         }
+        VerifySteps(run, exo.State);
         return run;
+    }
+
+    /// <summary>
+    /// Desired-state verification per step, against the archive state the script re-read after
+    /// remediating: each step is checked for exactly the property it sets. Steps that found the
+    /// setting already in place changed nothing; triggering the Managed Folder Assistant starts an
+    /// asynchronous job nothing can confirm yet.
+    /// </summary>
+    private static void VerifySteps(WorkflowRunResult run, ArchiveState? state)
+    {
+        for (var i = 0; i < run.Steps.Count; i++)
+        {
+            var step = run.Steps[i];
+            if (!step.Success) continue;
+            var detail = step.Detail ?? "";
+            if (step.Name == "Connect" || detail.StartsWith("already", StringComparison.OrdinalIgnoreCase)
+                                       || detail.Equals("not set", StringComparison.OrdinalIgnoreCase))
+            {
+                run.UnchangedSteps.Add(i);
+                continue;
+            }
+            (bool Ok, string Detail)? check = step.Name switch
+            {
+                "Enable archive" => state is null ? null : (state.ArchiveEnabled, state.ArchiveEnabled ? "Archive is enabled on re-read." : "Archive is not enabled on re-read."),
+                "Enable auto-expanding archive" => state is null ? null : (state.AutoExpandingArchiveEnabled, state.AutoExpandingArchiveEnabled ? "Auto-expanding archive is enabled on re-read." : "Auto-expanding archive is not enabled on re-read."),
+                "Assign retention policy" => state is null ? null : (!string.IsNullOrEmpty(state.RetentionPolicy), string.IsNullOrEmpty(state.RetentionPolicy) ? "No retention policy on re-read." : $"Retention policy {state.RetentionPolicy} on re-read."),
+                "Clear retention hold" => state is null ? null : (!state.RetentionHoldEnabled, state.RetentionHoldEnabled ? "Retention hold is still enabled on re-read." : "Retention hold is off on re-read."),
+                "Enable ELC processing" => state is null ? null : (!state.ElcProcessingDisabled, state.ElcProcessingDisabled ? "ELC processing is still disabled on re-read." : "ELC processing is enabled on re-read."),
+                _ => null
+            };
+            if (step.Name == "Trigger Managed Folder Assistant")
+                run.CannotVerify(i, step.Name, "The Managed Folder Assistant runs asynchronously; starting it was acknowledged but its progress cannot be confirmed yet.");
+            else if (check is { } c)
+                run.Verify(i, step.Name, c.Ok, c.Detail);
+            else if (state is null)
+                run.Verify(i, step.Name, false, "The archive state could not be re-read after remediation.");
+            // Anything else (an unknown step) has no check and is therefore reported unverified.
+        }
     }
 
     /// <summary>Missing bool inputs default to true - every switch defaults to the safe, full fix.</summary>

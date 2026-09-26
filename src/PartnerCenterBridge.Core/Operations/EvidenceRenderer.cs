@@ -24,6 +24,8 @@ public static class EvidenceRenderer
         Outcome.NoChangeNeeded => "No change needed",
         Outcome.VerificationFailed => "Verification failed (changes reported but not confirmed)",
         Outcome.Planned => "Planned (nothing applied)",
+        Outcome.CompletedUnverified =>
+            "Completed, unverified (changes were applied and acknowledged by Microsoft but could not be independently verified)",
         _ => outcome.ToString()
     };
 
@@ -86,13 +88,21 @@ public static class EvidenceRenderer
             sb.Append("No post-change verification was recorded, so the result is unconfirmed. ");
             return;
         }
-        var failed = e.Verification.Where(v => !v.Passed).ToList();
-        if (failed.Count == 0)
-            sb.Append($"Post-change verification passed all {Count(e.Verification.Count, "check")}. ");
-        else
-            sb.Append($"Post-change verification: {failed.Count} of {Count(e.Verification.Count, "check")} did not pass (")
-              .Append(string.Join("; ", failed.Select(v => v.Detail is null ? v.Name : $"{v.Name}: {v.Detail}")))
+        var checks = e.Verification.Where(v => !v.Unverifiable).ToList();
+        var unverifiable = e.Verification.Where(v => v.Unverifiable).ToList();
+        var failed = checks.Where(v => !v.Passed).ToList();
+        if (checks.Count > 0 && failed.Count == 0)
+            sb.Append($"Post-change verification passed all {Count(checks.Count, "check")}. ");
+        else if (failed.Count > 0)
+            sb.Append($"Post-change verification: {failed.Count} of {Count(checks.Count, "check")} did not pass (")
+              .Append(string.Join("; ", failed.Select(Text)))
               .Append("). ");
+        if (unverifiable.Count > 0)
+            sb.Append("Acknowledged but not independently verifiable: ")
+              .Append(string.Join("; ", unverifiable.Select(Text)))
+              .Append(". ");
+
+        static string Text(VerificationCheck v) => v.Detail is null ? v.Name : $"{v.Name}: {v.Detail.TrimEnd('.')}";
     }
 
     private static void AppendFailures(StringBuilder sb, OperationEvidence e)
@@ -167,7 +177,7 @@ public static class EvidenceRenderer
             sb.AppendLine("| Check | Result | Detail |");
             sb.AppendLine("|---|---|---|");
             foreach (var v in e.Verification)
-                sb.AppendLine($"| {Cell(v.Name)} | {(v.Passed ? "passed" : "FAILED")} | {Cell(v.Detail)} |");
+                sb.AppendLine($"| {Cell(v.Name)} | {(v.Passed ? "passed" : v.Unverifiable ? "not verifiable" : "FAILED")} | {Cell(v.Detail)} |");
         }
         sb.AppendLine();
 
