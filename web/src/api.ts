@@ -3,8 +3,9 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  InstanceRole, InstanceUser, McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
-  TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
+  InstanceRole, InstanceUser, McpTokenInfo, OperationEvidence, OperationPlan, PasskeyInfo, PendingAction,
+  PersonWorkspace, ProvisioningResult, ProvisioningTemplate, SamStatus, SectionDiff, Sku, SystemDiagnostics, SystemStatus,
+  Tenant, TenantGrant, TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
 
@@ -19,10 +20,29 @@ async function authHeaders(init: RequestInit = {}): Promise<Headers> {
   return headers;
 }
 
+/**
+ * A non-2xx API response. The message keeps the historical "status statusText: body" shape every
+ * screen already displays; `status` lets callers branch on it (e.g. 404 from an older server that
+ * predates an endpoint) without parsing the message.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** True when `e` is an ApiError with the given HTTP status. */
+export function isApiStatus(e: unknown, status: number): boolean {
+  return e instanceof ApiError && e.status === status;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = await authHeaders(init);
   const resp = await fetch(`${base}${path}`, { ...init, headers });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${await resp.text()}`);
   return resp.status === 204 ? (undefined as T) : ((await resp.json()) as T);
 }
 
@@ -30,6 +50,37 @@ export const api = {
   health: () => request<{ status: string }>("/health"),
 
   dashboard: () => request<Dashboard>("/api/dashboard"),
+
+  /** Workbench host status + diagnostics (0.9.0+). Older servers answer 404. */
+  system: {
+    status: () => request<SystemStatus>("/api/system/status"),
+    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics")
+  },
+
+  /** Instance-level Secure Application Model credential (requires instance.sam.manage). */
+  sam: {
+    status: () => request<SamStatus>("/api/admin/sam/status"),
+    seed: (refreshToken: string) =>
+      request<void>("/api/admin/sam/seed", { method: "POST", body: JSON.stringify({ refreshToken }) })
+  },
+
+  /** Person workspace (0.9.0+): each section loads independently with its own status. */
+  people: {
+    get: (tenantId: string, userId: string) =>
+      request<PersonWorkspace>(`/api/tenants/${tenantId}/people/${encodeURIComponent(userId)}`)
+  },
+
+  /** Access Parity (0.9.0+): additive group-membership mirroring from a source to a target user. */
+  accessParity: {
+    plan: (tenantId: string, sourceUserId: string, targetUserId: string) =>
+      request<OperationPlan>(`/api/tenants/${tenantId}/operations/access-parity/plan`, {
+        method: "POST", body: JSON.stringify({ sourceUserId, targetUserId })
+      }),
+    apply: (tenantId: string, sourceUserId: string, targetUserId: string, itemIds: string[]) =>
+      request<OperationEvidence>(`/api/tenants/${tenantId}/operations/access-parity/apply`, {
+        method: "POST", body: JSON.stringify({ sourceUserId, targetUserId, itemIds })
+      })
+  },
 
   search: {
     users: (q: string) => request<GlobalSearchResult>(`/api/search/users?q=${encodeURIComponent(q)}`)
@@ -117,6 +168,12 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ tenantId, termination })
       }),
+    /** 0.9.0+: ordered, destructive-flagged offboarding plan (no changes made). */
+    terminatePlan: (tenantId: string, termination: Record<string, unknown>) =>
+      request<OperationPlan>("/api/provisioning/terminate/plan", {
+        method: "POST",
+        body: JSON.stringify({ tenantId, termination })
+      }),
     getTemplate: (contractId: string) =>
       request<ProvisioningTemplate | undefined>(`/api/contracts/${contractId}/provisioning-template`),
     upsertTemplate: (contractId: string, body: Record<string, unknown>) =>
@@ -128,14 +185,19 @@ export const api = {
 
   workflows: {
     list: () => request<WorkflowSummary[]>("/api/workflows"),
-    runs: (opts?: { tenantId?: string; workflowId?: string; take?: number }) => {
+    runs: (opts?: { tenantId?: string; workflowId?: string; targetId?: string; take?: number }) => {
       const q = new URLSearchParams();
       if (opts?.tenantId) q.set("tenantId", opts.tenantId);
+      if (opts?.targetId) q.set("targetId", opts.targetId);
       if (opts?.workflowId) q.set("workflowId", opts.workflowId);
       if (opts?.take) q.set("take", String(opts.take));
       const qs = q.toString();
       return request<WorkflowRunRecord[]>(`/api/workflows/runs${qs ? `?${qs}` : ""}`);
     },
+    /** 0.9.0+: structured evidence for a persisted run. */
+    evidence: (runId: string) => request<OperationEvidence>(`/api/workflows/runs/${runId}/evidence`),
+    evidenceMarkdown: (runId: string) =>
+      download(`/api/workflows/runs/${runId}/evidence?format=markdown`, `run-${runId}-evidence.md`),
     diagnose: (id: string, tenantId: string, inputs: Record<string, string>) =>
       request<DiagnosisResult>(`/api/workflows/${id}/diagnose`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })
@@ -226,7 +288,7 @@ export const api = {
 async function download(path: string, filename: string): Promise<void> {
   const headers = await authHeaders();
   const resp = await fetch(`${base}${path}`, { headers });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${await resp.text()}`);
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
