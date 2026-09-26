@@ -54,19 +54,21 @@ output names exactly which.
 
 ## Current baseline
 
-The matrix produces 75 captures (15 views x 5 devices). **All fifteen views now pass cleanly at
-every device** -- Dashboard, Find User, Deploy, New Hire, Offboard, Login, Register, Workflows,
-Approvals, App Templates, History, Config Snapshots, Security, **Tenants**, and **Contracts**. The
-last two are newly migrated (Manage group, the final workstream-2 sub-project of the 0.6.0 MUI
-migration) -- both were in the original pre-migration overflow baseline and now pass the full
-5-device matrix cleanly (`PCBRIDGE_CAPTURE_VIEWS=tenants,contracts,newhire,offboard`, zero-overflow
-exit code), confirmed directly, not assumed. Workflows/Approvals (Operate group), App
-Templates/History (Deploy pipeline group), and Config Snapshots/Security (Account group) were each
-migrated and verified the same way in the three sibling PRs merged just before this one.
+The Ops Workbench (0.9.0) navigation rework (Home/People/Tenants/Operations/Activity/Settings, the
+person workspace, planned operations and the command palette) replaced the old 15-view tab
+navigation with 39 views: the six top-level areas, the person workspace's seven tabs, the tenant
+workspace's five tabs, every operation screen (onboard, offboard and its plan/result states,
+deploy, the known-fix runner and a prefilled deep link, Access Parity and its plan/result states,
+contracts and its policy editor, app templates), Activity (history, approvals, a run and its
+evidence view), the command palette, all three Settings pages, the not-found page, and the four
+unauthenticated views (login, register, first-run setup, security). The full, current list is the
+`AUTHENTICATED_VIEWS` map plus `AUTH_VIEW_NAMES` in
+[`capture-mobile-media.mjs`](scripts/capture-mobile-media.mjs) -- that file is the source of truth;
+this doc only summarizes it.
 
-The original pre-migration baseline was 31 overflowing view/device pairs across 8 views (Tenants,
-Approvals, Contracts, History, App Templates, Workflows, Config Snapshots, Security). Workstream 2's
-four parallel sub-projects (Operate, Deploy pipeline, Account, Manage) closed all of them.
+**All 39 views pass cleanly at every device** (`node docs/scripts/capture-mobile-media.mjs`,
+zero-overflow exit code, confirmed directly against all five profiles). The 5-device matrix
+therefore produces 195 captures.
 
 ## Rules for future views
 
