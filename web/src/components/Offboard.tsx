@@ -27,7 +27,12 @@ const ACTIONS = [
   ["convertMailboxToShared", "Convert mailbox to shared (Exchange Online)"]
 ] as const;
 
-export function Offboard() {
+export function Offboard({
+  prefill
+}: {
+  /** Pre-selects a tenant and searches for (and, on an exact match, selects) a user. */
+  prefill?: { tenantId: string; user?: string } | null;
+} = {}) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [search, setSearch] = useState("");
@@ -73,6 +78,33 @@ export function Offboard() {
   // results) must never stay submittable -- selectedUser is the single source of truth for
   // "there is a real, currently-visible target selected," not just a non-empty userId string.
   const canSubmit = Boolean(selectedUser) && !searchAction.busy;
+
+  // Arriving from a person (or a ?tenant=&user= link): choose the tenant, run the user search, and
+  // select the result only when it matches exactly -- a fuzzy match is left for the operator to
+  // pick, since the next step is destructive.
+  const prefillAppliedRef = useRef(false);
+  const pendingPrefillUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!prefill || prefillAppliedRef.current || tenants.length === 0) return;
+    if (!tenants.some((t) => t.id === prefill.tenantId)) return;
+    prefillAppliedRef.current = true;
+    currentTenantRef.current = prefill.tenantId;
+    setTenantId(prefill.tenantId);
+    if (prefill.user) {
+      pendingPrefillUserRef.current = prefill.user.toLowerCase();
+      setSearch(prefill.user);
+      setLastAction("search");
+      void searchAction.run(prefill.tenantId, prefill.user);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenants, prefill]);
+  useEffect(() => {
+    const wanted = pendingPrefillUserRef.current;
+    if (!wanted || users.length === 0) return;
+    pendingPrefillUserRef.current = null;
+    const exact = users.find((u) => u.id.toLowerCase() === wanted || u.userPrincipalName?.toLowerCase() === wanted);
+    if (exact) setUserId(exact.id);
+  }, [users]);
 
   useEffect(() => {
     setLastAction("tenants");

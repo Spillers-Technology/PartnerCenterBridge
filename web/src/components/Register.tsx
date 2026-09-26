@@ -10,7 +10,16 @@ import { setLocalToken } from "../session";
 import type { AuthResponse } from "../types";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 
-export function Register({ onAuthenticated, onGoLogin }: { onAuthenticated: (r: AuthResponse) => void; onGoLogin: () => void }) {
+export function Register({
+  onAuthenticated,
+  onGoLogin,
+  setup = false
+}: {
+  onAuthenticated: (r: AuthResponse) => void;
+  onGoLogin: () => void;
+  /** First run: nobody has registered yet, so this account becomes the instance Administrator. */
+  setup?: boolean;
+}) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -24,13 +33,28 @@ export function Register({ onAuthenticated, onGoLogin }: { onAuthenticated: (r: 
   return (
     <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>
       <Stack spacing={2} sx={{ width: "100%", maxWidth: 400 }}>
-        <Typography variant="h5" component="h1">
-          Create an account
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Registration is open; your new account starts with no tenant access. Someone who
-          already has access to a customer tenant can share it with you afterward, from Tenants.
-        </Typography>
+        {setup ? (
+          <>
+            <Typography variant="h5" component="h1">
+              Set up this workbench
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Nobody has signed in here yet. Create the first account: it becomes this
+              workbench's Administrator, and Home will then walk you through connecting
+              Microsoft and adding tenants.
+            </Typography>
+          </>
+        ) : (
+          <>
+            <Typography variant="h5" component="h1">
+              Create an account
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Registration is open; your new account starts with no tenant access. Someone who
+              already has access to a customer tenant can share it with you afterward, from Tenants.
+            </Typography>
+          </>
+        )}
 
         <Stack
           component="form"
@@ -56,11 +80,13 @@ export function Register({ onAuthenticated, onGoLogin }: { onAuthenticated: (r: 
 
         {registerAction.error && <Alert severity="error">{registerAction.error}</Alert>}
 
+        {!setup && (
+          <Typography variant="body2" color="text.secondary">
+            Already registered? <Button size="small" onClick={onGoLogin}>Sign in</Button>
+          </Typography>
+        )}
         <Typography variant="body2" color="text.secondary">
-          Already registered? <Button size="small" onClick={onGoLogin}>Sign in</Button>
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          You can add a passkey and enable two-factor authentication afterward, from Security.
+          You can add a passkey and enable two-factor authentication afterward, from Settings.
         </Typography>
       </Stack>
     </Box>
