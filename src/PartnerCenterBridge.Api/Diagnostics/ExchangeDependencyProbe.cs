@@ -132,9 +132,18 @@ public sealed class ExchangeDependencyProbe : IExchangeDependencyProbe
             {
                 await process.WaitForExitAsync(limit.Token);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                try { process.Kill(entireProcessTree: true); } catch { /* best effort */ }
+                // Either the probe timed out or the caller went away (e.g. a diagnostics request
+                // was aborted): in both cases the pwsh process must not outlive this call, or
+                // repeated requests pile up hung module enumerations.
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit(5000);
+                }
+                catch { /* best effort */ }
+                ct.ThrowIfCancellationRequested();
                 return (null, $"timed out after {timeout.TotalSeconds:0}s");
             }
             if (process.ExitCode != 0)

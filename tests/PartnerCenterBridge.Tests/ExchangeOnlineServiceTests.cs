@@ -165,6 +165,33 @@ public class ExchangeOnlineServiceTests
         Assert.Equal("nudgeArchive", payload.RootElement.GetProperty("operation").GetString());
     }
 
+    [Fact]
+    public async Task GetMailbox_returns_null_only_when_exchange_confirms_no_such_mailbox()
+    {
+        var runner = new FakeRunner(new PwshResult(0,
+            """
+            {"success":false,"steps":[{"name":"Connect","success":true,"detail":"contoso"},
+              {"name":"Error","success":false,"detail":"The operation couldn't be performed because object 'nobody@contoso.com' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'."}],
+             "data":null}
+            """, ""));
+
+        Assert.Null(await Service(runner).GetMailboxAsync(Tenant(), "nobody@contoso.com"));
+    }
+
+    [Fact]
+    public async Task GetMailbox_throws_when_the_lookup_itself_failed()
+    {
+        // A connect/auth failure used to come back as null, i.e. "no mailbox" -- a false answer.
+        var runner = new FakeRunner(new PwshResult(0,
+            """
+            {"success":false,"steps":[{"name":"Error","success":false,"detail":"AADSTS700027: Client assertion contains an invalid signature."}],
+             "data":null}
+            """, ""));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Service(runner).GetMailboxAsync(Tenant(), "ada@contoso.com"));
+        Assert.Contains("AADSTS700027", ex.Message);
+    }
+
     private sealed class FakeRunner : IPwshRunner
     {
         private readonly PwshResult _result;
