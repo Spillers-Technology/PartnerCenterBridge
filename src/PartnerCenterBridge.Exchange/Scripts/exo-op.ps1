@@ -142,10 +142,14 @@ try {
                     else { 'already enabled' }
                 }
             }
+            # Detail tells an assignment ("assigned: X") apart from a policy that was already there
+            # ("already assigned: X"), so only an actual assignment is verified as a change.
             Invoke-Step 'Assign retention policy' {
-                if ([string]::IsNullOrWhiteSpace("$($mbx.RetentionPolicy)") -and $p.retentionPolicyName) {
-                    Set-Mailbox -Identity $id -RetentionPolicy $p.retentionPolicyName; $p.retentionPolicyName
-                } else { "$($mbx.RetentionPolicy)" }
+                if (-not [string]::IsNullOrWhiteSpace("$($mbx.RetentionPolicy)")) { "already assigned: $($mbx.RetentionPolicy)" }
+                elseif ($p.retentionPolicyName) {
+                    Set-Mailbox -Identity $id -RetentionPolicy $p.retentionPolicyName; "assigned: $($p.retentionPolicyName)"
+                }
+                else { 'not set' }
             }
             if ($p.clearProcessingBlocks) {
                 Invoke-Step 'Clear retention hold' {

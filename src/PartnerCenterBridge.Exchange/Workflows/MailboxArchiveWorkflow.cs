@@ -62,7 +62,7 @@ internal sealed class MailboxArchiveWorkflow : IWorkflow
             post.Findings.AddRange(ToFindings(exo.State));
             run.PostState = post;
         }
-        VerifySteps(run, exo.State);
+        VerifySteps(run, exo.State, options.RetentionPolicyName);
         return run;
     }
 
@@ -70,9 +70,10 @@ internal sealed class MailboxArchiveWorkflow : IWorkflow
     /// Desired-state verification per step, against the archive state the script re-read after
     /// remediating: each step is checked for exactly the property it sets. Steps that found the
     /// setting already in place changed nothing; triggering the Managed Folder Assistant starts an
-    /// asynchronous job nothing can confirm yet.
+    /// asynchronous job nothing can confirm yet. A retention policy that was already assigned is
+    /// reported unchanged; an assignment is verified only when the re-read policy is the one requested.
     /// </summary>
-    private static void VerifySteps(WorkflowRunResult run, ArchiveState? state)
+    private static void VerifySteps(WorkflowRunResult run, ArchiveState? state, string? requestedPolicy)
     {
         for (var i = 0; i < run.Steps.Count; i++)
         {
@@ -89,7 +90,7 @@ internal sealed class MailboxArchiveWorkflow : IWorkflow
             {
                 "Enable archive" => state is null ? null : (state.ArchiveEnabled, state.ArchiveEnabled ? "Archive is enabled on re-read." : "Archive is not enabled on re-read."),
                 "Enable auto-expanding archive" => state is null ? null : (state.AutoExpandingArchiveEnabled, state.AutoExpandingArchiveEnabled ? "Auto-expanding archive is enabled on re-read." : "Auto-expanding archive is not enabled on re-read."),
-                "Assign retention policy" => state is null ? null : (!string.IsNullOrEmpty(state.RetentionPolicy), string.IsNullOrEmpty(state.RetentionPolicy) ? "No retention policy on re-read." : $"Retention policy {state.RetentionPolicy} on re-read."),
+                "Assign retention policy" => state is null ? null : RetentionPolicyCheck(state, requestedPolicy),
                 "Clear retention hold" => state is null ? null : (!state.RetentionHoldEnabled, state.RetentionHoldEnabled ? "Retention hold is still enabled on re-read." : "Retention hold is off on re-read."),
                 "Enable ELC processing" => state is null ? null : (!state.ElcProcessingDisabled, state.ElcProcessingDisabled ? "ELC processing is still disabled on re-read." : "ELC processing is enabled on re-read."),
                 _ => null
@@ -102,6 +103,18 @@ internal sealed class MailboxArchiveWorkflow : IWorkflow
                 run.Verify(i, step.Name, false, "The archive state could not be re-read after remediation.");
             // Anything else (an unknown step) has no check and is therefore reported unverified.
         }
+    }
+
+    private static (bool Ok, string Detail) RetentionPolicyCheck(ArchiveState state, string? requested)
+    {
+        var actual = state.RetentionPolicy?.Trim() ?? "";
+        if (requested is null)
+            return (false, "No retention policy was requested, so the assignment cannot be confirmed.");
+        if (string.Equals(actual, requested.Trim(), StringComparison.OrdinalIgnoreCase))
+            return (true, $"Retention policy {actual} on re-read.");
+        return (false, actual.Length == 0
+            ? $"No retention policy on re-read; {requested.Trim()} was requested."
+            : $"Retention policy on re-read is '{actual}', not the requested '{requested.Trim()}'.");
     }
 
     /// <summary>Missing bool inputs default to true - every switch defaults to the safe, full fix.</summary>

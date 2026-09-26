@@ -229,30 +229,8 @@ public class ExchangeOnlineServiceTests
     public async Task Script_marks_not_found_only_for_the_lookup(string identity, string organization, string expected)
     {
         if (!PwshAvailable()) return;
-        var dir = Path.Combine(Path.GetTempPath(), "pcb-exo-fake-" + Guid.NewGuid().ToString("N"));
-        var module = Path.Combine(dir, "modules", "ExchangeOnlineManagement");
-        Directory.CreateDirectory(module);
-        await File.WriteAllTextAsync(Path.Combine(module, "ExchangeOnlineManagement.psm1"),
-            """
-            function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword)
-                if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." } }
-            function Disconnect-ExchangeOnline { param($Confirm) }
-            function Get-EXOMailbox { [CmdletBinding()] param($Identity, $Properties)
-                switch -Wildcard ($Identity) {
-                    'nobody@*' { Write-Error -Message "The operation couldn't be performed because object '$Identity' couldn't be found." -Category ObjectNotFound -ErrorAction Stop }
-                    'gone@*' { throw "Error while querying REST service. HttpStatusCode=404 ErrorMessage=The operation couldn't be performed because object '$Identity' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'." }
-                    'busy@*' { throw 'Server is busy; the request was throttled.' }
-                    default { [pscustomobject]@{ UserPrincipalName = $Identity; DisplayName = 'Ada'; RecipientTypeDetails = 'UserMailbox';
-                                                 ForwardingSmtpAddress = $null; DeliverToMailboxAndForward = $false } }
-                } }
-            """);
-        try
+        await WithFakeExchangeAsync(organization, async (service, tenant) =>
         {
-            var service = new ExchangeOnlineService(new FakeModuleRunner(Path.Combine(dir, "modules"), dir),
-                Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
-                NullLogger<ExchangeOnlineService>.Instance);
-            var tenant = new Tenant { TenantId = "t-id", DisplayName = "Contoso", DefaultDomain = organization };
-
             switch (expected)
             {
                 case "found":
@@ -265,6 +243,79 @@ public class ExchangeOnlineServiceTests
                     await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetMailboxAsync(tenant, identity));
                     break;
             }
+        });
+    }
+
+    /// <summary>
+    /// The real exo-op.ps1 remediateArchive: a retention policy already on the mailbox is reported as
+    /// unchanged, never as a verified assignment; an assignment is verified against the requested policy.
+    /// </summary>
+    [Fact]
+    public async Task Archive_script_tells_an_existing_retention_policy_from_an_assignment()
+    {
+        if (!PwshAvailable()) return;
+        await WithFakeExchangeAsync("contoso.onmicrosoft.com", async (service, tenant) =>
+        {
+            var workflow = new PartnerCenterBridge.Exchange.Workflows.MailboxArchiveWorkflow(service);
+            Dictionary<string, string> Inputs(string id) => new()
+            {
+                ["identity"] = id, ["retentionPolicyName"] = "Custom MRM",
+                ["enableAutoExpandingArchive"] = "false", ["clearProcessingBlocks"] = "false", ["triggerProcessing"] = "false"
+            };
+
+            var existing = await workflow.RemediateAsync(tenant, Inputs("haspolicy@contoso.com"));
+            var step = existing.Steps.FindIndex(s => s.Name == "Assign retention policy");
+            Assert.Equal("already assigned: Legacy Policy", existing.Steps[step].Detail);
+            Assert.Contains(step, existing.UnchangedSteps);
+            Assert.DoesNotContain(existing.Verification!, v => v.Name == "Assign retention policy");
+
+            var assigned = await workflow.RemediateAsync(tenant, Inputs("nopolicy@contoso.com"));
+            step = assigned.Steps.FindIndex(s => s.Name == "Assign retention policy");
+            Assert.Equal("assigned: Custom MRM", assigned.Steps[step].Detail);
+            Assert.True(Assert.Single(assigned.Verification!, v => v.Name == "Assign retention policy").Passed);
+        });
+    }
+
+    // A stand-in ExchangeOnlineManagement module for running the real exo-op.ps1 without Exchange.
+    private const string FakeExchangeModule =
+        """
+        function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword)
+            if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." } }
+        function Disconnect-ExchangeOnline { param($Confirm) }
+        function Get-EXOMailbox { [CmdletBinding()] param($Identity, $Properties)
+            switch -Wildcard ($Identity) {
+                'nobody@*' { Write-Error -Message "The operation couldn't be performed because object '$Identity' couldn't be found." -Category ObjectNotFound -ErrorAction Stop }
+                'gone@*' { throw "Error while querying REST service. HttpStatusCode=404 ErrorMessage=The operation couldn't be performed because object '$Identity' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'." }
+                'busy@*' { throw 'Server is busy; the request was throttled.' }
+                default { [pscustomobject]@{ UserPrincipalName = $Identity; DisplayName = 'Ada'; RecipientTypeDetails = 'UserMailbox';
+                                             ForwardingSmtpAddress = $null; DeliverToMailboxAndForward = $false } }
+            } }
+        $script:Assigned = $null
+        function Get-Mailbox { param($Identity)
+            $policy = if ($Identity -like 'haspolicy@*') { 'Legacy Policy' } elseif ($script:Assigned) { $script:Assigned } else { '' }
+            [pscustomobject]@{ UserPrincipalName = $Identity; ArchiveGuid = [guid]::NewGuid(); ArchiveStatus = 'Active';
+                               AutoExpandingArchiveEnabled = $true; ArchiveQuota = '100 GB'; ArchiveWarningQuota = '90 GB';
+                               ProhibitSendReceiveQuota = '50 GB'; RetentionPolicy = $policy; RetentionHoldEnabled = $false;
+                               ElcProcessingDisabled = $false } }
+        function Get-MailboxStatistics { param($Identity, [switch]$Archive, $ErrorAction)
+            [pscustomobject]@{ TotalItemSize = '1 GB'; ItemCount = 10 } }
+        function Set-Mailbox { param($Identity, $RetentionPolicy) if ($RetentionPolicy) { $script:Assigned = $RetentionPolicy } }
+        function Enable-Mailbox { param($Identity, [switch]$Archive, [switch]$AutoExpandingArchive) }
+        function Start-ManagedFolderAssistant { param($Identity) }
+        """;
+
+    private static async Task WithFakeExchangeAsync(string organization, Func<ExchangeOnlineService, Tenant, Task> body)
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pcb-exo-fake-" + Guid.NewGuid().ToString("N"));
+        var module = Path.Combine(dir, "modules", "ExchangeOnlineManagement");
+        Directory.CreateDirectory(module);
+        await File.WriteAllTextAsync(Path.Combine(module, "ExchangeOnlineManagement.psm1"), FakeExchangeModule);
+        try
+        {
+            var service = new ExchangeOnlineService(new FakeModuleRunner(Path.Combine(dir, "modules"), dir),
+                Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
+                NullLogger<ExchangeOnlineService>.Instance);
+            await body(service, new Tenant { TenantId = "t-id", DisplayName = "Contoso", DefaultDomain = organization });
         }
         finally
         {
