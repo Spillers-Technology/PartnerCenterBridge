@@ -226,10 +226,32 @@ public class BridgeDbContext : DbContext
             e.HasIndex(a => new { a.ActorUserId, a.OccurredAt });
         });
 
-        // SQLite has no native DateTimeOffset ordering/comparison. The in-memory test fixture uses
-        // SQLite to exercise real EF queries, so store offsets as sortable binary values there;
-        // production Npgsql keeps its native timestamptz mapping.
-        if (Database.ProviderName == "Microsoft.EntityFrameworkCore.Sqlite")
+        ApplyProviderSpecificMappings(b);
+    }
+
+    /// <summary>The EF provider name of the Local Workbench store (and the in-memory test fixture).</summary>
+    public const string SqliteProviderName = "Microsoft.EntityFrameworkCore.Sqlite";
+
+    /// <summary>
+    /// The one place provider differences in the shared model are handled. Npgsql is the reference
+    /// model: its migrations and snapshot live in this assembly and must not change because of
+    /// another provider, so it returns untouched. SQLite (the Local Workbench store, whose
+    /// migrations live in PartnerCenterBridge.Data.Sqlite, and the in-memory test fixture) gets
+    /// equivalent mappings instead.
+    /// </summary>
+    private void ApplyProviderSpecificMappings(ModelBuilder b)
+    {
+        if (Database.IsNpgsql()) return;
+
+        // jsonb is Postgres-only. Elsewhere the same serialized JSON lands in the provider's default
+        // string column (TEXT on SQLite); the value converters above are identical either way.
+        foreach (var property in b.Model.GetEntityTypes().SelectMany(entity => entity.GetProperties())
+                     .Where(property => property.GetColumnType() == "jsonb"))
+            property.SetColumnType(null);
+
+        // SQLite has no native DateTimeOffset ordering/comparison, so store offsets as sortable
+        // binary values there; Npgsql keeps its native timestamptz mapping.
+        if (Database.ProviderName == SqliteProviderName)
         {
             var converter = new DateTimeOffsetToBinaryConverter();
             foreach (var property in b.Model.GetEntityTypes().SelectMany(entity => entity.GetProperties())

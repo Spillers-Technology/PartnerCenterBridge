@@ -1,15 +1,15 @@
 using System.Security.Claims;
-using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using PartnerCenterBridge.Api.Auth;
+using PartnerCenterBridge.Api.Diagnostics;
 using PartnerCenterBridge.Api.GitSync;
+using PartnerCenterBridge.Api.Hosting;
 using PartnerCenterBridge.Api.Notifications;
 using PartnerCenterBridge.Api.Orchestration;
 using PartnerCenterBridge.Core.ConfigSnapshots;
@@ -23,24 +23,44 @@ using PartnerCenterBridge.Graph.ConfigSections;
 using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
 
-var builder = WebApplication.CreateBuilder(args);
+// --- Command line ------------------------------------------------------------
+// Hosting flags (--local, --port, --data-dir, --listen, --no-browser) and the doctor /
+// bootstrap-sam commands are parsed here; plain --Section:Key=value configuration passes through.
+var cli = CliParser.Parse(args);
+if (cli.Error is not null)
+{
+    Console.Error.WriteLine(cli.Error);
+    Console.Error.WriteLine();
+    Console.Error.WriteLine(CliParser.HelpText(HostingInfo.CommandName));
+    return 2;
+}
+if (cli.Command == CliCommand.Help)
+{
+    Console.WriteLine(CliParser.HelpText(HostingInfo.CommandName));
+    return 0;
+}
+if (cli.Command == CliCommand.Version)
+{
+    Console.WriteLine(HostingInfo.ProductVersion);
+    return 0;
+}
+
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions { Args = cli.HostArgs });
 var cfg = builder.Configuration;
+
+// --- Hosting profile (Server | Local) ----------------------------------------
+// Local: data root, local config defaults (SQLite, Local auth, generated signing key), loopback-only
+// Kestrel, file logs, banner + browser. Server: unchanged. See Hosting/HostingExtensions.cs.
+var hosting = builder.AddBridgeHosting(cli);
 
 // --- Persistence -----------------------------------------------------------
 // The audit interceptor needs the acting user, which needs HttpContext -- registered before the
-// DbContext so the (sp, o) overload below can resolve it.
+// DbContext so the (sp, o) overload in AddBridgePersistence can resolve it.
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<PartnerCenterBridge.Core.Abstractions.ICurrentActor, HttpContextCurrentActor>();
 builder.Services.AddScoped<AuditSaveChangesInterceptor>();
-
-builder.Services.AddDbContext<BridgeDbContext>((sp, o) =>
-    o.UseNpgsql(cfg.GetConnectionString("Postgres"))
-     .AddInterceptors(sp.GetRequiredService<AuditSaveChangesInterceptor>()));
-
-// Data Protection keys must be persisted so the encrypted SAM token survives restarts.
-builder.Services.AddDataProtection()
-    .PersistKeysToFileSystem(new DirectoryInfo(cfg["DataProtection:KeyRingPath"] ?? "/keys"))
-    .SetApplicationName("PartnerCenterBridge");
+builder.Services.AddBridgePersistence(cfg);
+builder.Services.AddBridgeDataProtection(cfg, hosting);
 
 // --- Microsoft plane (SAM + GDAP + Graph + Intune) -------------------------
 builder.Services.Configure<PartnerOptions>(cfg.GetSection(PartnerOptions.SectionName));
@@ -52,14 +72,11 @@ builder.Services.AddScoped<IGraphTenantClientFactory, GraphTenantClientFactory>(
 builder.Services.AddScoped<IGraphUserService, GraphUserService>();
 builder.Services.AddSingleton<IIntuneWinPackageReader, IntuneWinPackageReader>();
 
-// Exchange Online (out-of-process EXO PowerShell V3, app-only certificate).
+// Exchange Online (out-of-process EXO PowerShell V3, app-only certificate). The IPwshRunner is
+// registered by AddBridgeDiagnostics, guarded so a missing dependency fails fast with its reason.
 builder.Services.Configure<ExchangeOptions>(cfg.GetSection(ExchangeOptions.SectionName));
-builder.Services.AddSingleton<IPwshRunner>(sp =>
-{
-    var o = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<ExchangeOptions>>().Value;
-    return new PwshRunner(o.PwshPath, o.TimeoutSeconds);
-});
 builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
+builder.Services.AddBridgeDiagnostics();
 
 // Known-fix workflow library (catalog + Graph-backed workflows). Runs are persisted and
 // failures pushed to the configured webhook (Notifications section; empty URL disables).
@@ -88,9 +105,9 @@ builder.Services.AddScoped<PartnerCenterBridge.Api.Services.PendingActionService
 builder.Services.AddScoped<PartnerCenterBridge.Api.Services.IPendingActionExecutor, PartnerCenterBridge.Api.Mcp.WorkflowRemediateExecutor>();
 
 // --- Operator plane: OIDC (Authentik), local self-registered accounts, or dev bypass ----------
-// Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a
-// fallback for existing config that predates Auth:Mode, mapping to Oidc/Dev as before.
-var authMode = cfg["Auth:Mode"] ?? (cfg.GetValue("Auth:Enabled", true) ? AuthModeInfo.Oidc : AuthModeInfo.Dev);
+// See AuthModeInfo.Resolve for the Auth:Mode / legacy Auth:Enabled mapping. The Local hosting
+// profile defaults it to Local and refuses Dev.
+var authMode = AuthModeInfo.Resolve(cfg);
 builder.Services.AddSingleton(new AuthModeInfo(authMode));
 builder.Services.Configure<LocalAuthOptions>(cfg.GetSection(LocalAuthOptions.SectionName));
 builder.Services.AddSingleton<LocalTokenService>();
@@ -177,7 +194,10 @@ switch (authMode)
 }
 builder.Services.AddAuthorization();
 
-var origins = cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+// The Local profile serves the SPA from this process (same origin), so it needs no CORS origins.
+var origins = hosting.IsLocal
+    ? Array.Empty<string>()
+    : cfg.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials()));
 
@@ -190,30 +210,40 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
-// Apply schema at startup so a fresh Postgres is usable immediately.
-using (var scope = app.Services.CreateScope())
+// CLI mode: `doctor` prints the diagnostics checks and exits without starting the web server (and
+// before migrations, so it reports the state it found rather than changing it).
+if (cli.Command == CliCommand.Doctor)
+    return await DiagnosticsExtensions.RunDoctorAsync(app.Services, Console.Out);
+
+// Local profile, second launch: if the port already hosts a Partner Center Bridge, hand over to it.
+// Skipped under a non-Kestrel server (the integration test host binds nothing).
+if (hosting.Local is { } local && cli.Command == CliCommand.Run
+    && app.Services.GetRequiredService<IServer>().GetType().Assembly.GetName().Name == "Microsoft.AspNetCore.Server.Kestrel.Core")
 {
-    var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
-    db.Database.Migrate();
-    if (authMode == AuthModeInfo.Local
-        && await db.AppUsers.AnyAsync()
-        && !await db.AppUsers.AnyAsync(user => user.IsActive
-            && (user.InstanceRoles & PartnerCenterBridge.Core.InstanceRole.Administrator) != 0))
+    switch (await PortPreflight.CheckAsync(local))
     {
-        throw new InvalidOperationException(
-            "Local authentication has registered users but no active Administrator. Restore an Administrator before starting the service.");
+        case PortState.ThisApp:
+            Console.WriteLine($"Partner Center Bridge is already running at {local.CanonicalUrl}.");
+            if (local.OpenBrowser) BrowserLauncher.TryOpen(local.CanonicalUrl);
+            return 0;
+        case PortState.OtherProgram:
+            Console.Error.WriteLine($"Port {local.Port} is in use by another program; use --port <N> to pick a different one.");
+            return 1;
     }
 }
 
-// CLI mode: `dotnet run -- bootstrap-sam` runs the interactive device-code flow and exits.
-if (args.Contains("bootstrap-sam"))
+// Apply schema at startup (the active provider's migrations) so a fresh database is usable immediately.
+await app.MigrateBridgeDatabaseAsync(authMode);
+
+// CLI mode: `bootstrap-sam` runs the interactive device-code flow and exits.
+if (cli.Command == CliCommand.BootstrapSam)
 {
     using var scope = app.Services.CreateScope();
     var boot = scope.ServiceProvider.GetRequiredService<SamBootstrapService>();
     Console.WriteLine("Starting Secure Application Model bootstrap (device code)...");
     var user = await boot.BootstrapAsync(msg => { Console.WriteLine(msg); return Task.CompletedTask; });
     Console.WriteLine($"SAM bootstrap complete for {user}. Encrypted refresh token stored.");
-    return;
+    return 0;
 }
 
 if (app.Environment.IsDevelopment())
@@ -221,6 +251,11 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+if (hosting.IsLocal) app.UseMiddleware<CanonicalHostMiddleware>();
+// SPA static files run before routing so asset requests never reach an endpoint (or the fallback).
+var spaFiles = app.UseBridgeSpaStaticFiles();
+app.UseRouting();
 
 app.UseCors();
 app.UseAuthentication();
@@ -230,8 +265,10 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapMcp("/mcp").RequireAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+if (spaFiles is not null) app.MapBridgeSpaFallback(spaFiles);
 
-app.Run();
+await app.RunAsync();
+return 0;
 
 /// <summary>Exposed so the integration test host (WebApplicationFactory) can reference the entry point.</summary>
 public partial class Program;

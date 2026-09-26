@@ -6,6 +6,7 @@ namespace PartnerCenterBridge.Data;
 /// <summary>
 /// Design-time factory used by <c>dotnet ef</c> so migrations can be scaffolded without booting
 /// the API host. The connection string is only used to pick the Npgsql provider; no DB is touched.
+/// The SQLite (Local Workbench) migration set has its own factory in PartnerCenterBridge.Data.Sqlite.
 /// </summary>
 public class BridgeDbContextFactory : IDesignTimeDbContextFactory<BridgeDbContext>
 {

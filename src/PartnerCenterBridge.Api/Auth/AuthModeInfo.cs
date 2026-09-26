@@ -8,4 +8,11 @@ public record AuthModeInfo(string Mode)
     public const string Dev = "Dev";
 
     public bool IsLocal => Mode == Local;
+
+    /// <summary>
+    /// Auth:Mode is the current knob (Oidc | Local | Dev). Auth:Enabled (true/false) is kept as a
+    /// fallback for existing config that predates Auth:Mode, mapping to Oidc/Dev as before.
+    /// </summary>
+    public static string Resolve(IConfiguration configuration) =>
+        configuration["Auth:Mode"] ?? (configuration.GetValue("Auth:Enabled", true) ? Oidc : Dev);
 }

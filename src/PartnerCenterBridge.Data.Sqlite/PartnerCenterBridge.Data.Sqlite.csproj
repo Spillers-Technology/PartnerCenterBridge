@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SQLite persistence for the Local Workbench profile: the provider wiring plus a migration set
+    generated from the same BridgeDbContext model as the Postgres migrations in
+    PartnerCenterBridge.Data. Scaffold with this project as both target and startup project:
+      dotnet ef migrations add <Name> -p src/PartnerCenterBridge.Data.Sqlite -s src/PartnerCenterBridge.Data.Sqlite
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PartnerCenterBridge.Data\PartnerCenterBridge.Data.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.11" />
+    <!-- Pin transitive SQLitePCLRaw.lib.e_sqlite3 above the SQLite memory-corruption advisory (fixed just past the vulnerable 2.1.11 ceiling) -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+
+</Project>

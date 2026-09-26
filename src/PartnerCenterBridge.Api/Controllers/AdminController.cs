@@ -31,10 +31,10 @@ public class AdminController : ControllerBase
 
     /// <summary>Whether the Secure Application Model has been bootstrapped (a refresh token is stored).</summary>
     [HttpGet("sam/status")]
-    public async Task<ActionResult<object>> Status(CancellationToken ct)
+    public async Task<ActionResult<object>> Status([FromServices] Diagnostics.ISamStatusService sam, CancellationToken ct)
     {
         if (!await _access.HasPermissionAsync(InstancePermission.ManageSam, ct)) return Forbid();
-        return Ok(new { bootstrapped = await _store.GetRefreshTokenAsync(ct) is not null });
+        return Ok(new { bootstrapped = (await sam.GetAsync(ct)).Bootstrapped });
     }
 
     /// <summary>
