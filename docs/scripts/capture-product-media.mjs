@@ -88,6 +88,37 @@ async function main() {
     await page.getByText("usage location set, but SKU still in error state", { exact: false }).waitFor({ timeout: 20_000 });
     await shoot(page, "pcbridge-approvals.jpg");
 
+    console.log("Rendering the person workspace...");
+    await gotoRoute(page, `/people/${CONTOSO}/u1`);
+    await page.getByText("2 managed devices", { exact: true }).waitFor({ timeout: 20_000 });
+    await shoot(page, "pcbridge-person.jpg");
+
+    console.log("Rendering Access Parity (plan)...");
+    await gotoRoute(page, `/operations/access-parity?tenant=${CONTOSO}&source=priya.shah%40contoso.com&target=maya.chen%40contoso.com`);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await page.getByText("Groups to add", { exact: false }).first().waitFor({ timeout: 20_000 });
+    await shoot(page, "pcbridge-access-parity.jpg");
+
+    console.log("Rendering run evidence...");
+    await gotoRoute(page, "/activity/runs/r6");
+    await page.getByRole("button", { name: "Copy ticket notes", exact: true }).waitFor({ timeout: 20_000 });
+    await shoot(page, "pcbridge-evidence.jpg");
+
+    console.log("Rendering the offboarding plan...");
+    await gotoRoute(page, `/operations/offboard?tenant=${CONTOSO}&user=priya.shah%40contoso.com`);
+    await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Preview plan" && !b.disabled), null, { timeout: 20_000 });
+    await page.getByRole("button", { name: "Preview plan", exact: true }).click();
+    await page.getByText("steps will run", { exact: false }).waitFor({ timeout: 20_000 });
+    await shoot(page, "pcbridge-offboard-plan.jpg");
+
+    console.log("Rendering the command palette...");
+    await gotoRoute(page, "/");
+    await page.getByText("Needs attention", { exact: false }).waitFor({ timeout: 20_000 });
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("con");
+    await page.getByText("Open tenant: Contoso Ltd", { exact: true }).waitFor({ timeout: 20_000 });
+    await shoot(page, "pcbridge-palette.jpg");
+
     // --- Auth:Mode=Local screens: Login (passkey-primary), Register, Security, Config Snapshots.
     // Separate pages because these need their own unauthenticated -> authenticated lifecycle,
     // distinct from the auth-disabled "Dev" mode the screens above ran under.
