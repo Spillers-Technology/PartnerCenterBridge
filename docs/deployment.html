@@ -72,6 +72,7 @@
         <p class="docs-nav-title">Get started</p>
         <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html" aria-current="page">Deployment</a></li>
         </ul>
@@ -98,6 +99,15 @@
 <article class="doc">
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
 <h1>Deployment</h1>
+<p class="lead">
+  This page covers the <strong>server profile</strong>: Postgres, the API and web Docker images,
+  and (for production) Kubernetes. If you want to run on a single Windows machine with no server
+  at all -- SQLite, a self-contained exe, self-registered Local accounts -- see
+  <a href="local-workbench.html">Local Workbench</a> instead. Both share the same API, EF Core
+  model, and workflow/operation catalog; only the hosting profile
+  (<code>Hosting:Profile</code>), the persistence provider (<code>Persistence:Provider</code>),
+  and the auth defaults differ, and this page's server path is unchanged by that mode existing.
+</p>
 
 <h2 id="evaluation-docker-compose">Evaluation: docker-compose</h2>
 <p>One command brings up Postgres 16, the API, and the SPA with auth disabled. The published
@@ -238,6 +248,7 @@ whole upgrade. Roll back by deploying the previous image (migrations are additiv
       <h2>Docs</h2>
       <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
           <li><a href="architecture.html">Architecture</a></li>

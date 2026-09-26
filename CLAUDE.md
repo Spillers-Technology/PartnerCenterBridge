@@ -97,8 +97,9 @@ rest of this list by hand:
    - If a new screen shipped, regenerate the screenshots: `node docs/scripts/capture-product-media.mjs`
      (mocked API data, no live backend or tenant needed), then check the new files into
      `docs/assets/screenshots/`.
-   - Nav links: every `docs/*.html` file has its own hardcoded `<nav class="topnav">` (no shared
-     header include) -- a new page needs a `nav-link` added to *all of them*, not just its own.
+   - Nav links: every `docs/*.html` file hardcodes its own sidebar (`<nav class="docs-nav">`, the
+     `docs-nav-group` lists) and its own footer "Docs" list -- no shared header/footer include. A
+     new page needs an entry added to *both of those in every file*, not just its own.
 6. Confirm the docs-site changes actually publish (GitHub Pages serves `main:/docs`; a push is
    enough, no separate deploy step).
 

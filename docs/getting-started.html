@@ -72,6 +72,7 @@
         <p class="docs-nav-title">Get started</p>
         <ul>
           <li><a href="getting-started.html" aria-current="page">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
         </ul>
@@ -98,6 +99,26 @@
 <article class="doc">
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
 <h1>Getting started</h1>
+
+<h2 id="local-workbench-quick-start">Local Workbench quick start (no server, no Docker)</h2>
+<p>
+  If you just want to run the app on your own Windows machine without standing up Postgres or
+  Docker at all, download or build <code>PartnerCenterBridge.exe</code> and run it:
+</p>
+<pre><code>PartnerCenterBridge.exe
+# Opens http://localhost:5080 in your browser once it is healthy.
+# Data (SQLite, keys, logs) lives under %LOCALAPPDATA%\PartnerCenterBridge.</code></pre>
+<p>
+  Register the first account -- it becomes the instance Administrator -- and you have a working,
+  self-registered, passkey-capable install with no external identity provider and no database
+  server. <code>PartnerCenterBridge.exe doctor</code> checks configuration and dependencies
+  (including Exchange Online, which is optional) and exits with a report. Build it yourself with
+  <code>./scripts/publish-local.ps1</code>, or see
+  <a href="local-workbench.html">Local Workbench</a> for the full CLI, data layout, diagnostics,
+  and how secrets are protected. This mode still needs the same partner app registration and GDAP
+  relationships as the server path below to reach real customer tenants -- see
+  <a href="#2-connect-real-tenants">Connect real tenants</a>.
+</p>
 
 <h2 id="1-five-minute-local-demo-docker-compose">1. Five-minute local demo (docker-compose)</h2>
 <p>The fastest way to see the product. Auth is disabled in compose, so the UI works without
@@ -249,7 +270,7 @@ GDAP + the multi-tenant consent).</div>
 </div>
 
 <nav class="doc-pager" aria-label="Previous and next page">
-  <a class="next" href="sam-bootstrap.html"><span>Next &rarr;</span>SAM bootstrap</a>
+  <a class="next" href="local-workbench.html"><span>Next &rarr;</span>Local Workbench</a>
 </nav>
 </article>
   </main>
@@ -291,6 +312,7 @@ GDAP + the multi-tenant consent).</div>
       <h2>Docs</h2>
       <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
           <li><a href="architecture.html">Architecture</a></li>

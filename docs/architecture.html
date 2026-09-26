@@ -72,6 +72,7 @@
         <p class="docs-nav-title">Get started</p>
         <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
         </ul>
@@ -152,10 +153,62 @@ completely separate:</p>
       <td>Controllers, operator auth (OIDC, Local, or Dev), the MCP server, DI wiring, deploy +
           provisioning orchestration, workflow dispatch + run recording.</td></tr>
   <tr><td><code>web/</code></td>
-      <td>React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy, History,
-          New Hire, Offboard, Workflows, Approvals, Config Snapshots, and (in Local mode) Security.</td></tr>
+      <td>React SPA: Home, People, Tenants, Operations (Access Parity, onboard/offboard, deploy,
+          workflows, contracts, templates), Activity, Settings, plus sign-in, registration and
+          account security for Local mode. Routing/IA rework is in progress on this branch.</td></tr>
 </table>
 </div>
+
+<h2 id="hosting-profiles">Hosting profiles: Server vs. Local</h2>
+<p>
+  <code>Hosting:Profile</code> is <code>Server</code> (default; today's container deployment,
+  Postgres, nginx in front, configured auth) or <code>Local</code> (the single-user
+  <strong>Local Workbench</strong>: SQLite, loopback-only Kestrel, embedded SPA, self-registered
+  Local accounts). Local is selected by <code>--local</code> on the command line or baked into
+  the Local Workbench build's assembly metadata at publish time (the container build never gets
+  it); nothing else in the codebase branches on the profile directly -- it only changes what
+  <code>HostingExtensions.AddBridgeHosting</code> configures before the rest of startup runs:
+  the persistence provider, the auth mode default, the Data Protection key ring path, Kestrel's
+  bind address, and (Local only) a generated signing key and a background service that prints a
+  startup banner and opens the browser. See
+  <a href="local-workbench.html">Local Workbench</a> for the full CLI, data layout, and how
+  secrets are protected in that mode.
+</p>
+
+<h2 id="persistence-providers">Persistence: two providers, one model</h2>
+<p>
+  <code>Persistence:Provider</code> selects <code>Postgres</code> (default) or
+  <code>Sqlite</code> (Local Workbench). Both configure the same <code>BridgeDbContext</code>
+  model from <code>PartnerCenterBridge.Data</code>, but each provider owns its own EF Core
+  migrations project and design-time factory --
+  <code>PartnerCenterBridge.Data</code> for Postgres, <code>PartnerCenterBridge.Data.Sqlite</code>
+  for SQLite -- so a model change needs a migration generated for both. Migrations for whichever
+  provider is active apply automatically at startup. The SQLite provider sets
+  <code>PRAGMA journal_mode=WAL</code>, <code>synchronous=NORMAL</code>, <code>foreign_keys=ON</code>,
+  and a 5-second busy timeout on every connection, so a single-user desktop workload does not trip
+  <code>SQLITE_BUSY</code>.
+</p>
+
+<h2 id="operations-and-evidence-model">Operations and evidence model</h2>
+<p>
+  <code>IPlannedOperation</code> extends the existing <code>IWorkflow</code> contract with an
+  explicit two-step shape: <code>PlanAsync(tenant, inputs)</code> returns an
+  <code>OperationPlan</code> (every item considered, including ineligible ones with the reason,
+  plus preflight findings, warnings and limitations) for the operator to review, and
+  <code>ApplyAsync(tenant, inputs, selectedItemIds)</code> re-plans server-side, applies only the
+  still-eligible selected items, and re-queries to verify, returning an
+  <code>OperationEvidence</code>. Access Parity and offboarding are both implemented this way.
+  Every persisted <code>WorkflowRun</code> -- including runs from the older
+  diagnose/remediate workflows, adapted on read -- carries a nullable <code>Evidence</code> JSON
+  column: preflight, plan, changes, verification, warnings, limitations, failures, and a
+  server-generated <code>ticketNotes</code> narrative, plus a strict <code>outcome</code>
+  (<code>Succeeded</code>, <code>PartiallySucceeded</code>, <code>Failed</code>,
+  <code>NoChangeNeeded</code>, <code>VerificationFailed</code>, or <code>Planned</code>) --
+  success is only ever claimed for a change a post-apply re-read actually confirmed.
+  <code>GET /api/workflows/runs/{runId}/evidence</code> returns it as JSON, or as a downloadable
+  Markdown ticket note with <code>?format=markdown</code>. See
+  <a href="workflows.html">Workflows</a> for Access Parity and offboarding policy v2 specifically.
+</p>
 
 <h2 id="the-mcp-surface">The MCP surface</h2>
 <p>
@@ -256,6 +309,7 @@ completely separate:</p>
       <h2>Docs</h2>
       <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
           <li><a href="architecture.html">Architecture</a></li>

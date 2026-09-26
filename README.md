@@ -3,8 +3,11 @@
 
 **Docs:** <https://spillerstech.us/PartnerCenterBridge/>
 
-A two-part MSP bridge — an ASP.NET Core Web API plus a React SPA — that fronts Microsoft Graph
-and the Partner Center REST API to make cross-tenant Intune + identity work repeatable. Each
+A Microsoft 365 operations workbench for MSPs and internal IT: you start from a **tenant, a
+person, a problem, or an outcome**, and the bridge takes it through one loop — **Diagnose → Plan
+→ Apply → Verify → Record**. It fronts Microsoft Graph, the Partner Center REST API, and
+(optionally) Exchange Online PowerShell, and it never fakes capability: a section it cannot read
+or an action it cannot perform says so, with the reason, instead of pretending to succeed. Each
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
@@ -19,6 +22,11 @@ reconciles every tenant on the contract to it.
 > | Exchange Online mailbox ops via EXO PowerShell V3 (mailbox archive repair) | **Beta** |
 > | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
 > | MCP server (Streamable HTTP at `/mcp`) with a per-tenant human approval queue | **Beta** |
+> | Local Workbench: single `.exe`, SQLite, local accounts, no server to stand up | **Beta** |
+> | Person workspace (profile/licenses/groups/auth/mailbox/devices/history in one read) | **Beta** |
+> | Access Parity: copy a source user's missing cloud group memberships to a target, additive-only | **Beta** |
+> | Offboarding policy v2: per-contract policy, ordered plan/apply/verify, ticket evidence | **Beta** |
+> | Operation evidence (plan/apply/verify JSON, Markdown export) on every planned-operation run | **Beta** |
 > | Two-way LDAP sync (Phase 4) | **Planned** — not implemented; no code exists yet |
 >
 > **Known-fix workflows** run one **Diagnose → Fix → Verify** loop: the diagnosis is shown
@@ -27,7 +35,12 @@ reconciles every tenant on the contract to it.
 > ("full / not archiving") enables the archive + auto-expand, ensures a retention policy, clears the
 > hidden blockers (retention hold, `ElcProcessingDisabled`), and triggers the Managed Folder
 > Assistant — re-running doubles as the nudge the asynchronous move routinely needs. Replaces the
-> ~10-cmdlet dance.
+> ~10-cmdlet dance. **Planned operations** (Access Parity, offboarding) generalize the same loop
+> with an explicit plan the operator reviews before choosing what to apply, and structured evidence
+> (preflight, plan, changes, verification) recorded on every run — see
+> [Operation evidence](#operation-evidence) below. The web UI for the reorganized navigation
+> (Home/People/Tenants/Operations/Activity/Settings) is still being finished; this README covers
+> what the backend does today.
 
 ## Architecture
 
@@ -55,26 +68,136 @@ Two independent auth planes:
   SAM refresh token for a per-tenant Graph token on demand.
 
 ```
-web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile / workflows)
-                                     ├─ Graph (GraphTenantClientFactory, IntuneWin32Service, .intunewin reader, Identity workflows)
+web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile / workflows / operations)
+                                     ├─ Hosting/Diagnostics (Server vs Local profile, CLI, doctor, SPA hosting)
+                                     ├─ Graph (GraphTenantClientFactory, IntuneWin32Service, .intunewin reader, Identity + Operations workflows)
                                      ├─ Exchange (ExchangeOnlineService via EXO PowerShell V3, Mailbox workflows)
                                      ├─ PartnerCenter (SamTokenService, PartnerCenterClient)
-                                     └─ Data (EF Core + Postgres, Data-Protection-encrypted secrets, run history)
+                                     ├─ Data (EF Core model + Postgres migrations, Data-Protection-encrypted secrets, run history)
+                                     └─ Data.Sqlite (same EF Core model, SQLite migrations, for the Local Workbench)
 ```
 
 | Project | Responsibility |
 |---|---|
-| `PartnerCenterBridge.Core` | Domain entities, reconcile engine, the `IWorkflow` contract + catalog, cross-project abstractions. No external SDK deps. |
-| `PartnerCenterBridge.Data` | EF Core `BridgeDbContext`, migrations, `ProtectedSamTokenStore`, workflow run history. |
+| `PartnerCenterBridge.Core` | Domain entities, reconcile engine, the `IWorkflow` contract + catalog, the `IPlannedOperation`/evidence model, cross-project abstractions. No external SDK deps. |
+| `PartnerCenterBridge.Data` | EF Core `BridgeDbContext` (the shared model) + its Postgres migration set, `ProtectedSamTokenStore`, workflow run history. |
+| `PartnerCenterBridge.Data.Sqlite` | The same `BridgeDbContext` model with its own SQLite migration set and design-time factory, WAL + busy-timeout pragmas, used only by the Local Workbench. |
 | `PartnerCenterBridge.PartnerCenter` | `SamTokenService` (MSAL SAM flow), `PartnerCenterClient` (REST v3). |
-| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory, Identity workflows (MFA/password reset, lockdown, license repair). |
+| `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory, Identity workflows (MFA/password reset, lockdown, license repair), and the Operations workflows (`AccessParityOperation`, `OffboardingOperation`, `PersonDirectoryReader`, `GroupClassifier`). |
 | `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`; the mailbox-archive workflow. |
-| `PartnerCenterBridge.Api` | Controllers, OIDC auth, DI wiring, deploy + provisioning orchestration, workflow dispatch + run recording. |
-| `web/` | React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy wizard, History, New Hire, Offboard, Workflows, Approvals, Config Snapshots, plus sign-in, registration and account security for Local mode. |
+| `PartnerCenterBridge.Api` | Controllers, OIDC/Local/Dev auth, the `Hosting`/`Diagnostics` layer (profile resolution, CLI, `doctor`, SPA hosting), DI wiring, deploy + provisioning orchestration, workflow/operation dispatch + run recording. |
+| `web/` | React SPA: Home, People, Tenants, Operations (Access Parity, onboard/offboard, deploy, workflows, contracts, templates), Activity, Settings, plus sign-in, registration and account security for Local mode. Routing/IA rework is in progress on this branch. |
+
+## Two ways to run it
+
+Both modes share the same API, the same EF Core model, and the same workflow/operation catalog;
+only the hosting profile (`Hosting:Profile`), the persistence provider, and the auth defaults
+differ.
+
+### Local Workbench (single `.exe`, no server to stand up)
+
+A self-contained Windows binary that embeds the API and the built SPA and runs entirely on one
+machine: SQLite instead of Postgres, loopback-only Kestrel, and self-registered Local accounts.
+There is nothing else to install or configure to click through the app.
+
+```
+PartnerCenterBridge.exe [command] [options]
+
+Commands:
+  (none)          Start the web app (API + UI).
+  doctor          Check configuration and dependencies, print the results, and exit
+                  (exit 0 = no errors, 1 = at least one error). Does not start the server.
+  bootstrap-sam   Run the interactive Secure Application Model bootstrap (device code) and exit.
+
+Options:
+  --local             Use the Local Workbench profile (baked in by default for this build).
+  --port <N>          Port to listen on (default 5080).
+  --data-dir <path>   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
+  --listen <address>  Bind to another address instead of 127.0.0.1 (exposes the app to the network).
+  --no-browser        Do not open the browser after startup.
+  --version           Print the version and exit.
+  -h, --help          Print help and exit.
+```
+
+- **Data**: SQLite at `%LOCALAPPDATA%\PartnerCenterBridge\pcb.db` (`$XDG_DATA_HOME` or
+  `~/.local/share/PartnerCenterBridge` on non-Windows builds), with Data Protection keys, logs,
+  packages, and certificates under the same root. `--data-dir` overrides the root.
+- **Auth**: `Auth:Mode=Local` by default; the profile refuses to start with `Auth:Mode=Dev` (that
+  would let anyone who can reach the port act as administrator). The **first account registered
+  becomes the instance Administrator**.
+- **Network**: Kestrel binds `127.0.0.1` only by default. The canonical origin is
+  `http://localhost:<port>` — a request addressed to the loopback IP literal (`127.0.0.1` or
+  `[::1]`) is redirected (GET/HEAD) or rejected with 421 (everything else) so passkeys, which are
+  bound to one origin, always see the same host. `--listen <addr>` exposes the app to the network
+  and prints a standing warning; it is off by default.
+- **Second launch on an occupied port**: if that port already answers as this app (checked via
+  `/api/system/status` and an `X-PCB-Instance` response header, not just "something is
+  listening"), the exe opens your browser to it and exits 0 instead of failing. If the port
+  belongs to something else, it fails with an actionable message.
+- **Build it**: `./scripts/publish-local.ps1` (needs the .NET 8 SDK and Node for the SPA build) →
+  `artifacts/local/win-x64/PartnerCenterBridge.exe`. Equivalent to `dotnet publish
+  src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+  -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+  -p:DebugType=embedded -p:PcbLocalWorkbench=true`. `-SkipSpaBuild` embeds an existing `web/dist`
+  as-is instead of rebuilding it.
+
+Full detail, including diagnostics and Exchange as an optional dependency:
+[Local Workbench](https://spillerstech.us/PartnerCenterBridge/local-workbench.html).
+
+### Server / container (Postgres, Docker, Kubernetes) — unchanged
+
+The original deployment path, untouched by this branch: Postgres, the API and web Docker images,
+nginx in front of the SPA, and the `deploy/` Kustomize template for Kubernetes. See
+[Run locally (docker-compose)](#run-locally-docker-compose) and
+[Deploy (Kustomize / Flux)](#deploy-kustomize--flux) below.
+
+## Persistence: two providers, one model
+
+`Persistence:Provider` selects `Postgres` (default, the Server profile) or `Sqlite` (the Local
+Workbench). Both read and write the same `BridgeDbContext` model, but each has its own migrations
+project and its own design-time factory, so a model change needs a migration generated for
+**both**:
+
+```bash
+# Postgres (needs the Api project as --startup-project; it carries Microsoft.EntityFrameworkCore.Design)
+dotnet ef migrations add <Name> --project src/PartnerCenterBridge.Data --startup-project src/PartnerCenterBridge.Api
+
+# SQLite (its own design-time factory, so it is its own startup project)
+dotnet ef migrations add <Name> --project src/PartnerCenterBridge.Data.Sqlite --startup-project src/PartnerCenterBridge.Data.Sqlite
+```
+
+Migrations for the active provider apply automatically at startup. The SQLite provider opens
+every connection with `PRAGMA journal_mode=WAL`, `synchronous=NORMAL`, `foreign_keys=ON`, and a
+5-second busy timeout, so a single-user desktop workload never trips `SQLITE_BUSY`.
+
+## Protecting secrets and data in Local mode
+
+- **Data Protection key ring**: the same key ring used for the SAM refresh token and other
+  encrypted secrets lives under the data root's `keys/` folder and is protected with **DPAPI for
+  the current Windows user** (`ProtectKeysWithDpapi`) in addition to the usual file-system
+  persistence. Losing the folder or moving it to another user makes stored secrets undecipherable
+  (the `doctor`/diagnostics `sam` and `data-protection` checks say so).
+- **Local signing key**: the first launch generates a random 256-bit `Auth:Local:SigningKey`,
+  encrypts it with the same Data Protection key ring, and stores it at
+  `auth-signing-key.protected` in the data root. Every restart reuses it, so sessions survive a
+  restart; deleting the file (or the key ring) rotates it and signs everyone out.
+- **User-only ACLs**: a data directory this process creates (not one you pointed `--data-dir` at)
+  gets its Windows ACL restricted to the current user plus `SYSTEM` on a best-effort basis — a
+  failure to restrict it is reported as a startup warning, not a hard failure, since
+  `%LOCALAPPDATA%` is already per-user.
+- **Network defense in depth**: loopback-only Kestrel binding, the canonical-origin middleware
+  (above), and `AllowedHosts` set to exactly `localhost;127.0.0.1;[::1]` (plus an explicit
+  `--listen` address, when given) all apply together — a DNS-rebinding host cannot reach the app
+  even if something tricked a browser into resolving a public name to loopback.
+- **No localhost auth bypass**: none of the above is treated as authentication. Loopback binding
+  and the canonical-origin check only normalize *which* origin a request is answered on; every
+  request still goes through the same `Auth:Mode=Local` sign-in as any other deployment. There is
+  no special-cased "requests from 127.0.0.1 are trusted" path anywhere in the Local profile.
 
 ## Run locally (docker-compose)
 
-Auth is disabled in compose so you can click through the UI without an IdP.
+Auth is disabled in compose so you can click through the UI without an IdP. (For a single-user
+desktop install with no server at all, see [Local Workbench](#local-workbench-single-exe-no-server-to-stand-up) above.)
 
 ```bash
 # Fastest: published images, no clone or build needed.
@@ -101,10 +224,23 @@ cd web && npm install && npm run dev
 ## Tests
 
 ```bash
-dotnet test                     # API, workflows, auth/RBAC, Graph flows against WireMock -- no tenant needed
+dotnet test                     # API, workflows, operations, auth/RBAC, Graph flows against WireMock -- no tenant needed
 cd web && npx vitest run        # SPA component tests
 cd web && npm run build         # type-check + production build
 ```
+
+## CI
+
+`.github/workflows/ci.yml` runs on every PR and push to `main`: a `dotnet` job (build + the full
+xunit suite, including the Postgres-backed authorization concurrency tests against a
+`postgres:16` service container), a `web` job (`npm ci`, `tsc -b`, `vitest run`, `npm run build`),
+a `local-workbench` job (Windows: runs `scripts/publish-local.ps1`, then smoke-tests the published
+exe — health check, `/api/system/status` profile, SPA fallback for a deep link, loopback-only
+binding, and a stop/restart to confirm `pcb.db` persists; also runs `doctor` non-gating, since
+Exchange/SAM are expected unconfigured in CI; uploads the exe as a 14-day artifact), and a
+`docker` job (builds both container images without pushing). `.github/workflows/ui-overflow.yml`
+runs the separate mobile-overflow Playwright capture. None of this publishes anything; the release
+checklist in [CLAUDE.md](CLAUDE.md) covers the manual release steps.
 
 ## Config snapshots
 
@@ -116,6 +252,100 @@ is deliberately no "apply this to a tenant" path; making changes stays the job o
 and known-fix workflows. Set `GitSync:RepoUrl` to also mirror every capture into a real git repo
 (one file per section, committed and pushed) for history you can browse and diff outside the app.
 Full detail: [Config Snapshots](https://spillerstech.us/PartnerCenterBridge/config-snapshots.html).
+
+## Exchange Online as an optional dependency
+
+Mailbox operations (mailbox archive repair, offboarding's mailbox conversion/forwarding) need
+three things: `pwsh` (PowerShell 7) on PATH or at `Exchange:PwshPath`, the
+`ExchangeOnlineManagement` module installed for it, and an app-only certificate configured
+(`Exchange:AppId` + `Exchange:CertificatePath`). None of it is required to run the app. When any
+piece is missing, the affected section reports `Unavailable` with the specific reason (never a
+silent no-op or a fake success) — the person workspace's `mailbox` section, and any offboarding
+item that needs Exchange (`convert-mailbox`, `set-forwarding`). `doctor` (or
+`GET /api/system/diagnostics` for an instance Administrator) probes `pwsh` and the module
+out-of-process (cached 60 seconds) and the app-only cert (checked fresh every time), and prints
+the exact fix for whichever piece is missing first, in the order you'd fix them: install
+PowerShell 7, then the module, then configure the app registration and certificate.
+
+## Access Parity
+
+`POST /api/tenants/{tenantId}/operations/access-parity/plan` and `.../apply` give a target user
+the group memberships a source user has and they lack — additive only. The only Graph write it
+can issue is adding the target to a group; nothing is ever removed, and a membership the target
+already has that the source lacks is never touched. Categories, from `GroupClassifier`:
+
+| Category | Copied? |
+|---|---|
+| `Security`, `Microsoft365` (cloud, non-dynamic, non-synced, non-role-assignable) | Yes |
+| `Dynamic` | No — rule-managed membership |
+| `OnPremSynced` | No — managed in on-premises AD |
+| `RoleAssignable` | No — grants directory role privileges |
+| `MailEnabledSecurity`, `Distribution` | No — managed in Exchange Online |
+| `DirectoryRole` | No — roles are never copied |
+| `Other` (neither security- nor mail-enabled) | No |
+| `AlreadyMember` | No change needed |
+
+Every plan states the limitation explicitly: **SharePoint direct (non-group) site/file
+permissions, app role assignments granted directly to the user, Exchange mailbox/calendar
+permissions (Full Access, Send As, delegate access), and Teams-only private/shared channel
+membership are not compared or copied** — only direct group memberships and directory roles are.
+Apply re-plans server-side (a stale client plan cannot apply something no longer eligible), is
+idempotent (already-present counts as `NoChangeNeeded`, not a failure), and verifies by re-reading
+the target's memberships from Graph rather than trusting the write. Tenant role: Viewer to plan,
+Operator to apply.
+
+## Offboarding policy v2
+
+`Contract.OffboardingPolicy` (JSON on the contract) makes offboarding steps optional and
+per-contract instead of hard-coded:
+
+| Field | Default | Meaning |
+|---|---|---|
+| `blockSignIn` | `true` | Disable the account (skipped, with a guardrail warning, on a hybrid-synced account — Graph cannot change `accountEnabled` on one). |
+| `revokeSessions` | `true` | Revoke all refresh/access tokens. |
+| `groupCleanup` | `RemoveAll` | `None` \| `RemoveAssignable` \| `RemoveAll` — which direct group memberships to remove. |
+| `convertMailboxToShared` | `false` | Convert the mailbox to shared via Exchange Online. |
+| `removeLicenses` | `true` | Remove directly-assigned licenses (group-based license assignments are left with the licensing group). |
+| `hideFromGal` | `false` | **Always ineligible today** — no Exchange operation exists for this yet; the plan says to set `HiddenFromAddressListsEnabled` by hand. |
+| `forwardTo` | `null` | Optional SMTP address; only takes effect together with `convertMailboxToShared`. |
+| `managerAccess` | `None` | `FullAccess` — **always ineligible today**, same reason as `hideFromGal`. |
+| `wipeDevices` | `None` | `Retire` — issues an Intune retire on every managed device. |
+| `followUpDays` | `0` | Recorded in evidence only; PCB does not schedule a reminder or delete anything itself. |
+
+The defaults reproduce pre-policy offboarding exactly. `GET`/`PUT
+/api/contracts/{id}/offboarding-policy` (PUT needs the Catalog manager instance permission)
+manage the contract's policy; `POST /api/provisioning/terminate/plan` and `.../terminate` take an
+effective policy of **request overrides > contract policy > built-in defaults**.
+
+**Ordering is a guarantee, not an implementation detail**: sign-in is blocked and sessions revoked
+first; the mailbox is converted to shared (and forwarding set) before anything that can remove a
+license; **group cleanup and license removal wait for a verified mailbox conversion** whenever one
+was requested — removing a license from an unconverted mailbox starts Microsoft's deletion clock
+on it, so PCB will not do that just because the conversion call returned success. Directory roles
+are listed, never removed automatically. Every step that ran is re-read afterward (account
+disabled? sessions actually revoked — `signInSessionsValidFromDateTime` moved forward? mailbox
+really `SharedMailbox` on re-read? group membership actually gone? license actually gone?
+`managementState` actually shows `retire`?) — nothing is reported done on the strength of the
+write call alone.
+
+## Operation evidence
+
+Planned operations (Access Parity, offboarding) extend the existing `IWorkflow`/`WorkflowRun`
+model rather than replacing it: every `WorkflowRun` has a nullable `Evidence` JSON column, and
+runs written before evidence existed are adapted on read so history stays readable. Evidence
+carries `preflight` (findings before anything changed), `plan` (every item considered, including
+ineligible ones with the reason), `changes` (what was actually attempted and its result),
+`verification` (post-change re-reads), `warnings`, `limitations`, `failures`, and a server-generated
+`ticketNotes` narrative — plus an `outcome`: `Succeeded`, `PartiallySucceeded`, `Failed`,
+`NoChangeNeeded`, `VerificationFailed`, or `Planned`. The outcome rule is strict: a change reported
+successful that verification does not confirm is `VerificationFailed`, not `Succeeded` — success is
+only ever claimed for changes a re-read actually confirmed.
+
+`GET /api/workflows/runs/{runId}/evidence` returns the JSON; `?format=markdown` (or `md`) returns
+a ticket-ready Markdown download instead (400 for any other format, 403 without a Viewer grant on
+the run's tenant, 404 for an unknown run). `GET /api/workflows/runs` gained `targetId` filtering
+and `outcome`/`targetId`/`targetDisplayName` on each row, so the person workspace's `recentRuns`
+section and a future per-person history view can both query it the same way.
 
 ## The Win32 deploy flow
 
@@ -164,6 +394,7 @@ preference:
 # 1. Interactive device-code bootstrap (recommended). Prints a URL + code to sign in with an
 #    MFA'd admin agent; stores the encrypted, auto-rotating refresh token.
 dotnet run --project src/PartnerCenterBridge.Api -- bootstrap-sam
+# Local Workbench build: PartnerCenterBridge.exe bootstrap-sam (uses that install's own data dir)
 
 # 2. Paste a refresh token captured out-of-band.
 curl -X POST /api/admin/sam/seed -H 'content-type: application/json' -d '{"refreshToken":"..."}'

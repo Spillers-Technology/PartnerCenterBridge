@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Workbench - Partner Center Bridge docs</title>
+<meta name="description" content="Run Partner Center Bridge as a single self-contained exe: SQLite, loopback-only, self-registered Local accounts, no server to stand up.">
+<meta name="theme-color" content="#ffffff">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/local-workbench.html">
+<meta property="og:type" content="article">
+<meta property="og:title" content="Local Workbench - Partner Center Bridge docs">
+<meta property="og:description" content="Run Partner Center Bridge as a single self-contained exe: SQLite, loopback-only, self-registered Local accounts, no server to stand up.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/local-workbench.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
+<script>
+  var initOpts = {
+    projectKey: "vQsdaVKqB3x2jUBKW4xd",
+    ingestPoint: "https://replay.spillerstech.us/ingest",
+    defaultInputMode: 0,
+    obscureTextNumbers: false,
+    obscureTextEmails: false,
+  };
+  var startOpts = { userID: "" };
+  (function(A,s,a,y,e,r){
+    r=window.OpenReplay=[e,r,y,[s-1, e]];
+    s=document.createElement('script');s.src=A;s.async=!a;
+    document.getElementsByTagName('head')[0].appendChild(s);
+    r.start=function(v){r.push([0])};
+    r.stop=function(v){r.push([1])};
+    r.setUserID=function(id){r.push([2,id])};
+    r.setUserAnonymousID=function(id){r.push([3,id])};
+    r.setMetadata=function(k,v){r.push([4,k,v])};
+    r.event=function(k,p,i){r.push([5,k,p,i])};
+    r.issue=function(k,p){r.push([6,k,p])};
+    r.isActive=function(){return false};
+    r.getSessionToken=function(){};
+  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
+  OpenReplay.start();
+  OpenReplay.setMetadata("project", "PartnerCenterBridge");
+</script>
+</head>
+<body>
+
+<a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#screens">Screens</a>
+      <a href="index.html#status">Status</a>
+      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<div class="docs-shell">
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Local Workbench</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html" aria-current="page">Local Workbench</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Concepts</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Features</p>
+        <ul>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+        </ul>
+      </div>
+    </nav>
+  </aside>
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
+<h1>Local Workbench</h1>
+<p class="lead">
+  A single self-contained <code>PartnerCenterBridge.exe</code> that embeds the API and the built
+  SPA, stores its data in SQLite under your user profile, and runs with no server, no Postgres,
+  and no external identity provider to stand up first. Everything else in the app -- workflows,
+  operations, contracts, the audit trail -- is the same code path as the Server profile; only the
+  hosting profile, the persistence provider, and the auth defaults differ.
+</p>
+
+<!-- TODO(ui-docs): once the People/Tenants/Operations/Activity/Settings navigation and the
+     person workspace/evidence panel/command palette land from the web workstream, add a
+     first-run walkthrough here with screenshots (registration screen, home, a plan/apply
+     evidence view) captured via docs/scripts/capture-product-media.mjs. -->
+
+<h2 id="running-it">Running it</h2>
+<pre><code>PartnerCenterBridge.exe [command] [options]
+
+Commands:
+  (none)          Start the web app (API + UI).
+  doctor          Check configuration and dependencies, print the results and exit
+                  (exit code 0 = no errors, 1 = at least one error). Does not start the server.
+  bootstrap-sam   Run the interactive Secure Application Model bootstrap (device code) and exit.
+
+Options:
+  --local             Use the Local Workbench profile. The Local Workbench build uses it by
+                      default, so you will not normally need to pass it.
+  --port &lt;N&gt;          Port to listen on (default 5080).
+  --data-dir &lt;path&gt;   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
+  --listen &lt;address&gt;  Bind to another address instead of 127.0.0.1. Exposes the app to the
+                      network; only use it when you understand the consequences.
+  --no-browser        Do not open the browser after startup.
+  --version           Print the version and exit.
+  -h, --help          Print this help and exit.
+
+Any --Section:Key=value argument is passed through as configuration.</code></pre>
+<p>
+  On first launch the process creates its data directory, opens (and migrates) the SQLite
+  database, prints a small banner with the URL and data path, waits for its own <code>/health</code>
+  endpoint to answer, and then opens your browser there once. Stop it with Ctrl+C in that window.
+</p>
+
+<h2 id="where-data-lives">Where data lives</h2>
+<p>
+  Everything is under one data root: <code>%LOCALAPPDATA%\PartnerCenterBridge</code> on Windows
+  (<code>$XDG_DATA_HOME/PartnerCenterBridge</code>, falling back to
+  <code>~/.local/share/PartnerCenterBridge</code>, on other platforms the same binary could run
+  on), or wherever <code>--data-dir</code> points instead.
+</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Path</th><th>Contents</th></tr>
+  <tr><td><code>pcb.db</code></td><td>SQLite database (tenants, contracts, workflow/operation runs, accounts, ...).</td></tr>
+  <tr><td><code>keys\</code></td><td>ASP.NET Data Protection key ring -- DPAPI-protected on Windows. Encrypts the SAM refresh token and the local signing key.</td></tr>
+  <tr><td><code>auth-signing-key.protected</code></td><td>The generated <code>Auth:Local:SigningKey</code>, itself protected with the key ring above.</td></tr>
+  <tr><td><code>logs\</code></td><td>Rolling file logs.</td></tr>
+  <tr><td><code>packages\</code></td><td>Uploaded <code>.intunewin</code> app packages.</td></tr>
+  <tr><td><code>certs\</code></td><td>Where an Exchange Online app-only certificate (<code>exo.pfx</code>) is expected if you configure Exchange.</td></tr>
+  <tr><td><code>pcb.local.json</code></td><td>Optional hand-edited config overrides, in ordinary appsettings JSON shape.</td></tr>
+</table>
+</div>
+
+<h2 id="first-launch-and-the-first-administrator">First launch and the first administrator</h2>
+<p>
+  A fresh install has <code>Auth:Mode=Local</code> and no registered accounts. <strong>The first
+  account you register becomes the instance Administrator</strong> -- there is no separate setup
+  wizard. <code>GET /api/system/status</code> (anonymous, nothing sensitive) reports
+  <code>needsFirstUser</code> so the SPA can send you straight to registration instead of a sign-in
+  form that would otherwise fail with nothing to sign in to. The Local profile refuses to start at
+  all with <code>Auth:Mode=Dev</code> -- that mode has no credentials, which combined with a bound
+  network port would let anyone who can reach it act as administrator.
+</p>
+
+<h2 id="second-launch-and-port-collisions">Second launch and port collisions</h2>
+<p>
+  Before binding its port, the Local profile checks what is already there. If the port already
+  answers as <em>this app</em> -- verified by calling its <code>/api/system/status</code> and
+  checking for the <code>X-PCB-Instance: PartnerCenterBridge</code> response header, not just "a
+  port is listening" -- it opens your browser to that existing instance and exits 0, so
+  double-launching (or a shortcut that starts it every time) is harmless. If the port belongs to
+  something else, it fails with an actionable error instead of trying to bind anyway. IPv6 is
+  checked too: because browsers resolve <code>localhost</code> to <code>::1</code> first, something
+  already listening on <code>[::1]</code> would otherwise shadow a successful IPv4 bind.
+</p>
+
+<h2 id="the-canonical-origin">The canonical origin</h2>
+<p>
+  Passkeys are bound to one origin, so the Local profile has exactly one: <code>http://localhost:&lt;port&gt;</code>.
+  A request addressed to a loopback IP literal (<code>127.0.0.1</code> or <code>[::1]</code>)
+  is redirected there for GET/HEAD, or rejected with <code>421 Misdirected Request</code> for
+  anything else -- silently replaying a request body at a different origin is not something a
+  client should rely on. This only normalizes which host a request is answered on; it grants
+  nothing, and no request is trusted for being local (see
+  <a href="#protecting-secrets-and-data">below</a>). See
+  <a href="authentication.html">Authentication</a> for how this interacts with WebAuthn's
+  relying-party id.
+</p>
+
+<h2 id="diagnostics">Diagnostics: doctor and /api/system/diagnostics</h2>
+<p>
+  <code>doctor</code> runs the same checks as <code>GET /api/system/diagnostics</code> (full
+  detail there too -- whoever can run the binary already has its configuration) and prints each
+  one with a suggested fix command and/or an SPA route to open, then exits 1 if any check is an
+  error. A signed-in caller who is not an instance Administrator gets only the capability flags
+  (<code>graph</code>, <code>exchange</code>, <code>partnerCenter</code>), not the check detail.
+</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Check id</th><th>What it verifies</th></tr>
+  <tr><td><code>hosting</code></td><td>Profile and version; warns if bound to a non-loopback address.</td></tr>
+  <tr><td><code>database</code></td><td>Can connect; applied vs. pending migrations.</td></tr>
+  <tr><td><code>data-protection</code></td><td>Key ring folder exists, is writable, and holds at least one key.</td></tr>
+  <tr><td><code>auth</code></td><td>Local: user/administrator counts. Dev: warns it is not for shared use. Oidc: authority configured.</td></tr>
+  <tr><td><code>sam</code></td><td>Partner app configured, and whether SAM has been bootstrapped or a seed token is set.</td></tr>
+  <tr><td><code>tenants</code></td><td>At least one active tenant onboarded.</td></tr>
+  <tr><td><code>pwsh</code></td><td>PowerShell 7 found on PATH (or <code>Exchange:PwshPath</code>).</td></tr>
+  <tr><td><code>exchange-module</code></td><td>The <code>ExchangeOnlineManagement</code> module installed for that <code>pwsh</code>.</td></tr>
+  <tr><td><code>exchange-app</code></td><td>Exchange app id configured and the app-only certificate present on disk.</td></tr>
+</table>
+</div>
+
+<h2 id="exchange-online-as-an-optional-dependency">Exchange Online as an optional dependency</h2>
+<p>
+  Mailbox operations (mailbox archive repair, offboarding's mailbox conversion and forwarding)
+  need three things that nothing else in the app requires: <code>pwsh</code> on PATH, the
+  <code>ExchangeOnlineManagement</code> module installed for it, and an app-only certificate
+  configured (<code>Exchange:AppId</code> + <code>Exchange:CertificatePath</code>, which defaults
+  to <code>certs\exo.pfx</code> under the data root). Everything else works without any of it.
+  When a piece is missing, the affected section reports <span class="badge">Unavailable</span>
+  with the specific reason instead of a silent no-op -- the person workspace's mailbox section,
+  and any offboarding item that needs Exchange. <code>doctor</code> and the diagnostics endpoint
+  probe <code>pwsh</code> and the module out-of-process (cached 60 seconds so repeated checks stay
+  fast) and the certificate fresh every time, and report the first missing piece in the order
+  you'd actually fix them.
+</p>
+
+<h2 id="protecting-secrets-and-data">Protecting secrets and data</h2>
+<ul>
+  <li><strong>DPAPI-protected key ring</strong> -- the Data Protection key ring under
+      <code>keys\</code> is encrypted at rest for the current Windows user
+      (<code>ProtectKeysWithDpapi</code>), in addition to ordinary file-system persistence. It
+      protects the SAM refresh token and the local signing key. Losing it, or moving the data
+      directory to another user account, makes those secrets undecipherable -- the <code>sam</code>
+      and <code>data-protection</code> checks say so rather than failing silently.</li>
+  <li><strong>Protected signing key</strong> -- <code>Auth:Local:SigningKey</code> is generated
+      once (256 random bits) and stored encrypted with that same key ring at
+      <code>auth-signing-key.protected</code>. Every restart reuses it; deleting the file (or the
+      key ring) rotates it and signs everyone out.</li>
+  <li><strong>User-only ACLs</strong> -- a data directory this process creates (not one you point
+      <code>--data-dir</code> at) gets its Windows ACL restricted to the current user plus
+      <code>SYSTEM</code>, best-effort. A failure to restrict it is a startup warning, not a hard
+      failure, since <code>%LOCALAPPDATA%</code> is already per-user.</li>
+  <li><strong>Defense in depth on the network side</strong> -- loopback-only Kestrel binding, the
+      canonical-origin middleware, and <code>AllowedHosts</code> pinned to exactly
+      <code>localhost;127.0.0.1;[::1]</code> (plus an explicit <code>--listen</code> address, when
+      given) all apply together, so a DNS-rebinding host cannot reach the app even if it tricked a
+      browser into resolving a public name to loopback.</li>
+  <li><strong>No localhost auth bypass</strong> -- none of the above is authentication. Loopback
+      binding and the canonical-origin check only normalize which origin a request lands on;
+      every request still goes through the same <code>Auth:Mode=Local</code> sign-in as any other
+      deployment. There is no special-cased "requests from 127.0.0.1 are trusted" path.</li>
+</ul>
+
+<h2 id="building-it">Building it</h2>
+<p>
+  <code>./scripts/publish-local.ps1</code> (.NET 8 SDK + Node.js/npm) builds the SPA
+  (<code>npm ci</code> + <code>npm run build</code>, unless <code>-SkipSpaBuild</code> is given,
+  in which case an existing <code>web/dist</code> is embedded as-is) and publishes a single-file,
+  self-contained, trimmed-symbols exe to <code>artifacts/local/win-x64/PartnerCenterBridge.exe</code>.
+  Equivalent command:
+</p>
+<pre><code>dotnet publish src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained `
+  -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
+  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true `
+  -o artifacts/local/win-x64</code></pre>
+<p>
+  <code>.github/workflows/ci.yml</code> runs this on every PR and push to <code>main</code>
+  (Windows runner), then smoke-tests the published exe: health check, the
+  <code>/api/system/status</code> profile, the SPA fallback for a deep link, loopback-only
+  binding, and a stop/restart to confirm <code>pcb.db</code> persists. It also runs
+  <code>doctor</code> non-gating (Exchange and SAM are expected unconfigured in CI) and uploads
+  the exe as a 14-day build artifact.
+</p>
+
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="getting-started.html"><span>&larr; Previous</span>Getting started</a>
+  <a class="next" href="sam-bootstrap.html"><span>Next &rarr;</span>SAM bootstrap</a>
+</nav>
+</article>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<footer class="site-footer">
+  <div class="wrap stack-strip">
+    <span class="stack-strip-label">Built on</span>
+    <span>ASP.NET Core 8</span>
+    <span>React + Vite + TS</span>
+    <span>PostgreSQL / SQLite</span>
+    <span>Microsoft Graph</span>
+    <span>Partner Center API</span>
+    <span>Exchange Online PowerShell V3</span>
+  </div>
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center <b>Bridge</b></span>
+      </a>
+      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#status">What's real today</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

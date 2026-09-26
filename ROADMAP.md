@@ -4,31 +4,74 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
 
 ## Mobile UX testing
 
-The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all 15 current
+The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all current
 views across five touch device profiles (Galaxy/iPhone/Pixel/folded-foldable/unfolded-foldable) and
-asserts no page-level horizontal overflow at each -- see `docs/mobile.md`. CI now runs the overflow
-check on three of the five profiles for every PR (`.github/workflows/ui-overflow.yml`). Still open:
-the screenshots themselves are only reviewed by a human, and `dotnet test` / `vitest` / `npm run
-build` are not in CI at all.
+asserts no page-level horizontal overflow at each -- see `docs/mobile.md`. CI runs the overflow
+check on three of the five profiles for every PR (`.github/workflows/ui-overflow.yml`), and as of
+the `feat/ops-workbench` branch `.github/workflows/ci.yml` also runs `dotnet test`, `vitest run`,
+and both `dotnet build`/`npm run build` on every PR and push to `main` (plus a Windows job that
+publishes and smoke-tests the Local Workbench exe). Still open: the mobile screenshots themselves
+are only reviewed by a human, not asserted against a baseline.
 
 ## Config Snapshots v2
 
 Current Config Snapshots (section/whole-tenant diff, workbooks, git sync) works but is limited.
 No specifics yet -- revisit once there's a concrete pain point driving the next iteration.
 
-## AppShell: route history / deep links
+## AppShell: route history / deep links -- landed on `feat/ops-workbench`
 
-Tabs are plain component-swap state, not real routes -- there's no browser history, no deep
-linking to a specific tab, and refresh/back/bookmark all lose whatever screen (and any in-progress
-draft or show-once output) was open. Also surfaced by the usability workstream's survey; explicitly
-scoped out of that pass as architectural rather than a friction fix. Would need routing wired
-through `App.tsx`'s tab state and each screen's own local state reconciled with URL params.
+Done. Tabs are real routes now (`/people`, `/people/:tenantId/:userId`, `/tenants`, `/operations/*`,
+`/activity`, `/settings/*`, ...), wired through the router rather than component-swap state, so
+browser history, deep links, and refresh/back/bookmark all work. The six-area navigation
+(Home/People/Tenants/Operations/Activity/Settings) replaces the previous tab set. Some screens
+still need their local state fully reconciled with URL params (e.g. in-progress drafts across a
+refresh) -- revisit if that turns out to still lose work in practice.
 
 ## Design language: "quest-driven" playful nudges
 
-The Contracts desired-app editor's disabled-template state (a package-less app template, hidden by
-default) uses a deliberately playful, actionable "quest chip" nudge -- amber, encouraging,
-literally the fix-it action rather than just an explanation. The user liked this enough to wonder
-whether it's worth applying more broadly as a mental design model across the app (turning "this is
-disabled/incomplete" states into inviting, actionable nudges rather than flat disabled UI). Not
-committing to that as a system yet -- revisit once there's more than one example to generalize from.
+The "quest chip" nudge (amber, encouraging, literally the fix-it action rather than just an
+explanation) started in the Contracts desired-app editor's disabled-template state and is now a
+shared `QuestChip` component also used by the diagnostics list and the settings screens. Generalizing
+it as a deliberate mental model for every "this is disabled/incomplete" state across the app is
+still not committed to as a system -- revisit with a fuller inventory of where it does and doesn't
+fit.
+
+## Kiota-generated Graph client is on a preview package
+
+`PartnerCenterBridge.Graph` depends on `Microsoft.Graph.Beta` `5.77.0-preview` (Kiota-generated).
+Preview packages carry their own advisory/breaking-change cadence independent of the rest of the
+.NET 8 dependency set pinned in `CLAUDE.md`'s release notes -- watch it for a stable release or a
+security advisory the way the other pinned transitive packages are watched.
+
+## Exchange operations for hideFromGal and managerAccess
+
+Offboarding policy v2 has `hideFromGal` and `managerAccess: FullAccess` fields, but both are always
+ineligible: there is no Exchange Online operation implemented for hiding a mailbox from the address
+list (`Set-Mailbox -HiddenFromAddressListsEnabled`) or granting a manager Full Access
+(`Add-MailboxPermission -AccessRights FullAccess`) yet. The plan says so and points at the Exchange
+admin center as the manual fallback. Wiring these into `ExchangeOnlineService`/`OffboardingOperation`
+is the natural next step once the policy shape has seen real use.
+
+## Delayed-deletion scheduler for offboarding follow-up
+
+`OffboardingPolicy.FollowUpDays` is recorded in evidence and in the plan's warnings only -- PCB
+does not schedule anything or come back to delete the account itself. A real implementation needs
+a background scheduler (and a decision about what "delete" means: disable further, actually delete
+the Entra object, or just surface a due list) that this branch deliberately did not build.
+
+## SharePoint direct-permission parity
+
+Access Parity's stated limitation list includes SharePoint direct (non-group) site and file
+permissions, which are not compared or copied at all today -- only group memberships and directory
+roles are. Closing this gap needs the SharePoint REST/Graph permissions surface, which is a
+meaningfully different API shape from group membership and was explicitly left out of this pass.
+
+## MCP access-parity approval should pin the previewed item set
+
+`plan_access_parity` (MCP, read-only) and the Access Parity apply endpoint both re-plan
+server-side, which is correct for "only still-eligible items run." But the MCP apply path goes
+through the existing `remediate_workflow` + approval queue, which (like every other workflow
+today) applies whatever is eligible *at approval time*, not necessarily the exact item set the
+approver saw when they reviewed the pending action. For an additive operation like Access Parity
+the blast radius of that gap is small, but a queued approval should arguably pin and re-verify the
+specific items it showed rather than silently re-planning wider or narrower before it applies.

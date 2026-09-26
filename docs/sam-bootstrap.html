@@ -72,6 +72,7 @@
         <p class="docs-nav-title">Get started</p>
         <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html" aria-current="page">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
         </ul>
@@ -113,6 +114,14 @@
 <pre><code>dotnet run --project src/PartnerCenterBridge.Api -- bootstrap-sam</code></pre>
 <p>Prints a URL + code. Sign in with an MFA'd admin-agent account from your partner tenant;
 the bridge captures the refresh token and stores it encrypted.</p>
+<p>
+  On the <a href="local-workbench.html">Local Workbench</a>, run the same command against the exe
+  instead -- it uses that install's own data directory (<code>%LOCALAPPDATA%\PartnerCenterBridge</code>
+  by default, or wherever <code>--data-dir</code> points) for the Partner app configuration and
+  the encrypted refresh token, and does not start the web server:
+</p>
+<pre><code>PartnerCenterBridge.exe bootstrap-sam
+PartnerCenterBridge.exe bootstrap-sam --data-dir D:\pcb-data   # non-default data directory</code></pre>
 
 <h3>2. Paste a refresh token captured out-of-band</h3>
 <pre><code>curl -X POST /api/admin/sam/seed \
@@ -149,7 +158,7 @@ you use. Tenants without one show as <span class="badge err">NoDelegation</span>
 Tenants tab.</p>
 
 <nav class="doc-pager" aria-label="Previous and next page">
-  <a class="prev" href="getting-started.html"><span>&larr; Previous</span>Getting started</a>
+  <a class="prev" href="local-workbench.html"><span>&larr; Previous</span>Local Workbench</a>
   <a class="next" href="deployment.html"><span>Next &rarr;</span>Deployment</a>
 </nav>
 </article>
@@ -192,6 +201,7 @@ Tenants tab.</p>
       <h2>Docs</h2>
       <ul>
           <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="deployment.html">Deployment</a></li>
           <li><a href="architecture.html">Architecture</a></li>
