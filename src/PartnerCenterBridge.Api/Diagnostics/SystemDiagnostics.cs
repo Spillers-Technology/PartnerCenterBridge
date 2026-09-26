@@ -140,6 +140,11 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
             case AuthModeInfo.Local:
                 if (!databaseUsable)
                     return new(id, label, SystemCheckStatus.Ok, "Local accounts (user count unavailable until the database is ready)", null);
+                if (_hosting.IsLocal && await Auth.WorkbenchOwnerService.IsAccountlessAsync(_db, ct))
+                    return new(id, label, SystemCheckStatus.Ok,
+                        "No account (launch secret, this Windows user only). Anyone who can run programs as " + Environment.UserName +
+                        " on this computer, or open the launch link, can use this workbench with full administrator rights.",
+                        new SystemCheckFix("Protect with an account", null, "/settings/security"));
                 var users = await _db.AppUsers.CountAsync(ct);
                 if (users == 0)
                     return new(id, label, SystemCheckStatus.Warning,

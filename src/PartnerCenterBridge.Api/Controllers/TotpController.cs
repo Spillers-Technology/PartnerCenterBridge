@@ -41,6 +41,8 @@ public class TotpController : ControllerBase
         var user = await _db.AppUsers.FindAsync([userId], ct);
         if (user is null) return NotFound();
         if (user.TotpEnabled) return Conflict("TOTP is already enabled. Disable it before re-enrolling.");
+        if (user.IsWorkbenchOwner)
+            return Conflict("This workbench is used without an account. Protect it with an account first; two-factor authentication applies to password sign-in.");
 
         var (secret, uri) = _totp.GenerateEnrollment(user.Email);
         // The secret is held server-side only in the short-lived challenge cache until proven --

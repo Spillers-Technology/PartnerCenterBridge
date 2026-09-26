@@ -34,7 +34,8 @@ public class AuthResponseFactory
             user.InstanceRoles.HasFlag(Core.InstanceRole.Administrator),
             user.TotpEnabled, access, roles,
             InstanceRolePermissions.PermissionNames(user.InstanceRoles),
-            user.AuthorizationVersion);
+            user.AuthorizationVersion,
+            user.IsWorkbenchOwner);
         return new AuthResponse(_tokens.IssueAccessToken(user), me);
     }
 }

@@ -62,7 +62,7 @@ public static class LocalDataDirectory
 
     /// <summary>
     /// The first sensitive entry under the data root (the database, the Data Protection key ring and
-    /// its keys, the protected signing key) that carries an explicit permission entry giving someone
+    /// its keys, the protected signing key and launch secret) that carries an explicit permission entry giving someone
     /// else access, or null. Inherited entries come from the data root, which is validated
     /// separately; this catches a file or folder that was shared on its own. Windows only: elsewhere
     /// the private root's mode already keeps other users out of everything below it.
@@ -70,7 +70,7 @@ public static class LocalDataDirectory
     public static (string Path, string Problem)? FindInsecureSensitiveEntry(LocalWorkbenchOptions options)
     {
         if (!OperatingSystem.IsWindows()) return null;
-        var candidates = new List<string> { options.DatabasePath, options.SigningKeyPath, options.KeysPath };
+        var candidates = new List<string> { options.DatabasePath, options.SigningKeyPath, options.LaunchSecretPath, options.KeysPath };
         if (Directory.Exists(options.KeysPath)) candidates.AddRange(Directory.GetFiles(options.KeysPath));
         foreach (var candidate in candidates)
         {
@@ -267,7 +267,7 @@ public static class LocalSigningKeyStore
     }
 
     /// <summary>Exclusive lock across processes (and threads): an open-exclusive lock file in the data root.</summary>
-    private static FileStream AcquireInitLock(LocalWorkbenchOptions options, TimeSpan timeout)
+    internal static FileStream AcquireInitLock(LocalWorkbenchOptions options, TimeSpan timeout)
     {
         var path = Path.Combine(options.DataRoot, ".init.lock");
         var deadline = DateTime.UtcNow + timeout;

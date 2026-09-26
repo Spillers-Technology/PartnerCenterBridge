@@ -75,7 +75,7 @@ public sealed class LocalWorkbenchHostTests : IDisposable
         using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
             var root = json.RootElement;
-            Assert.Equal(new[] { "profile", "version", "authMode", "needsFirstUser" },
+            Assert.Equal(new[] { "profile", "version", "authMode", "needsFirstUser", "accountless", "canSkipAccount", "windowsUser" },
                 root.EnumerateObject().Select(p => p.Name).ToArray());
             Assert.Equal("Local", root.GetProperty("profile").GetString());
             Assert.Equal(HostingInfo.ProductVersion, root.GetProperty("version").GetString());

@@ -114,7 +114,9 @@ public class PostgresAuthorizationConcurrencyTests
         using var cache = new MemoryCache(new MemoryCacheOptions());
         var controller = new AuthController(
             db, authOptions, new AuthModeInfo(AuthModeInfo.Local), new ChallengeCache(cache),
-            new AuthResponseFactory(db, tokens));
+            new AuthResponseFactory(db, tokens),
+            new WorkbenchOwnerService(new PartnerCenterBridge.Api.Hosting.HostingInfo(PartnerCenterBridge.Api.Hosting.HostingProfile.Server, null),
+                TimeProvider.System, Microsoft.Extensions.Logging.Abstractions.NullLogger<WorkbenchOwnerService>.Instance));
         var result = await controller.Register(
             new RegisterRequest(email, "correct horse battery staple", email), CancellationToken.None);
         Assert.IsType<OkObjectResult>(result.Result);

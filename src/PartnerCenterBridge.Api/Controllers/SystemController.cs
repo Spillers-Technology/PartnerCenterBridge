@@ -30,15 +30,24 @@ public class SystemController : ControllerBase
         _db = db;
     }
 
-    public record SystemStatusDto(string Profile, string Version, string AuthMode, bool NeedsFirstUser);
+    /// <param name="Accountless">The Local Workbench is used without an account (launch-link sign-in only).</param>
+    /// <param name="CanSkipAccount">First run may offer "use without an account" (Local profile, loopback only, no user yet).</param>
+    /// <param name="WindowsUser">The Windows user the workbench runs as -- only when one of the two flags above is true.</param>
+    public record SystemStatusDto(string Profile, string Version, string AuthMode, bool NeedsFirstUser,
+        bool Accountless = false, bool CanSkipAccount = false, string? WindowsUser = null);
 
     [HttpGet("status")]
     [AllowAnonymous]
-    public async Task<SystemStatusDto> Status(CancellationToken ct)
+    public async Task<SystemStatusDto> Status([FromServices] WorkbenchOwnerService owner, CancellationToken ct)
     {
         Response.Headers[PortPreflight.InstanceHeader] = PortPreflight.InstanceHeaderValue;
         var needsFirstUser = _authMode.IsLocal && !await _db.AppUsers.AnyAsync(ct);
-        return new SystemStatusDto(_hosting.Profile, _hosting.Version, _authMode.Mode, needsFirstUser);
+        // Never in the Server profile: there, owner.Local is null.
+        var localOwnerPlane = _authMode.IsLocal && owner.Local is not null;
+        var accountless = localOwnerPlane && await WorkbenchOwnerService.IsAccountlessAsync(_db, ct);
+        var canSkip = localOwnerPlane && needsFirstUser && owner.UnavailableReason is null;
+        return new SystemStatusDto(_hosting.Profile, _hosting.Version, _authMode.Mode, needsFirstUser,
+            accountless, canSkip, accountless || canSkip ? Environment.UserName : null);
     }
 
     [HttpGet("diagnostics")]
