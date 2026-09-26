@@ -1,75 +1,89 @@
 import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ThemeProvider } from "@mui/material/styles";
-import { theme } from "../theme";
 import { AppShell } from "./AppShell";
+import { mockMatchMedia, renderWithRouter } from "../test/renderWithRouter";
 
-const tabs = [
-  { key: "dashboard", label: "Dashboard" },
-  { key: "tenants", label: "Tenants" }
-];
+// MUI's useMediaQuery asks for "(max-width:599.95px)" (phone) and "(min-width:900px)" (wide).
+const DESKTOP = (q: string) => q.includes("min-width");
+const TABLET = () => false;
+const PHONE = (q: string) => q.includes("max-width");
 
-function mockMatchMedia(matches: boolean) {
-  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn()
-  }));
-}
-
-function renderShell(props: Partial<ComponentProps<typeof AppShell>> = {}) {
-  const onSelectTab = vi.fn();
+function renderShell(props: Partial<ComponentProps<typeof AppShell>> = {}, path = "/") {
   const onSignOut = vi.fn();
-  render(
-    <ThemeProvider theme={theme}>
-      <AppShell
-        tabs={tabs}
-        activeTab="dashboard"
-        onSelectTab={onSelectTab}
-        displayName="jspillers"
-        onSignOut={onSignOut}
-        {...props}
-      >
-        <div>page content</div>
-      </AppShell>
-    </ThemeProvider>
+  renderWithRouter(
+    <AppShell displayName="jspillers" onSignOut={onSignOut} {...props}>
+      <div>page content</div>
+    </AppShell>,
+    { path }
   );
-  return { onSelectTab, onSignOut };
+  return { onSignOut };
 }
 
 describe("AppShell", () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it("shows scrollable Tabs (not a hamburger) at desktop width, and switching tabs calls onSelectTab", async () => {
-    mockMatchMedia(false);
-    const user = userEvent.setup();
-    const { onSelectTab } = renderShell();
+  it("shows the six destinations as links in a sidebar at desktop width, without a hamburger", () => {
+    mockMatchMedia(DESKTOP);
+    renderShell();
 
     expect(screen.queryByLabelText("Open navigation")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("tab", { name: "Tenants" }));
-    expect(onSelectTab).toHaveBeenCalledWith("tenants");
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    const labels = within(nav).getAllByRole("link").map((l) => l.textContent);
+    expect(labels).toEqual(["Home", "People", "Tenants", "Operations", "Activity", "Settings"]);
   });
 
-  it("shows a hamburger + Drawer at phone width, and picking an item calls onSelectTab", async () => {
-    mockMatchMedia(true);
+  it("navigates when a destination is clicked and marks it as the current page", async () => {
+    mockMatchMedia(DESKTOP);
     const user = userEvent.setup();
-    const { onSelectTab } = renderShell();
+    renderShell();
 
-    expect(screen.queryByRole("tab", { name: "Tenants" })).not.toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getByRole("link", { name: "Home" })).toHaveAttribute("aria-current", "page");
+
+    await user.click(within(nav).getByRole("link", { name: "Tenants" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/tenants");
+    expect(within(nav).getByRole("link", { name: "Tenants" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
+  });
+
+  it("marks the parent destination active on a nested route", () => {
+    mockMatchMedia(DESKTOP);
+    renderShell({}, "/tenants/t1?tab=snapshots");
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getByRole("link", { name: "Tenants" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("uses a compact rail on tablet widths", () => {
+    mockMatchMedia(TABLET);
+    renderShell();
+    expect(screen.queryByLabelText("Open navigation")).not.toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getAllByRole("link")).toHaveLength(6);
+  });
+
+  it("shows a hamburger + Drawer at phone width, and picking an item navigates and closes it", async () => {
+    mockMatchMedia(PHONE);
+    const user = userEvent.setup();
+    renderShell();
+
+    expect(screen.queryByRole("navigation", { name: "Main navigation" })).not.toBeInTheDocument();
     await user.click(screen.getByLabelText("Open navigation"));
-    await user.click(await screen.findByRole("button", { name: "Tenants" }));
-    expect(onSelectTab).toHaveBeenCalledWith("tenants");
+    const nav = await screen.findByRole("navigation", { name: "Main navigation" });
+    await user.click(within(nav).getByRole("link", { name: "Operations" }));
+    expect(screen.getByTestId("location")).toHaveTextContent("/operations");
+  });
+
+  it("shows the pending-approvals count on Activity", () => {
+    mockMatchMedia(DESKTOP);
+    renderShell({ badges: { activity: 3 } });
+    const nav = screen.getByRole("navigation", { name: "Main navigation" });
+    expect(within(nav).getByRole("link", { name: /Activity.*3 pending approvals/ })).toBeInTheDocument();
   });
 
   it("shows the display name and triggers onSignOut from the account menu", async () => {
-    mockMatchMedia(false);
+    mockMatchMedia(DESKTOP);
     const user = userEvent.setup();
     const { onSignOut } = renderShell();
 
@@ -80,7 +94,7 @@ describe("AppShell", () => {
   });
 
   it("omits the Sign out menu item when onSignOut is not provided", async () => {
-    mockMatchMedia(false);
+    mockMatchMedia(DESKTOP);
     const user = userEvent.setup();
     renderShell({ onSignOut: undefined });
 
@@ -89,8 +103,8 @@ describe("AppShell", () => {
   });
 
   it("renders children in the main content area", () => {
-    mockMatchMedia(false);
+    mockMatchMedia(DESKTOP);
     renderShell();
-    expect(screen.getByText("page content")).toBeInTheDocument();
+    expect(screen.getByRole("main")).toHaveTextContent("page content");
   });
 });

@@ -1,7 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link as RouterLink } from "react-router";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import Link from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -12,25 +14,45 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
-import type { GlobalSearchResult } from "../types";
+import type { GlobalSearchResult, GlobalUserHit } from "../types";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 
 export interface WorkflowLaunch {
   workflowId: string;
   tenantId: string;
   inputs: Record<string, string>;
+  /**
+   * A user identifier (UPN or object id) to put into whichever of the workflow's inputs names the
+   * target user -- for deep links that don't know the workflow's own input keys.
+   */
+  user?: string;
 }
 
 /** Person-first workflow shortcuts shown per hit; userUpn is the shared input key. */
-const ACTIONS: { workflowId: string; label: string }[] = [
+export const PERSON_ACTIONS: { workflowId: string; label: string }[] = [
   { workflowId: "mfa-reset", label: "MFA reset" },
   { workflowId: "password-reset", label: "Password reset" },
   { workflowId: "compromised-lockdown", label: "Lockdown" },
   { workflowId: "license-repair", label: "License repair" }
 ];
 
-export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) => void }) {
-  const [q, setQ] = useState("");
+export function UserSearch({
+  onLaunch,
+  initialQuery = "",
+  onSearched,
+  personPath,
+  title = "Find user"
+}: {
+  onLaunch: (launch: WorkflowLaunch) => void;
+  /** Runs this search on mount (e.g. from a ?q= deep link). */
+  initialQuery?: string;
+  /** Called with the query each time a search is submitted, so a route can mirror it in the URL. */
+  onSearched?: (query: string) => void;
+  /** When set, each hit's name links to this path (the person workspace). */
+  personPath?: (hit: GlobalUserHit) => string;
+  title?: string;
+}) {
+  const [q, setQ] = useState(initialQuery);
   const [result, setResult] = useState<GlobalSearchResult | null>(null);
   // Always current (updated every render) so a search response can tell, once it resolves,
   // whether the query it was issued for is still what's in the box -- the Search button disables
@@ -46,6 +68,7 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
     // left the previous query's results (and their workflow-launch buttons) sitting on screen
     // next to the new error, looking like they might belong to the query that just failed.
     setResult(null);
+    onSearched?.(query);
     const r = await api.search.users(query);
     // The query field itself stays editable while a search is in flight -- if it's since changed,
     // this response no longer describes what's in the box, so don't display it.
@@ -54,10 +77,17 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
     return r;
   });
 
+  // A deep link (?q=) runs its search once on mount. Later URL changes (back/forward) remount
+  // this component via the route's key, so there is no second trigger to reconcile here.
+  useEffect(() => {
+    if (initialQuery.trim().length >= 3) void searchAction.run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Box>
       <Typography variant="h5" component="h2" gutterBottom>
-        Find user
+        {title}
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Search every active tenant at once - start from the person, not the portal.
@@ -118,12 +148,18 @@ export function UserSearch({ onLaunch }: { onLaunch: (launch: WorkflowLaunch) =>
                 <TableBody>
                   {result.hits.map((h) => (
                     <TableRow key={`${h.tenantId}:${h.id}`}>
-                      <TableCell>{h.displayName}</TableCell>
+                      <TableCell>
+                        {personPath ? (
+                          <Link component={RouterLink} to={personPath(h)} state={{ hit: h }} underline="hover">
+                            {h.displayName}
+                          </Link>
+                        ) : h.displayName}
+                      </TableCell>
                       <TableCell sx={{ fontFamily: "monospace" }}>{h.userPrincipalName ?? ""}</TableCell>
                       <TableCell>{h.tenantName}</TableCell>
                       <TableCell>
                         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
-                          {ACTIONS.map((a) => (
+                          {PERSON_ACTIONS.map((a) => (
                             <Button
                               key={a.workflowId}
                               size="small"

@@ -296,6 +296,43 @@ const snapshotDiff = [
   { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", changes: [] },
 ];
 
+// Workbench status/diagnostics (0.9.0+). A realistic mix: most checks pass, Exchange isn't set up
+// yet -- so Home shows its setup checklist and Settings > Workbench shows quest-chip fixes.
+const diagnostics = {
+  checks: [
+    { id: "hosting", label: "Hosting", status: "Ok", detail: "Server profile, listening on http://localhost:5080", fix: null },
+    { id: "database", label: "Database", status: "Ok", detail: "PostgreSQL 16 at postgres.databases.svc, 42 migrations applied", fix: null },
+    { id: "data-protection", label: "Data protection keys", status: "Ok", detail: "Persisted to the database", fix: null },
+    { id: "auth", label: "Sign-in", status: "Ok", detail: "Local accounts, 4 users", fix: null },
+    { id: "sam", label: "Microsoft connection (SAM)", status: "Ok", detail: "Refresh token stored, last used 12 minutes ago", fix: null },
+    { id: "tenants", label: "Customer tenants", status: "Warning", detail: "1 of 5 tenants has no GDAP delegation", fix: { label: "Review tenants", command: null, route: "/tenants" } },
+    { id: "pwsh", label: "PowerShell 7", status: "Ok", detail: "pwsh 7.4.5", fix: null },
+    {
+      id: "exchange-module", label: "Exchange Online module", status: "NotConfigured",
+      detail: "pwsh found, ExchangeOnlineManagement not installed",
+      fix: { label: "Install module", command: "pwsh -c \"Install-Module ExchangeOnlineManagement -Scope CurrentUser\"", route: null },
+    },
+  ],
+  capabilities: { graph: true, exchange: false, partnerCenter: true },
+};
+
+const personWorkspace = {
+  profile: {
+    status: "Ok",
+    data: {
+      displayName: "Maya Chen", upn: "maya.chen@contoso.com", mail: "maya.chen@contoso.com", accountEnabled: true,
+      jobTitle: "Operations Analyst", department: "Operations", onPremisesSyncEnabled: false,
+      createdDateTime: minutesAgo(525600), lastSignIn: minutesAgo(42),
+    },
+  },
+  licenses: { status: "Ok", data: [{ skuPartNumber: "SPE_E3", skuId: "sku-e3" }] },
+  groups: { status: "Ok", data: [{ id: "g1", displayName: "All Staff", category: "Microsoft365" }] },
+  authMethods: { status: "Ok", data: ["password", "microsoftAuthenticator"] },
+  mailbox: { status: "Unavailable", reason: "Exchange Online module is not installed on this server." },
+  devices: { status: "Ok", data: [] },
+  recentRuns: { status: "Ok", data: [] },
+};
+
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -307,7 +344,7 @@ export function getUnmatchedRouteCount() {
   return unmatchedRouteCount;
 }
 
-export function installApiMock(page, { authenticated = true, authModeOverride = null } = {}) {
+export function installApiMock(page, { authenticated = true, authModeOverride = null, needsFirstUser = false } = {}) {
   async function handleApi(route) {
   const request = route.request();
   const url = new URL(request.url());
@@ -316,6 +353,11 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   if (debugCapture) console.log(`API ${method} ${apiPath}`);
 
   if (method === "GET" && apiPath === "/dashboard") return json(route, dashboard);
+  if (method === "GET" && apiPath === "/system/status") {
+    return json(route, { profile: "Server", version: "0.9.0", authMode: authModeOverride || "Dev", needsFirstUser });
+  }
+  if (method === "GET" && apiPath === "/system/diagnostics") return json(route, diagnostics);
+  if (method === "GET" && apiPath === "/admin/sam/status") return json(route, { bootstrapped: true });
   if (method === "GET" && apiPath === "/tenants") return json(route, tenants);
   if (method === "POST" && apiPath === "/tenants/sync") return json(route, tenants);
   if (method === "GET" && apiPath === "/contracts") return json(route, contracts);
@@ -408,6 +450,16 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
     return json(route, { challengeKey: "mock-challenge-key", options: {} });
   if (method === "GET" && apiPath === "/mcp-tokens") return json(route, mcpTokens);
   if (method === "GET" && apiPath === "/config-sections") return json(route, configSections);
+
+  match = apiPath.match(/^\/tenants\/([^/]+)\/people\/([^/]+)$/);
+  if (method === "GET" && match) return json(route, personWorkspace);
+  match = apiPath.match(/^\/tenants\/([^/]+)\/access$/);
+  if (method === "GET" && match) {
+    return json(route, [
+      { userId: "u1", email: "jspillers@example.com", role: "Owner", grantedAt: minutesAgo(43200) },
+      { userId: "u2", email: "maya.chen@example.com", role: "Operator", grantedAt: minutesAgo(20160) },
+    ]);
+  }
 
   match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots$/);
   if (method === "GET" && match) return json(route, snapshotRuns);

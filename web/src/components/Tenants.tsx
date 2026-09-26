@@ -1,10 +1,12 @@
 import { Fragment, useEffect, useState } from "react";
+import { Link as RouterLink } from "react-router";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
 import FormControl from "@mui/material/FormControl";
 import InputLabel from "@mui/material/InputLabel";
+import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
@@ -33,7 +35,11 @@ const STATUS_COLOR: Record<TenantStatus, "success" | "warning" | "error"> = {
   Removed: "error"
 };
 
-function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
+/**
+ * Who can reach a tenant, and the share/revoke form. Used inline in the Tenants list and as the
+ * Access tab of a tenant workspace; only an Owner (Auth:Mode=Local) should be shown it.
+ */
+export function TenantAccessPanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
   const [grants, setGrants] = useState<TenantGrant[]>([]);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TenantRole>("Operator");
@@ -90,8 +96,6 @@ function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
     null;
 
   return (
-    <TableRow>
-      <TableCell colSpan={5} sx={{ bgcolor: "action.hover" }}>
         <Box sx={{ p: 1 }}>
           <Typography variant="subtitle2" gutterBottom>
             Who has access to {tenant.displayName}
@@ -185,12 +189,29 @@ function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => vo
             workflows/deploy, Owner = can also share/revoke.
           </Typography>
         </Box>
+  );
+}
+
+function SharePanel({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
+  return (
+    <TableRow>
+      <TableCell colSpan={5} sx={{ bgcolor: "action.hover" }}>
+        <TenantAccessPanel tenant={tenant} onChanged={onChanged} />
       </TableCell>
     </TableRow>
   );
 }
 
-export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProfileChanged: () => void }) {
+export function Tenants({
+  me,
+  onProfileChanged,
+  tenantPath
+}: {
+  me: MeProfile | null;
+  onProfileChanged: () => void;
+  /** When set, each tenant name links to its workspace. */
+  tenantPath?: (tenant: Tenant) => string;
+}) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
@@ -294,7 +315,13 @@ export function Tenants({ me, onProfileChanged }: { me: MeProfile | null; onProf
             {tenants.map((t) => (
               <Fragment key={t.id}>
                 <TableRow>
-                  <TableCell>{t.displayName}</TableCell>
+                  <TableCell>
+                    {tenantPath ? (
+                      <Link component={RouterLink} to={tenantPath(t)} underline="hover">
+                        {t.displayName}
+                      </Link>
+                    ) : t.displayName}
+                  </TableCell>
                   <TableCell>{t.defaultDomain ?? "--"}</TableCell>
                   <TableCell>
                     <Chip size="small" label={humanizeEnum(t.status)} color={STATUS_COLOR[t.status]} />

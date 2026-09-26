@@ -37,8 +37,17 @@ function runLabel(r: ConfigSnapshotRun) {
 
 type LastAction = "runs" | "capture" | "viewDiff" | "exportPatch" | "exportRun" | "import" | null;
 
-export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
-  const [tenantId, setTenantId] = useState("");
+export function ConfigSnapshots({
+  me,
+  fixedTenantId,
+  heading = "Config Snapshots"
+}: {
+  me: MeProfile | null;
+  /** Scopes the screen to one tenant (a tenant workspace tab) and hides the tenant picker. */
+  fixedTenantId?: string;
+  heading?: string;
+}) {
+  const [tenantId, setTenantId] = useState(fixedTenantId ?? "");
   const [beforeRunId, setBeforeRunId] = useState("");
   const [afterRunId, setAfterRunId] = useState("");
   const [diffs, setDiffs] = useState<SectionDiff[] | null>(null);
@@ -181,7 +190,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     return (
       <Box>
         <Typography variant="h5" component="h2" gutterBottom>
-          Config Snapshots
+          {heading}
         </Typography>
         <Alert severity="error">{tenantsAction.error}</Alert>
       </Box>
@@ -192,7 +201,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
     return (
       <Box aria-busy="true">
         <Typography variant="h5" component="h2" gutterBottom>
-          Config Snapshots
+          {heading}
         </Typography>
         <Box component="span" sx={visuallyHidden}>
           Loading config snapshots...
@@ -212,10 +221,10 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
   return (
     <Box>
       <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 2, mb: 2 }}>
-        <Typography variant="h5" component="h2" sx={{ mr: "auto" }}>
-          Config Snapshots
+        <Typography variant={fixedTenantId ? "h6" : "h5"} component={fixedTenantId ? "h3" : "h2"} sx={{ mr: "auto" }}>
+          {heading}
         </Typography>
-        <TextField
+        {!fixedTenantId && <TextField
           select
           label="Tenant"
           size="small"
@@ -237,7 +246,7 @@ export function ConfigSnapshots({ me }: { me: MeProfile | null }) {
               {t.displayName}
             </MenuItem>
           ))}
-        </TextField>
+        </TextField>}
         {canOperate && (
           <Button variant="contained" onClick={() => void handleCapture()} disabled={captureAction.busy || !tenantId}>
             {captureAction.busy ? "Working..." : "Take Snapshot"}

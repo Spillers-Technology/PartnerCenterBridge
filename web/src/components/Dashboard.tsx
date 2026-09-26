@@ -4,6 +4,7 @@ import Box from "@mui/material/Box";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
+import Link from "@mui/material/Link";
 import Skeleton from "@mui/material/Skeleton";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
@@ -53,7 +54,20 @@ function Stat({ label, value, tone = "default", onClick, compact }: {
   );
 }
 
-export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "history" | "workflows") => void } = {}) {
+export function Dashboard({
+  onNavigate,
+  onOpenTenant,
+  onOpenRun,
+  heading = "Dashboard"
+}: {
+  onNavigate?: (tab: "tenants" | "history" | "workflows") => void;
+  /** When set, tenant names in Needs attention / Recent runs become links. */
+  onOpenTenant?: (tenantId: string) => void;
+  /** When set, workflow names in Recent runs become links to the run. */
+  onOpenRun?: (runId: string) => void;
+  /** Section heading; null when the page around it already has one. */
+  heading?: string | null;
+} = {}) {
   const isPhone = useIsPhone();
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -65,9 +79,11 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
   if (error) {
     return (
       <Box>
-        <Typography variant="h5" component="h2" gutterBottom>
-          Dashboard
-        </Typography>
+        {heading && (
+          <Typography variant="h5" component="h2" gutterBottom>
+            {heading}
+          </Typography>
+        )}
         <Alert severity="error">{error}</Alert>
       </Box>
     );
@@ -76,9 +92,11 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
   if (!data) {
     return (
       <Box aria-busy="true">
-        <Typography variant="h5" component="h2" gutterBottom>
-          Dashboard
-        </Typography>
+        {heading && (
+          <Typography variant="h5" component="h2" gutterBottom>
+            {heading}
+          </Typography>
+        )}
         <Box component="span" sx={visuallyHidden}>Loading dashboard...</Box>
         <Skeleton variant="rounded" height={96} sx={{ mb: 2 }} />
         <Skeleton variant="rounded" height={200} />
@@ -87,6 +105,13 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
   }
 
   const s = data.stats;
+
+  const tenantCell = (tenantId: string, tenantName: string) =>
+    onOpenTenant ? (
+      <Link component="button" type="button" underline="hover" onClick={() => onOpenTenant(tenantId)} sx={{ textAlign: "left" }}>
+        {tenantName}
+      </Link>
+    ) : tenantName;
 
   const statGrid = (
     <Box sx={{ display: "flex", flexWrap: "wrap", gap: isPhone ? 1 : 1.5, mb: 3 }}>
@@ -127,7 +152,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
                   <TableCell>
                     <Chip size="small" label={a.kind} color={a.kind === "No delegation" ? "warning" : "error"} />
                   </TableCell>
-                  <TableCell>{a.tenantName}</TableCell>
+                  <TableCell>{tenantCell(a.tenantId, a.tenantName)}</TableCell>
                   <TableCell>{a.subject}</TableCell>
                   <TableCell sx={{ color: "text.secondary" }}>{a.detail}</TableCell>
                   <TableCell><Timestamp value={a.when} fallback="" /></TableCell>
@@ -166,8 +191,14 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
               {data.recentRuns.map((r) => (
                 <TableRow key={r.id}>
                   <TableCell><Timestamp value={r.startedAt} /></TableCell>
-                  <TableCell>{r.workflowName}</TableCell>
-                  <TableCell>{r.tenantName}</TableCell>
+                  <TableCell>
+                    {onOpenRun ? (
+                      <Link component="button" type="button" underline="hover" onClick={() => onOpenRun(r.id)} sx={{ textAlign: "left" }}>
+                        {r.workflowName}
+                      </Link>
+                    ) : r.workflowName}
+                  </TableCell>
+                  <TableCell>{tenantCell(r.tenantId, r.tenantName)}</TableCell>
                   <TableCell>{r.kind}</TableCell>
                   <TableCell>{r.operator}</TableCell>
                   <TableCell sx={{ maxWidth: 280 }}>
@@ -191,9 +222,11 @@ export function Dashboard({ onNavigate }: { onNavigate?: (tab: "tenants" | "hist
 
   return (
     <Box>
-      <Typography variant="h5" component="h2" gutterBottom>
-        Dashboard
-      </Typography>
+      {heading && (
+        <Typography variant="h5" component="h2" gutterBottom>
+          {heading}
+        </Typography>
+      )}
 
       {isPhone ? (
         <>
