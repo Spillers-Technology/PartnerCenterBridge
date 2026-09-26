@@ -58,6 +58,8 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
         if (!_options.IsLoopbackOnly)
         {
             lines.Insert(5, $"  WARNING:   listening on {_options.ListenAddress}:{_options.Port} -- reachable from other machines.");
+            _log.LogWarning("--listen {Address}: port {Port} is reachable from other machines (loopback stays bound for {Url}).",
+                _options.ListenAddress, _options.Port, _options.CanonicalUrl);
         }
         foreach (var warning in _warnings.Messages) lines.Insert(lines.Count - 1, "  Note:      " + warning);
         Console.Out.WriteLine(string.Join(Environment.NewLine, lines));
@@ -113,7 +115,7 @@ public static class PortPreflight
     {
         // Browsers resolve "localhost" to ::1 first, so something on [::1]:port would shadow us even
         // though our 127.0.0.1 bind succeeds.
-        if (CanBind(options.ListenAddress, options.Port) && !await AcceptsConnectionAsync(IPAddress.IPv6Loopback, options.Port, ct))
+        if (options.ListenAddresses.All(address => CanBind(address, options.Port)) && !await AcceptsConnectionAsync(IPAddress.IPv6Loopback, options.Port, ct))
             return PortState.Free;
         return await IsBridgeAsync(options, ct) ? PortState.ThisApp : PortState.OtherProgram;
     }
@@ -179,9 +181,11 @@ internal static class LoopbackProbe
 {
     public static HttpRequestMessage Get(LocalWorkbenchOptions options, string path)
     {
-        var address = options.ListenAddress.Equals(IPAddress.Any) ? IPAddress.Loopback
-            : options.ListenAddress.Equals(IPAddress.IPv6Any) ? IPAddress.IPv6Loopback
-            : options.ListenAddress;
+        // 127.0.0.1 is always bound (LocalWorkbenchOptions.ListenAddresses), except when --listen
+        // chose another loopback address or dual-mode [::].
+        var address = options.ListenAddress.Equals(IPAddress.IPv6Any) ? IPAddress.IPv6Loopback
+            : IPAddress.IsLoopback(options.ListenAddress) ? options.ListenAddress
+            : IPAddress.Loopback;
         var host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
         var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{options.Port}{path}");
         request.Headers.Host = $"localhost:{options.Port}";

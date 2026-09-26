@@ -63,7 +63,19 @@ public static class HostingExtensions
             });
         }
 
-        builder.WebHost.ConfigureKestrel(kestrel => kestrel.Listen(local.ListenAddress, local.Port));
+        // Listeners: only the ones decided here. Configured Kestrel endpoints would be added on top of
+        // them (they are cumulative), so they are refused outright, and Kestrel's configuration
+        // loader is replaced with an empty one so a later reload cannot add any either. URLs
+        // (ASPNETCORE_URLS, --urls, ASPNETCORE_HTTP_PORTS) are overridden by code-bound listeners as
+        // long as PreferHostingUrls stays false. Program.cs re-checks the effective addresses after
+        // start (LocalListeners.Validate) and stops if anything non-loopback slipped through.
+        LocalListeners.RefuseConfiguredEndpoints(cfg);
+        builder.WebHost.PreferHostingUrls(false);
+        builder.WebHost.ConfigureKestrel(kestrel =>
+        {
+            kestrel.Configure(new ConfigurationBuilder().Build(), reloadOnChange: false);
+            foreach (var address in local.ListenAddresses) kestrel.Listen(address, local.Port);
+        });
         builder.Logging.AddProvider(new FileLoggerProvider(local.LogsPath));
 
         // Passkeys are bound to the canonical origin only. PasskeyOptions' compiled default origin
@@ -123,7 +135,7 @@ public static class HostingExtensions
     }
 
     private static string FormatHost(System.Net.IPAddress address) =>
-        address.Equals(System.Net.IPAddress.Any) || address.Equals(System.Net.IPAddress.IPv6Any)
+        LocalWorkbenchOptions.IsWildcard(address)
             ? "*"
             : address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
 

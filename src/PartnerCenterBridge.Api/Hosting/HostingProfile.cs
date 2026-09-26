@@ -65,6 +65,20 @@ public sealed class LocalWorkbenchOptions
 
     public bool IsLoopbackOnly => IPAddress.IsLoopback(ListenAddress);
 
+    /// <summary>
+    /// Every address Kestrel binds. The canonical origin (<see cref="CanonicalUrl"/>, which browsers
+    /// and passkeys use) needs 127.0.0.1, so a specific <c>--listen</c> interface is bound in
+    /// addition to it; a wildcard (0.0.0.0, or dual-mode [::]) already covers loopback and is bound
+    /// alone to avoid a duplicate bind.
+    /// </summary>
+    public IReadOnlyList<IPAddress> ListenAddresses =>
+        ListenAddress.Equals(IPAddress.Loopback) || IsWildcard(ListenAddress)
+            ? new[] { ListenAddress }
+            : new[] { IPAddress.Loopback, ListenAddress };
+
+    public static bool IsWildcard(IPAddress address) =>
+        address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any);
+
     /// <summary>The one origin the browser should use (passkeys are bound to it).</summary>
     public string CanonicalUrl => $"http://localhost:{Port}";
 

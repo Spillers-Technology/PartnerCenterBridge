@@ -217,8 +217,8 @@ if (cli.Command == CliCommand.Doctor)
 
 // Local profile, second launch: if the port already hosts a Partner Center Bridge, hand over to it.
 // Skipped under a non-Kestrel server (the integration test host binds nothing).
-if (hosting.Local is { } local && cli.Command == CliCommand.Run
-    && app.Services.GetRequiredService<IServer>().GetType().Assembly.GetName().Name == "Microsoft.AspNetCore.Server.Kestrel.Core")
+var isKestrel = app.Services.GetRequiredService<IServer>().GetType().Assembly.GetName().Name == "Microsoft.AspNetCore.Server.Kestrel.Core";
+if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel)
 {
     switch (await PortPreflight.CheckAsync(local))
     {
@@ -266,6 +266,25 @@ app.MapControllers();
 app.MapMcp("/mcp").RequireAuthorization();
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 if (spaFiles is not null) app.MapBridgeSpaFallback(spaFiles);
+
+if (hosting.Local is { } runningLocal && isKestrel)
+{
+    // Fail closed: whatever configuration said, the Local profile must not keep running with a
+    // non-loopback listener the operator did not ask for with --listen.
+    await app.StartAsync();
+    var bound = app.Services.GetRequiredService<IServer>().Features
+        .Get<Microsoft.AspNetCore.Hosting.Server.Features.IServerAddressesFeature>()?.Addresses;
+    var listenerProblem = LocalListeners.Validate(bound, runningLocal);
+    if (listenerProblem is not null)
+    {
+        app.Logger.LogCritical("{Problem}", listenerProblem);
+        Console.Error.WriteLine(listenerProblem);
+        await app.StopAsync();
+        return 1;
+    }
+    await app.WaitForShutdownAsync();
+    return 0;
+}
 
 await app.RunAsync();
 return 0;
