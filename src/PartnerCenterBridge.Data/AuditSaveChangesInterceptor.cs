@@ -24,7 +24,7 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
     {
         typeof(AppUser), typeof(TenantAccessGrant), typeof(Tenant),
         typeof(Contract), typeof(AppTemplate), typeof(Deployment), typeof(PasskeyCredential),
-        typeof(PendingAction), typeof(McpToken)
+        typeof(PendingAction), typeof(McpToken), typeof(OffboardingPolicy)
     };
 
     private readonly ICurrentActor _actor;
@@ -88,7 +88,8 @@ public class AuditSaveChangesInterceptor : SaveChangesInterceptor
             ActorName = _actor.Name,
             TenantId = tenantId,
             EntityType = entry.Entity.GetType().Name,
-            EntityId = entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id")?.CurrentValue?.ToString(),
+            EntityId = (entry.Properties.FirstOrDefault(p => p.Metadata.Name == "Id")
+                        ?? entry.Properties.FirstOrDefault(p => p.Metadata.Name == "ContractId"))?.CurrentValue?.ToString(),
             Detail = changedProps.Count > 0 ? System.Text.Json.JsonSerializer.Serialize(changedProps) : null
         };
     }

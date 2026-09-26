@@ -79,6 +79,59 @@ public class ContractsController : ControllerBase
     }
 
     /// <summary>
+    /// The contract's offboarding policy. Returns the built-in defaults (today's offboarding
+    /// behavior) when the contract has none configured. Readable by catalog managers and by anyone
+    /// with a Viewer grant on a tenant served under the contract.
+    /// </summary>
+    [HttpGet("{id:guid}/offboarding-policy")]
+    public async Task<ActionResult<OffboardingPolicy>> GetOffboardingPolicy(Guid id, CancellationToken ct)
+    {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct))
+        {
+            var allowed = await _tenantAccess.GetAuthorizedTenantIdsAsync(TenantRole.Viewer, ct);
+            if (allowed is not null && !await _db.Tenants.AsNoTracking()
+                    .AnyAsync(tenant => tenant.ContractId == id && allowed.Contains(tenant.Id), ct))
+                return Forbid();
+        }
+        var contract = await _db.Contracts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (contract is null) return NotFound();
+        return Ok(contract.OffboardingPolicy ?? new OffboardingPolicy());
+    }
+
+    /// <summary>Replace the contract's offboarding policy (validated). Catalog managers only.</summary>
+    [HttpPut("{id:guid}/offboarding-policy")]
+    public async Task<ActionResult<OffboardingPolicy>> PutOffboardingPolicy(Guid id, OffboardingPolicy policy, CancellationToken ct)
+    {
+        if (!await _instanceAccess.HasPermissionAsync(InstancePermission.ManageCatalog, ct)) return Forbid();
+        var errors = policy.Validate();
+        if (errors.Count > 0) return BadRequest(string.Join(" ", errors));
+
+        var contract = await _db.Contracts.FirstOrDefaultAsync(c => c.Id == id, ct);
+        if (contract is null) return NotFound();
+        if (!string.IsNullOrWhiteSpace(policy.ForwardTo)) policy.ForwardTo = policy.ForwardTo.Trim();
+        else policy.ForwardTo = null;
+
+        if (contract.OffboardingPolicy is null) contract.OffboardingPolicy = policy;
+        else
+        {
+            // Update in place so EF sees a modification of the owned JSON rather than a replace.
+            var p = contract.OffboardingPolicy;
+            p.BlockSignIn = policy.BlockSignIn;
+            p.RevokeSessions = policy.RevokeSessions;
+            p.GroupCleanup = policy.GroupCleanup;
+            p.ConvertMailboxToShared = policy.ConvertMailboxToShared;
+            p.RemoveLicenses = policy.RemoveLicenses;
+            p.HideFromGal = policy.HideFromGal;
+            p.ForwardTo = policy.ForwardTo;
+            p.ManagerAccess = policy.ManagerAccess;
+            p.WipeDevices = policy.WipeDevices;
+            p.FollowUpDays = policy.FollowUpDays;
+        }
+        await _db.SaveChangesAsync(ct);
+        return Ok(contract.OffboardingPolicy);
+    }
+
+    /// <summary>
     /// Adds a template to the contract's desired-app list. Idempotent: adding an already-desired
     /// template is a harmless no-op success, so the frontend never has to check first.
     /// </summary>

@@ -143,6 +143,10 @@ public class WorkflowRemediateExecutorTests
         Assert.Contains(run.Steps, step => !step.Success);
         Assert.Contains(run.Findings, finding => finding.Status == FindingStatus.Blocker);
         Assert.Equal(run.Id, notifier.NotifiedRunId);
+        // Approved (queued) executions carry evidence like direct runs.
+        Assert.NotNull(run.Evidence);
+        Assert.NotEqual(PartnerCenterBridge.Core.Operations.Outcome.Succeeded, run.Outcome);
+        Assert.Equal("user@contoso.com", run.TargetId);
     }
 
     private sealed class NoOpRunNotifier : IRunNotifier
