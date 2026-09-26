@@ -235,14 +235,17 @@ public class OffboardingOperationTests : IDisposable
         WipeDevices = DeviceWipeMode.Retire
     };
 
-    private void StubDevice(string managementState)
+    /// <summary>One managed device; the re-read after the retire returns <paramref name="managementState"/>, or 404 when null (record gone).</summary>
+    private void StubDevice(string? managementState)
     {
         _server.Given(Request.Create().WithPath("/users/u1/managedDevices").UsingGet())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { new { id = "d1", deviceName = "LAPTOP-1", operatingSystem = "Windows", managementState = "managed" } } }));
         _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1/retire").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(204));
         _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1").UsingGet())
-            .RespondWith(Response.Create().WithBodyAsJson(new { id = "d1", managementState }));
+            .RespondWith(managementState is null
+                ? Response.Create().WithStatusCode(404).WithBodyAsJson(new { error = new { code = "ResourceNotFound", message = "Not found" } })
+                : Response.Create().WithBodyAsJson(new { id = "d1", managementState }));
     }
 
     [Theory]
@@ -281,15 +284,30 @@ public class OffboardingOperationTests : IDisposable
     }
 
     [Fact]
-    public async Task Completed_retire_is_verified()
+    public async Task Retire_is_complete_only_when_the_device_record_is_gone()
     {
+        StubUser(CloudUser());
+        StubDevice(null); // re-read: 404, the managed device record was removed
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
+
+        Assert.Equal(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("gone on re-read", e.Verification.Single(v => v.PlanItemId == "device:d1").Detail);
+        Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Undocumented_retired_state_is_not_accepted_as_completion()
+    {
+        // Graph's managementState has no "retired" value; while the record exists, nothing confirms completion.
         StubUser(CloudUser());
         StubDevice("retired");
 
         var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
 
-        Assert.Equal(Outcome.Succeeded, e.Outcome);
-        Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.False(e.Verification.Single(v => v.PlanItemId == "device:d1").Passed);
+        Assert.DoesNotContain("(verified)", e.TicketNotes);
     }
 
     [Fact]

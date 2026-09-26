@@ -594,11 +594,12 @@ public class OffboardingOperation : IOffboardingService
                     using var doc = await graph.GetAsync(
                         $"/deviceManagement/managedDevices/{Uri.EscapeDataString(item.ObjectId)}?$select=id,managementState", ct);
                     var ms = Str(doc.RootElement, "managementState") ?? "";
+                    // Graph's managementState enum has no "retired" value
+                    // (https://learn.microsoft.com/en-us/graph/api/resources/intune-devices-managementstate):
+                    // a completed retire shows up as the managed device record disappearing (404,
+                    // below). While the record exists, the retire is at best requested.
                     switch (ms.ToLowerInvariant())
                     {
-                        case "retired":
-                            Check(item, true, $"managementState={ms}");
-                            break;
                         case "retirepending" or "retireissued":
                             Pending(item, $"Retire requested; completion not yet confirmed (managementState={ms}). The device completes it at its next check-in.");
                             break;
@@ -606,11 +607,11 @@ public class OffboardingOperation : IOffboardingService
                             Check(item, false, $"Retire did not complete: managementState={ms}.");
                             break;
                         default:
-                            Check(item, false, $"managementState on re-read is '{ms}'; the retire is not reflected.");
+                            Check(item, false, $"managementState on re-read is '{ms}'; the retire is not reflected (a completed retire removes the device record).");
                             break;
                     }
                 }
-                catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { Check(item, true, "Device record is gone (retired)."); }
+                catch (Exception ex) when (GraphErrors.IsNotFound(ex)) { Check(item, true, "The managed device record is gone on re-read (Graph 404): the retire completed."); }
                 catch (Exception ex) when (ex is not OperationCanceledException) { Check(item, false, $"Could not re-read device: {GraphErrors.Describe(ex)}"); }
             }
 
