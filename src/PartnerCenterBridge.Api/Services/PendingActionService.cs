@@ -179,6 +179,14 @@ public class PendingActionService
     /// invoke this only for the short database pairs before or after external execution, never
     /// around the executor itself.
     /// </summary>
+    /// <remarks>
+    /// Every claim is a single conditional UPDATE (compare-and-set on Status/ExecutionError), so the
+    /// "exactly one caller wins" guarantee comes from the row count, not from locks. That holds on
+    /// SQLite as well as Postgres: SQLite runs one writer at a time (these transactions begin as
+    /// BEGIN IMMEDIATE and later writers wait on the busy timeout), so a second claimant's UPDATE
+    /// sees the first one's committed state and matches zero rows. The raw-SQL retry claim uses
+    /// quoted identifiers and an EF-mapped Guid parameter, both valid on either provider.
+    /// </remarks>
     private async Task<PendingAction?> UpdateAndAuditAsync(
         Guid id, Func<Task<int>> update, string detail, CancellationToken ct)
     {

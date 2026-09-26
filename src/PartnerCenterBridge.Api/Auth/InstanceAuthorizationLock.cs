@@ -19,6 +19,10 @@ public sealed class InstanceAuthorizationLock : IAsyncDisposable
 
     public static async Task<InstanceAuthorizationLock> AcquireAsync(BridgeDbContext db, CancellationToken ct)
     {
+        // Postgres: FOR UPDATE below locks the row until commit. SQLite (Local Workbench and tests)
+        // has no row locks, but Microsoft.Data.Sqlite begins transactions as BEGIN IMMEDIATE, which
+        // takes the database-wide write lock up front; every other writer waits (busy timeout) until
+        // this commits, so the read-check-write below is serialized at least as strictly.
         var transaction = await db.Database.BeginTransactionAsync(ct);
         try
         {

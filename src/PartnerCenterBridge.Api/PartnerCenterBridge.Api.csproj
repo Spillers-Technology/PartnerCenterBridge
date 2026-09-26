@@ -4,7 +4,73 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>PartnerCenterBridge.Api</RootNamespace>
+    <!-- Product version reported by /api/system/status and the version flag; bump with web/package.json. -->
+    <Version>0.8.0</Version>
   </PropertyGroup>
+
+  <!--
+    Local Workbench build: -p:PcbLocalWorkbench=true (see scripts/publish-local.ps1).
+      * bakes the Local hosting profile in as assembly metadata (the container build never gets it)
+      * names the binary PartnerCenterBridge(.exe)
+      * builds web/ (npm ci + npm run build, skipped when dist is newer than its inputs, or with
+        -p:PcbBuildSpa=false) and embeds web/dist so the single-file exe serves the SPA itself.
+    The Docker build sets none of this, so it never needs Node or the web/ folder.
+  -->
+  <PropertyGroup>
+    <PcbLocalWorkbench Condition="'$(PcbLocalWorkbench)' == ''">false</PcbLocalWorkbench>
+    <PcbEmbedSpa Condition="'$(PcbEmbedSpa)' == ''">$(PcbLocalWorkbench)</PcbEmbedSpa>
+    <PcbBuildSpa Condition="'$(PcbBuildSpa)' == ''">$(PcbEmbedSpa)</PcbBuildSpa>
+    <PcbWebDir>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)..\..\web'))\</PcbWebDir>
+    <!-- The manifest lets ManifestEmbeddedFileProvider serve the embedded dist with its folder layout. -->
+    <GenerateEmbeddedFilesManifest Condition="'$(PcbEmbedSpa)' == 'true'">true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(PcbLocalWorkbench)' == 'true'">
+    <AssemblyName>PartnerCenterBridge</AssemblyName>
+    <!-- EF Core and the reflection-heavy libraries here are not trim-safe. -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <!-- One file to hand out: symbols inside the exe, no IIS web.config next to it. -->
+    <DebugType>embedded</DebugType>
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PcbLocalWorkbench)' == 'true'">
+    <AssemblyMetadata Include="PcbHostingProfile" Value="Local" />
+    <!-- appsettings*.json describe the container deployment; the Local profile has its own defaults
+         (Hosting/HostingExtensions.cs) plus the optional pcb.local.json in the data directory. -->
+    <Content Update="appsettings*.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PcbBuildSpa)' == 'true'">
+    <PcbSpaInput Include="$(PcbWebDir)src\**\*;$(PcbWebDir)public\**\*" />
+    <PcbSpaInput Include="$(PcbWebDir)index.html;$(PcbWebDir)package.json;$(PcbWebDir)package-lock.json;$(PcbWebDir)vite.config.ts;$(PcbWebDir)tsconfig*.json" />
+  </ItemGroup>
+
+  <Target Name="PcbNpmInstall" Condition="'$(PcbBuildSpa)' == 'true'"
+          Inputs="$(PcbWebDir)package-lock.json" Outputs="$(PcbWebDir)node_modules\.package-lock.json">
+    <Message Importance="high" Text="PcbBuildSpa: npm ci in $(PcbWebDir)" />
+    <Exec Command="npm ci" WorkingDirectory="$(PcbWebDir)" />
+  </Target>
+
+  <Target Name="PcbBuildSpa" Condition="'$(PcbBuildSpa)' == 'true'" DependsOnTargets="PcbNpmInstall"
+          Inputs="@(PcbSpaInput)" Outputs="$(PcbWebDir)dist\index.html">
+    <Message Importance="high" Text="PcbBuildSpa: npm run build in $(PcbWebDir)" />
+    <Exec Command="npm run build" WorkingDirectory="$(PcbWebDir)" />
+    <Touch Files="$(PcbWebDir)dist\index.html" />
+  </Target>
+
+  <!-- Items are added inside the target so a dist produced by PcbBuildSpa in this same build is picked up. -->
+  <Target Name="PcbEmbedSpa" Condition="'$(PcbEmbedSpa)' == 'true'" DependsOnTargets="PcbBuildSpa"
+          BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(PcbWebDir)dist\index.html')"
+           Text="PcbEmbedSpa: $(PcbWebDir)dist\index.html not found. Build the SPA (cd web; npm ci; npm run build) or drop -p:PcbBuildSpa=false." />
+    <ItemGroup>
+      <PcbSpaDistFile Include="$(PcbWebDir)dist\**\*" />
+      <EmbeddedResource Include="@(PcbSpaDistFile)" Link="spa\%(RecursiveDir)%(Filename)%(Extension)"
+                        WithCulture="false" Type="Non-Resx" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="Fido2" Version="4.0.1" />
@@ -15,6 +81,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" Version="8.0.11" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <PackageReference Include="Otp.NET" Version="1.4.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
@@ -23,6 +90,7 @@
   <ItemGroup>
     <ProjectReference Include="..\PartnerCenterBridge.Core\PartnerCenterBridge.Core.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.Data\PartnerCenterBridge.Data.csproj" />
+    <ProjectReference Include="..\PartnerCenterBridge.Data.Sqlite\PartnerCenterBridge.Data.Sqlite.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.PartnerCenter\PartnerCenterBridge.PartnerCenter.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.Graph\PartnerCenterBridge.Graph.csproj" />
     <ProjectReference Include="..\PartnerCenterBridge.Exchange\PartnerCenterBridge.Exchange.csproj" />
