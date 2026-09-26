@@ -40,19 +40,15 @@ public class ExchangeOnlineService : IExchangeOnlineService
     {
         var script = await RunAsync(tenant, "getMailbox", new { identity }, ct);
         if (script.Data is { ValueKind: JsonValueKind.Object } d) return ToMailbox(d);
-        // null means "Exchange confirmed there is no such mailbox". Anything else that failed
-        // (connect, auth, throttling, the pwsh dependency) is an error, not an absent mailbox.
+        // null means "Exchange confirmed there is no such mailbox": only the script's structured
+        // marker, set when the Get-EXOMailbox lookup itself reported the mailbox missing, says so.
+        // Anything else (connect, auth, throttling, the pwsh dependency, or a result that has
+        // neither data nor the marker) is an error, not an absent mailbox.
+        if (script.NotFound && script.Steps.All(s => s.Success)) return null;
         var failure = script.Steps.FirstOrDefault(s => !s.Success);
-        if (failure is null || IsNotFound(failure.Detail)) return null;
-        throw new InvalidOperationException($"Exchange Online mailbox lookup failed: {failure.Detail}");
+        throw new InvalidOperationException("Exchange Online mailbox lookup failed: " +
+            (failure?.Detail ?? "the script returned no mailbox and did not confirm that none exists."));
     }
-
-    /// <summary>EXO's "no such recipient" errors (Get-EXOMailbox / Get-Mailbox).</summary>
-    internal static bool IsNotFound(string? detail) =>
-        detail is not null
-        && (detail.Contains("couldn't be found", StringComparison.OrdinalIgnoreCase)
-            || detail.Contains("could not be found", StringComparison.OrdinalIgnoreCase)
-            || detail.Contains("ManagementObjectNotFound", StringComparison.OrdinalIgnoreCase));
 
     public async Task<ExoResult> ConvertToSharedAsync(
         Tenant tenant, string identity, string? forwardingSmtpAddress, bool deliverToMailboxAndForward, CancellationToken ct = default)
@@ -193,5 +189,7 @@ public class ExchangeOnlineService : IExchangeOnlineService
         [JsonPropertyName("success")] public bool Success { get; set; }
         [JsonPropertyName("steps")] public List<ProvisioningStep> Steps { get; set; } = new();
         [JsonPropertyName("data")] public JsonElement? Data { get; set; }
+        /// <summary>Set by getMailbox only when the lookup itself reported that no such mailbox exists.</summary>
+        [JsonPropertyName("notFound")] public bool NotFound { get; set; }
     }
 }

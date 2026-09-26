@@ -16,9 +16,10 @@ public enum Outcome
     /// <summary>A plan (or read-only diagnosis) was produced; nothing was applied.</summary>
     Planned,
     /// <summary>
-    /// Changes were applied and acknowledged by Microsoft but could not be independently verified:
-    /// every attempted change succeeded, none failed verification, and at least one change has no
-    /// read-back that can confirm it (for example a password value, or a device retire still pending).
+    /// Microsoft accepted the requested changes, but their effect could not be confirmed (yet):
+    /// every attempted change was accepted, none failed verification, and at least one change has no
+    /// read-back that can confirm it (for example a password value, or a device retire that is
+    /// requested but not yet complete).
     /// </summary>
     CompletedUnverified
 }
@@ -94,6 +95,17 @@ public class ChangeResult
     /// </summary>
     public bool Succeeded { get; set; }
     public string? Detail { get; set; }
+
+    /// <summary>
+    /// Detail for a change whose request was sent but whose answer never arrived because the run
+    /// was interrupted (Attempted = true, Succeeded = false): Microsoft may or may not have applied it.
+    /// </summary>
+    public const string InterruptedInFlight =
+        "Interrupted after the request was sent; the change may or may not have been applied -- re-run the plan to see current state.";
+
+    /// <summary>Detail for a change whose request failed without an answer (connection dropped, timeout).</summary>
+    public static string NoResponse(Exception ex) =>
+        $"No response from Microsoft ({ex.Message}); the change may or may not have been applied -- re-run the plan to see current state.";
 }
 
 /// <summary>A post-change check that re-read live state.</summary>

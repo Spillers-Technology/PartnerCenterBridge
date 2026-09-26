@@ -38,6 +38,13 @@ public static class LocalDataDirectory
                     $"The data directory '{options.DataRoot}' is not private to the current user: {problem}. It holds the " +
                     "account database, tenant data, evidence, keys and logs, so PCB will not start from it. Fix: " +
                     FixCommand(options.DataRoot) + " -- or choose another folder with --data-dir (a new folder is created private).");
+
+            var sensitive = FindInsecureSensitiveEntry(options);
+            if (sensitive is not null)
+                throw new InvalidOperationException(
+                    $"'{sensitive.Value.Path}' in the data directory is not private to the current user: {sensitive.Value.Problem}. " +
+                    "It holds account data or keys, so PCB will not start. Fix: " + ResetCommand(sensitive.Value.Path) +
+                    " (removes its explicit permissions so it inherits the private data directory's).");
         }
 
         foreach (var path in new[] { options.KeysPath, options.LogsPath, options.PackagesPath, options.CertificatesPath })
@@ -49,11 +56,41 @@ public static class LocalDataDirectory
         ? $"icacls \"{path}\" /inheritance:r /grant:r \"%USERNAME%:(OI)(CI)F\" \"SYSTEM:(OI)(CI)F\" \"Administrators:(OI)(CI)F\""
         : $"chmod 700 '{path}'";
 
+    private static string ResetCommand(string path) => OperatingSystem.IsWindows()
+        ? $"icacls \"{path}\" /reset"
+        : $"chmod go-rwx '{path}'";
+
+    /// <summary>
+    /// The first sensitive entry under the data root (the database, the Data Protection key ring and
+    /// its keys, the protected signing key) that carries an explicit permission entry giving someone
+    /// else access, or null. Inherited entries come from the data root, which is validated
+    /// separately; this catches a file or folder that was shared on its own. Windows only: elsewhere
+    /// the private root's mode already keeps other users out of everything below it.
+    /// </summary>
+    public static (string Path, string Problem)? FindInsecureSensitiveEntry(LocalWorkbenchOptions options)
+    {
+        if (!OperatingSystem.IsWindows()) return null;
+        var candidates = new List<string> { options.DatabasePath, options.SigningKeyPath, options.KeysPath };
+        if (Directory.Exists(options.KeysPath)) candidates.AddRange(Directory.GetFiles(options.KeysPath));
+        foreach (var candidate in candidates)
+        {
+            FileSystemSecurity security;
+            if (Directory.Exists(candidate)) security = new DirectoryInfo(candidate).GetAccessControl();
+            else if (File.Exists(candidate)) security = new FileInfo(candidate).GetAccessControl();
+            else continue;
+            var problem = FindUntrustedAccess(security, includeInherited: false);
+            if (problem is not null) return (candidate, problem);
+        }
+        return null;
+    }
+
     /// <summary>
     /// Why <paramref name="path"/> is readable/writable by others, or null when it is private.
     /// Windows: the owner must be the current user, Administrators or SYSTEM, and no allow entry may
-    /// give Everyone, Users, Authenticated Users (or anonymous/guest/network/interactive logons) read
-    /// or write access. Elsewhere: no group/other permission bits.
+    /// give anyone else read or write access -- not just Everyone/Users/Authenticated Users but any
+    /// other named user or group. The only principals allowed in are the current user, SYSTEM,
+    /// BUILTIN\Administrators and CREATOR OWNER / OWNER RIGHTS (which resolve to the owner, itself
+    /// checked above). Elsewhere: no group/other permission bits.
     /// </summary>
     public static string? FindInsecurePermissions(string path)
     {
@@ -68,22 +105,6 @@ public static class LocalDataDirectory
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
     private static string? FindInsecureAcl(string path)
     {
-        // Reading or changing anything in the directory. Generic bits can appear raw in inherited ACEs.
-        const FileSystemRights sensitive =
-            FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.AppendData
-            | FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
-            | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership
-            | (FileSystemRights)unchecked((int)0x80000000)   // GENERIC_READ
-            | (FileSystemRights)0x40000000                     // GENERIC_WRITE
-            | (FileSystemRights)0x10000000;                    // GENERIC_ALL
-        // Broad principals that must have no access to the data root.
-        var broad = new[]
-        {
-            WellKnownSidType.WorldSid, WellKnownSidType.BuiltinUsersSid, WellKnownSidType.AuthenticatedUserSid,
-            WellKnownSidType.AnonymousSid, WellKnownSidType.InteractiveSid, WellKnownSidType.NetworkSid,
-            WellKnownSidType.BuiltinGuestsSid
-        }.Select(type => new SecurityIdentifier(type, null)).ToList();
-
         var security = new DirectoryInfo(path).GetAccessControl();
         var current = WindowsIdentity.GetCurrent().User;
         var owner = security.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
@@ -96,10 +117,40 @@ public static class LocalDataDirectory
         if (owner is null || !trustedOwners.Contains(owner))
             return $"it is owned by {Describe(owner)}, not by the current user";
 
-        foreach (FileSystemAccessRule rule in security.GetAccessRules(true, true, typeof(SecurityIdentifier)))
+        return FindUntrustedAccess(security, includeInherited: true);
+    }
+
+    /// <summary>
+    /// The first allow entry in <paramref name="security"/> that gives a principal other than the
+    /// trusted ones read or write access, described; or null.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string? FindUntrustedAccess(FileSystemSecurity security, bool includeInherited)
+    {
+        // Reading or changing anything in the entry. Generic bits can appear raw in inherited ACEs.
+        const FileSystemRights sensitive =
+            FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.AppendData
+            | FileSystemRights.Delete | FileSystemRights.DeleteSubdirectoriesAndFiles
+            | FileSystemRights.ChangePermissions | FileSystemRights.TakeOwnership
+            | (FileSystemRights)unchecked((int)0x80000000)   // GENERIC_READ
+            | (FileSystemRights)0x40000000                     // GENERIC_WRITE
+            | (FileSystemRights)0x10000000;                    // GENERIC_ALL
+        // An allowlist: everyone else (another named user, a custom or domain group, Users, Everyone...)
+        // is untrusted.
+        var trusted = new List<SecurityIdentifier>
+        {
+            new(WellKnownSidType.LocalSystemSid, null),
+            new(WellKnownSidType.BuiltinAdministratorsSid, null),
+            new(WellKnownSidType.CreatorOwnerSid, null),
+            new("S-1-3-4") // OWNER RIGHTS
+        };
+        var current = WindowsIdentity.GetCurrent().User;
+        if (current is not null) trusted.Add(current);
+
+        foreach (FileSystemAccessRule rule in security.GetAccessRules(true, includeInherited, typeof(SecurityIdentifier)))
         {
             if (rule.AccessControlType != AccessControlType.Allow) continue;
-            if (rule.IdentityReference is not SecurityIdentifier sid || !broad.Contains(sid)) continue;
+            if (rule.IdentityReference is not SecurityIdentifier sid || trusted.Contains(sid)) continue;
             if ((rule.FileSystemRights & sensitive) != 0)
                 return $"{Describe(sid)} has {rule.FileSystemRights} access";
         }

@@ -59,6 +59,8 @@ internal sealed class MfaResetWorkflow : IWorkflow
         var run = new WorkflowRunResult { Verification = new() };
         var graph = await _graph.CreateAsync(tenant, ct);
         var userId = await ResolveUserIdAsync(graph, inputs["userUpn"], ct);
+        // The sign-in cutoff before anything changes: the revoke is proven only by it moving forward.
+        var cutoffBefore = await WorkflowVerify.ReadSessionCutoffAsync(graph, userId, ct);
         var startedAt = DateTimeOffset.UtcNow;
 
         await WorkflowSteps.RunAsync(run.Steps, "Revoke sign-in sessions", async () =>
@@ -93,7 +95,7 @@ internal sealed class MfaResetWorkflow : IWorkflow
         // Desired-state verification: sessions revoked, and each removed method is gone. (The
         // post-run diagnosis below warns "no strong MFA" -- that is the intended end state here, so
         // it is shown for context only and is not the verification.)
-        await WorkflowVerify.SessionsRevokedAsync(graph, userId, startedAt, run, revokeStep, ct);
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, cutoffBefore, startedAt, run, revokeStep, ct);
         if (removals.Any(r => run.Steps[r.Step].Success))
         {
             HashSet<string>? remaining = null;

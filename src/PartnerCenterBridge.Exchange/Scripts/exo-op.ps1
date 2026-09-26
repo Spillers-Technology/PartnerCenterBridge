@@ -1,7 +1,9 @@
 #requires -Version 7.0
 <#
   Runs a single Exchange Online operation using app-only certificate auth and emits a JSON result
-  object on stdout: { success, steps: [{name,success,detail}], data }.
+  object on stdout: { success, steps: [{name,success,detail}], data, notFound }. notFound is true
+  only when the mailbox lookup itself reported that no such mailbox exists (getMailbox); every
+  other failure (module, connect, auth, throttling) is a failed step with notFound false.
   Invoked as:  pwsh -NoProfile -NonInteractive -File exo-op.ps1 -PayloadPath <json-file>
 #>
 param([Parameter(Mandatory)][string]$PayloadPath)
@@ -9,6 +11,7 @@ param([Parameter(Mandatory)][string]$PayloadPath)
 $ErrorActionPreference = 'Stop'
 $steps = [System.Collections.Generic.List[object]]::new()
 $data = $null
+$notFound = $false
 function Add-Step($name, $ok, $detail) { $steps.Add([ordered]@{ name = $name; success = $ok; detail = $detail }) }
 
 # Run one remediation action, recording success/failure without aborting the remaining steps.
@@ -18,6 +21,21 @@ function Invoke-Step($name, [scriptblock]$action) {
 }
 
 $EmptyGuid = '00000000-0000-0000-0000-000000000000'
+
+# True when an error record from a recipient lookup means "no such object". Checked structurally
+# first (error category, exception type anywhere in the chain, error id); the message fallback is
+# only ever applied to the lookup's own error, never to connect/auth failures.
+function Test-ObjectNotFound($err) {
+    if ("$($err.CategoryInfo.Category)" -eq 'ObjectNotFound') { return $true }
+    if ("$($err.FullyQualifiedErrorId)" -match 'ManagementObjectNotFound') { return $true }
+    $e = $err.Exception
+    while ($e) {
+        if ($e.GetType().Name -match 'ObjectNotFound') { return $true }
+        $e = $e.InnerException
+    }
+    $msg = "$($err.Exception.Message)"
+    return ($msg -match "couldn't be found|could not be found|ManagementObjectNotFound")
+}
 
 # Build the archive-posture snapshot shared by the diagnose / remediate / nudge operations.
 function Get-ArchiveStateData($id) {
@@ -63,15 +81,26 @@ try {
 
     switch ($payload.operation) {
         'getMailbox' {
-            $mbx = Get-EXOMailbox -Identity $id -Properties ForwardingSmtpAddress, DeliverToMailboxAndForward
-            $data = [ordered]@{
-                userPrincipalName          = $mbx.UserPrincipalName
-                displayName                = $mbx.DisplayName
-                recipientTypeDetails       = "$($mbx.RecipientTypeDetails)"
-                forwardingSmtpAddress      = $mbx.ForwardingSmtpAddress
-                deliverToMailboxAndForward = [bool]$mbx.DeliverToMailboxAndForward
+            $mbx = $null
+            try {
+                $mbx = Get-EXOMailbox -Identity $id -Properties ForwardingSmtpAddress, DeliverToMailboxAndForward
             }
-            Add-Step 'Get mailbox' $true $mbx.UserPrincipalName
+            catch {
+                if (-not (Test-ObjectNotFound $_)) { throw }
+                $notFound = $true
+                Add-Step 'Mailbox not found' $true "Exchange Online has no mailbox '$id'."
+            }
+            if (-not $notFound) {
+                if (-not $mbx) { throw "Get-EXOMailbox returned nothing for '$id' without reporting it missing." }
+                $data = [ordered]@{
+                    userPrincipalName          = $mbx.UserPrincipalName
+                    displayName                = $mbx.DisplayName
+                    recipientTypeDetails       = "$($mbx.RecipientTypeDetails)"
+                    forwardingSmtpAddress      = $mbx.ForwardingSmtpAddress
+                    deliverToMailboxAndForward = [bool]$mbx.DeliverToMailboxAndForward
+                }
+                Add-Step 'Get mailbox' $true $mbx.UserPrincipalName
+            }
         }
         'convertToShared' {
             Set-Mailbox -Identity $id -Type Shared
@@ -113,10 +142,14 @@ try {
                     else { 'already enabled' }
                 }
             }
+            # Detail tells an assignment ("assigned: X") apart from a policy that was already there
+            # ("already assigned: X"), so only an actual assignment is verified as a change.
             Invoke-Step 'Assign retention policy' {
-                if ([string]::IsNullOrWhiteSpace("$($mbx.RetentionPolicy)") -and $p.retentionPolicyName) {
-                    Set-Mailbox -Identity $id -RetentionPolicy $p.retentionPolicyName; $p.retentionPolicyName
-                } else { "$($mbx.RetentionPolicy)" }
+                if (-not [string]::IsNullOrWhiteSpace("$($mbx.RetentionPolicy)")) { "already assigned: $($mbx.RetentionPolicy)" }
+                elseif ($p.retentionPolicyName) {
+                    Set-Mailbox -Identity $id -RetentionPolicy $p.retentionPolicyName; "assigned: $($p.retentionPolicyName)"
+                }
+                else { 'not set' }
             }
             if ($p.clearProcessingBlocks) {
                 Invoke-Step 'Clear retention hold' {
@@ -149,5 +182,6 @@ $result = [ordered]@{
     success = -not ($steps | Where-Object { -not $_.success })
     steps   = $steps
     data    = $data
+    notFound = [bool]$notFound
 }
 $result | ConvertTo-Json -Depth 6 -Compress

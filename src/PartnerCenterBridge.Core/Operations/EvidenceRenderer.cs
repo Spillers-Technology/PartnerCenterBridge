@@ -24,8 +24,10 @@ public static class EvidenceRenderer
         Outcome.NoChangeNeeded => "No change needed",
         Outcome.VerificationFailed => "Verification failed (changes reported but not confirmed)",
         Outcome.Planned => "Planned (nothing applied)",
+        // Acceptance is all that is known: nothing confirmed the changes took effect (a password
+        // value cannot be read back; a device retire may be requested but not complete).
         Outcome.CompletedUnverified =>
-            "Completed, unverified (changes were applied and acknowledged by Microsoft but could not be independently verified)",
+            "Completed, unverified (Microsoft accepted the requested changes, but PCB could not confirm their effect yet)",
         _ => outcome.ToString()
     };
 

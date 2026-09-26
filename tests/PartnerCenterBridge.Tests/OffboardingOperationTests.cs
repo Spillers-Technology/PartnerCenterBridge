@@ -30,13 +30,24 @@ public class OffboardingOperationTests : IDisposable
             ["groupTypes"] = groupTypes ?? Array.Empty<string>(), ["securityEnabled"] = security, ["mailEnabled"] = mail
         };
 
+    // When the fake Graph accepted a revokeSignInSessions POST (null: never). The user's
+    // signInSessionsValidFromDateTime is a stale value until then, like the real one: an
+    // ineffective or missing revoke leaves it where it was.
+    private DateTimeOffset? _revokedAt;
+    private static readonly DateTimeOffset StaleCutoff = DateTimeOffset.UtcNow.AddMinutes(-4);
+
     /// <summary>User reads: the first (plan) returns <paramref name="before"/>, later ones (verification) <paramref name="after"/>.</summary>
     private void StubUser(object before, object? after = null)
     {
         var reads = 0;
         _server.Given(Request.Create().WithPath("/users/u1").UsingGet())
             .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(_ =>
-                System.Text.Json.JsonSerializer.Serialize(Interlocked.Increment(ref reads) == 1 ? before : after ?? before)));
+            {
+                var node = System.Text.Json.JsonSerializer.SerializeToNode(Interlocked.Increment(ref reads) == 1 ? before : after ?? before)!.AsObject();
+                if (node.ContainsKey("signInSessionsValidFromDateTime"))
+                    node["signInSessionsValidFromDateTime"] = (_revokedAt ?? StaleCutoff).ToString("o");
+                return node.ToJsonString();
+            }));
         _server.Given(Request.Create().WithPath("/users/u1/licenseDetails").UsingGet())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { new { skuId = "sku-e3", skuPartNumber = "ENTERPRISEPACK" } } }));
     }
@@ -58,10 +69,15 @@ public class OffboardingOperationTests : IDisposable
                 System.Text.Json.JsonSerializer.Serialize(new { value = Interlocked.Increment(ref reads) == 1 ? before : after })));
     }
 
-    private void StubWrites()
+    private void StubWrites(bool revokeEffective = true)
     {
         _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
-        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost()).RespondWith(Response.Create().WithBodyAsJson(new { value = true }));
+        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(_ =>
+            {
+                if (revokeEffective) _revokedAt = DateTimeOffset.UtcNow;
+                return "{\"value\":true}";
+            }));
         _server.Given(Request.Create().WithPath("/users/u1/assignLicense").UsingPost()).RespondWith(Response.Create().WithBodyAsJson(new { id = "u1" }));
         _server.Given(Request.Create().WithPath("/groups/*/members/u1/$ref").UsingDelete()).RespondWith(Response.Create().WithStatusCode(204));
     }
@@ -219,14 +235,17 @@ public class OffboardingOperationTests : IDisposable
         WipeDevices = DeviceWipeMode.Retire
     };
 
-    private void StubDevice(string managementState)
+    /// <summary>One managed device; the re-read after the retire returns <paramref name="managementState"/>, or 404 when null (record gone).</summary>
+    private void StubDevice(string? managementState)
     {
         _server.Given(Request.Create().WithPath("/users/u1/managedDevices").UsingGet())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { new { id = "d1", deviceName = "LAPTOP-1", operatingSystem = "Windows", managementState = "managed" } } }));
         _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1/retire").UsingPost())
             .RespondWith(Response.Create().WithStatusCode(204));
         _server.Given(Request.Create().WithPath("/deviceManagement/managedDevices/d1").UsingGet())
-            .RespondWith(Response.Create().WithBodyAsJson(new { id = "d1", managementState }));
+            .RespondWith(managementState is null
+                ? Response.Create().WithStatusCode(404).WithBodyAsJson(new { error = new { code = "ResourceNotFound", message = "Not found" } })
+                : Response.Create().WithBodyAsJson(new { id = "d1", managementState }));
     }
 
     [Theory]
@@ -258,20 +277,53 @@ public class OffboardingOperationTests : IDisposable
         var check = e.Verification.Single(v => v.PlanItemId == "device:d1");
         Assert.False(check.Passed);
         Assert.True(check.Unverifiable);
-        Assert.Contains("retire issued for 1 device but not yet completed", e.TicketNotes);
+        Assert.Contains("retire requested for 1 device; completion not yet confirmed", e.TicketNotes);
+        Assert.DoesNotContain("were applied", e.TicketNotes);
+        Assert.Contains("Microsoft accepted the requested changes, but PCB could not confirm their effect yet", e.TicketNotes);
         Assert.False(OffboardingOperation.ToSteps(e).Single(s => s.Name.StartsWith("Retire")).Success);
     }
 
     [Fact]
-    public async Task Completed_retire_is_verified()
+    public async Task Retire_is_complete_only_when_the_device_record_is_gone()
     {
+        StubUser(CloudUser());
+        StubDevice(null); // re-read: 404, the managed device record was removed
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
+
+        Assert.Equal(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("gone on re-read", e.Verification.Single(v => v.PlanItemId == "device:d1").Detail);
+        Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Undocumented_retired_state_is_not_accepted_as_completion()
+    {
+        // Graph's managementState has no "retired" value; while the record exists, nothing confirms completion.
         StubUser(CloudUser());
         StubDevice("retired");
 
         var e = await Op().ApplyAsync(Tenant(), "u1", DevicesOnly());
 
-        Assert.Equal(Outcome.Succeeded, e.Outcome);
-        Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.False(e.Verification.Single(v => v.PlanItemId == "device:d1").Passed);
+        Assert.DoesNotContain("(verified)", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Acknowledged_revoke_that_leaves_the_cutoff_unchanged_is_not_verified()
+    {
+        StubUser(CloudUser(), CloudUser(enabled: false, skus: []));
+        StubMemberOf([], []);
+        // Graph acknowledges the revoke, but the cutoff stays at an earlier (four-minute-old) value.
+        StubWrites(revokeEffective: false);
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy());
+
+        var check = e.Verification.Single(v => v.PlanItemId == "revoke-sessions");
+        Assert.False(check.Passed);
+        Assert.Contains("did not move forward", check.Detail);
+        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
     }
 
     // --- Group-inherited licenses (finding 5) ---
@@ -359,21 +411,68 @@ public class OffboardingOperationTests : IDisposable
     {
         StubUser(CloudUser());
         StubMemberOf([Group("g1", "Finance")], []);
-        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        using var cts = new CancellationTokenSource();
+        // Blocking sign-in answers and starts the cancellation clock; the revoke is sent next and
+        // hangs, so the run is cancelled while it waits for Graph's answer.
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch())
+            .RespondWith(Response.Create().WithStatusCode(204).WithBody(_ => { cts.CancelAfter(TimeSpan.FromSeconds(2)); return ""; }));
         _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = true }).WithDelay(TimeSpan.FromSeconds(30)));
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
         var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
             () => Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy(), cts.Token));
 
         var e = ex.Partial;
         Assert.True(e.Changes.Single(c => c.PlanItemId == "block-sign-in") is { Attempted: true, Succeeded: true });
+        // The revoke was sent: it may or may not have been applied.
+        var revoke = e.Changes.Single(c => c.PlanItemId == "revoke-sessions");
+        Assert.True(revoke.Attempted);
+        Assert.False(revoke.Succeeded);
+        Assert.Equal(ChangeResult.InterruptedInFlight, revoke.Detail);
+        Assert.Contains("Revoke sessions: request sent, but the run was interrupted", e.TicketNotes);
+        // The group removal was never sent.
         var group = e.Changes.Single(c => c.PlanItemId == "group:g1");
         Assert.False(group.Attempted);
         Assert.StartsWith("Interrupted", group.Detail);
         Assert.Empty(Calls("DELETE"));
+        Assert.All(e.Verification.Where(v => v.PlanItemId is "block-sign-in" or "revoke-sessions"), v => Assert.False(v.Passed));
         Assert.NotEqual(Outcome.Succeeded, e.Outcome);
         Assert.Contains("interrupted", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Cancellation_during_the_verification_reread_keeps_the_applied_changes()
+    {
+        // User reads: the plan and the pre-revoke cutoff answer; the verification re-read hangs.
+        var user = System.Text.Json.JsonSerializer.Serialize(CloudUser());
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WillSetStateTo("planned")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user));
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WhenStateIs("planned").WillSetStateTo("applied")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user));
+        _server.Given(Request.Create().WithPath("/users/u1").UsingGet()).InScenario("user").WhenStateIs("applied")
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(user).WithDelay(TimeSpan.FromSeconds(30)));
+        _server.Given(Request.Create().WithPath("/users/u1/licenseDetails").UsingGet())
+            .RespondWith(Response.Create().WithBodyAsJson(new { value = Array.Empty<object>() }));
+        using var cts = new CancellationTokenSource();
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json")
+                .WithBody(_ => { cts.CancelAfter(TimeSpan.FromSeconds(2)); return "{\"value\":true}"; }));
+
+        var ex = await Assert.ThrowsAsync<OperationInterruptedException>(() => Op().ApplyAsync(Tenant(), "u1",
+            new OffboardingPolicy { RemoveLicenses = false, GroupCleanup = GroupCleanupMode.None }, cts.Token));
+
+        var e = ex.Partial;
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "block-sign-in") is { Attempted: true, Succeeded: true });
+        Assert.True(e.Changes.Single(c => c.PlanItemId == "revoke-sessions") is { Attempted: true, Succeeded: true });
+        foreach (var id in new[] { "block-sign-in", "revoke-sessions" })
+        {
+            var check = e.Verification.Single(v => v.PlanItemId == id);
+            Assert.False(check.Passed);
+            Assert.Contains("interrupted", check.Detail);
+        }
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.Contains("interrupted", e.TicketNotes);
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
     }
 }
