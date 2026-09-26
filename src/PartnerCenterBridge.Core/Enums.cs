@@ -40,7 +40,11 @@ public enum DetectionRuleType
 public enum WorkflowRunKind
 {
     Diagnose,
-    Remediate
+    Remediate,
+    /// <summary>A planned operation's read-only plan (e.g. Access Parity plan). Nothing applied.</summary>
+    Plan,
+    /// <summary>A planned operation's apply: re-plan, change, verify (e.g. Access Parity apply, offboarding).</summary>
+    Apply
 }
 
 /// <summary>Per-(template, tenant) deployment state, tracked so updates can fan out.</summary>

@@ -62,7 +62,8 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     Id = table.Column<Guid>(type: "TEXT", nullable: false),
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     Notes = table.Column<string>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false)
+                    CreatedAt = table.Column<long>(type: "INTEGER", nullable: false),
+                    OffboardingPolicy = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -379,7 +380,11 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     Healthy = table.Column<bool>(type: "INTEGER", nullable: true),
                     Error = table.Column<string>(type: "TEXT", nullable: true),
                     StartedAt = table.Column<long>(type: "INTEGER", nullable: false),
-                    DurationMs = table.Column<long>(type: "INTEGER", nullable: false)
+                    DurationMs = table.Column<long>(type: "INTEGER", nullable: false),
+                    TargetId = table.Column<string>(type: "TEXT", nullable: true),
+                    TargetDisplayName = table.Column<string>(type: "TEXT", nullable: true),
+                    Outcome = table.Column<string>(type: "TEXT", nullable: true),
+                    Evidence = table.Column<string>(type: "TEXT", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -530,6 +535,11 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 name: "IX_WorkflowRuns_TenantId_StartedAt",
                 table: "WorkflowRuns",
                 columns: new[] { "TenantId", "StartedAt" });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WorkflowRuns_TenantId_TargetId_StartedAt",
+                table: "WorkflowRuns",
+                columns: new[] { "TenantId", "TargetId", "StartedAt" });
         }
 
         /// <inheritdoc />

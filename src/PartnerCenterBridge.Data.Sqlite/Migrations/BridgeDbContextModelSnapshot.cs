@@ -597,6 +597,9 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Evidence")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Findings")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -615,6 +618,9 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Outcome")
+                        .HasColumnType("TEXT");
+
                     b.Property<long>("StartedAt")
                         .HasColumnType("INTEGER");
 
@@ -624,6 +630,12 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
 
                     b.Property<bool>("Succeeded")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("TargetDisplayName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("TEXT");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("TEXT");
@@ -641,6 +653,8 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.HasIndex("StartedAt");
 
                     b.HasIndex("TenantId", "StartedAt");
+
+                    b.HasIndex("TenantId", "TargetId", "StartedAt");
 
                     b.ToTable("WorkflowRuns");
                 });
@@ -846,6 +860,56 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Contract", b =>
+                {
+                    b.OwnsOne("PartnerCenterBridge.Core.Entities.OffboardingPolicy", "OffboardingPolicy", b1 =>
+                        {
+                            b1.Property<Guid>("ContractId")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<bool>("BlockSignIn")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<bool>("ConvertMailboxToShared")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("FollowUpDays")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<string>("ForwardTo")
+                                .HasColumnType("TEXT");
+
+                            b1.Property<int>("GroupCleanup")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<bool>("HideFromGal")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("ManagerAccess")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<bool>("RemoveLicenses")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<bool>("RevokeSessions")
+                                .HasColumnType("INTEGER");
+
+                            b1.Property<int>("WipeDevices")
+                                .HasColumnType("INTEGER");
+
+                            b1.HasKey("ContractId");
+
+                            b1.ToTable("Contracts");
+
+                            b1.ToJson("OffboardingPolicy");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContractId");
+                        });
+
+                    b.Navigation("OffboardingPolicy");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Deployment", b =>

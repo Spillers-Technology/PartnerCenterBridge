@@ -4,29 +4,34 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using PartnerCenterBridge.Data;
 
 #nullable disable
 
-namespace PartnerCenterBridge.Data.Sqlite.Migrations
+namespace PartnerCenterBridge.Data.Migrations
 {
     [DbContext(typeof(BridgeDbContext))]
-    [Migration("20260926005810_InitialCreate")]
-    partial class InitialCreate
+    [Migration("20260926010954_OperationEvidence")]
+    partial class OperationEvidence
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "8.0.11");
+            modelBuilder
+                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("Relational:MaxIdentifierLength", 63);
+
+            NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
             modelBuilder.Entity("ContractDesiredApps", b =>
                 {
                     b.Property<Guid>("ContractId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AppTemplateId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("ContractId", "AppTemplateId");
 
@@ -39,37 +44,37 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("ContentVersion")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid?>("ContractId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Description")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("InstallCommandLine")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Publisher")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("UninstallCommandLine")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("UpdatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 
@@ -82,51 +87,51 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<long>("AuthorizationVersion")
                         .IsConcurrencyToken()
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Email")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<int>("FailedLoginCount")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("InstanceRoles")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
-                    b.Property<long?>("LastLoginAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LastLoginAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("LockedUntil")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LockedUntil")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<bool>("TotpEnabled")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("TotpRecoveryCodeHashes")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("TotpSecretProtected")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -140,35 +145,35 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ActorName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<Guid?>("ActorUserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("Detail")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("EntityId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("EntityType")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<int>("EventType")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
-                    b.Property<long>("OccurredAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("Success")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<Guid?>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -185,29 +190,29 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long?>("CompletedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("GitCommitSha")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<bool>("Imported")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Operator")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("StartedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("Succeeded")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -220,28 +225,28 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ContentJson")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Error")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<int>("ItemCount")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("RunId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("SectionId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("SectionName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -255,17 +260,17 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("Notes")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -276,38 +281,38 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AppTemplateId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("AssignmentIds")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("CommittedContentVersionId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("DeployedTemplateVersion")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("IntuneAppId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("LastError")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long?>("LastSyncedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LastSyncedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -321,10 +326,10 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.InstanceAuthorizationState", b =>
                 {
                     b.Property<int>("Id")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<long>("Revision")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.HasKey("Id");
 
@@ -342,26 +347,26 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("ExpiresAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("LastUsedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long?>("RevokedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("RevokedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -374,37 +379,37 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("AaGuid")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<byte[]>("CredentialId")
                         .IsRequired()
-                        .HasColumnType("BLOB");
+                        .HasColumnType("bytea");
 
-                    b.Property<long?>("LastUsedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Nickname")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<byte[]>("PublicKey")
                         .IsRequired()
-                        .HasColumnType("BLOB");
+                        .HasColumnType("bytea");
 
-                    b.Property<uint>("SignatureCounter")
-                        .HasColumnType("INTEGER");
+                    b.Property<long>("SignatureCounter")
+                        .HasColumnType("bigint");
 
                     b.Property<byte[]>("UserHandle")
                         .IsRequired()
-                        .HasColumnType("BLOB");
+                        .HasColumnType("bytea");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -420,46 +425,46 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("ActionType")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long?>("DecidedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("DecidedByUserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long?>("ExecutedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("ExecutedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("ExecutionError")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("ExpiresAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PayloadJson")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("PreviewSummary")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<Guid>("RequestedByUserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -472,34 +477,34 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("ContractId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("DefaultDepartment")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("DefaultJobTitle")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("GroupIds")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("LicenseSkuIds")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
-                    b.Property<long>("UpdatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("UpnDomain")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("UsageLocation")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -513,36 +518,36 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid?>("ContractId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long>("CreatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("DefaultDomain")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("DisplayName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("GdapRelationshipId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long?>("LastSeenAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("McpApprovalMode")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("TenantId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -558,25 +563,25 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
-                    b.Property<long?>("ExpiresAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
 
-                    b.Property<long>("GrantedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("GrantedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid>("GrantedByUserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<int>("Role")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<Guid>("UserId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.HasKey("Id");
 
@@ -592,52 +597,64 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<long>("DurationMs")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("bigint");
 
                     b.Property<string>("Error")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
+
+                    b.Property<string>("Evidence")
+                        .HasColumnType("jsonb");
 
                     b.Property<string>("Findings")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<bool?>("Healthy")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
 
                     b.Property<string>("Inputs")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<int>("Kind")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("integer");
 
                     b.Property<string>("Operator")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("StartedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("Outcome")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Steps")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("jsonb");
 
                     b.Property<bool>("Succeeded")
-                        .HasColumnType("INTEGER");
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("TargetDisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("uuid");
 
                     b.Property<string>("WorkflowId")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("WorkflowName")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.HasKey("Id");
 
@@ -645,20 +662,22 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
 
                     b.HasIndex("TenantId", "StartedAt");
 
+                    b.HasIndex("TenantId", "TargetId", "StartedAt");
+
                     b.ToTable("WorkflowRuns");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Data.SecretRecord", b =>
                 {
                     b.Property<string>("Name")
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
                     b.Property<string>("ProtectedValue")
                         .IsRequired()
-                        .HasColumnType("TEXT");
+                        .HasColumnType("text");
 
-                    b.Property<long>("UpdatedAt")
-                        .HasColumnType("INTEGER");
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Name");
 
@@ -690,23 +709,23 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.OwnsMany("PartnerCenterBridge.Core.Entities.AssignmentSpec", "Assignments", b1 =>
                         {
                             b1.Property<Guid>("AppTemplateId")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("uuid");
 
                             b1.Property<int>("Id")
                                 .ValueGeneratedOnAdd()
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("integer");
 
                             b1.Property<string>("GroupDisplayName")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("GroupId")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<int>("Intent")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("integer");
 
                             b1.Property<int>("TargetType")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("integer");
 
                             b1.HasKey("AppTemplateId", "Id");
 
@@ -721,38 +740,38 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.OwnsMany("PartnerCenterBridge.Core.Entities.DetectionRule", "DetectionRules", b1 =>
                         {
                             b1.Property<Guid>("AppTemplateId")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("uuid");
 
                             b1.Property<int>("Id")
                                 .ValueGeneratedOnAdd()
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("integer");
 
                             b1.Property<bool>("Check32BitOn64System")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("boolean");
 
                             b1.Property<bool>("EnforceSignatureCheck")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("boolean");
 
                             b1.Property<string>("FileOrKeyName")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("Path")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("ProductCode")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("ProductVersion")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<bool>("RunAs32Bit")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("boolean");
 
                             b1.Property<string>("ScriptContent")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<int>("Type")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("integer");
 
                             b1.HasKey("AppTemplateId", "Id");
 
@@ -767,48 +786,48 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.OwnsOne("PartnerCenterBridge.Core.Entities.Win32ContentInfo", "Content", b1 =>
                         {
                             b1.Property<Guid>("AppTemplateId")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("uuid");
 
                             b1.Property<string>("EncryptionKey")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("FileDigest")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("FileDigestAlgorithm")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("FileName")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("InitializationVector")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("Mac")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("MacKey")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<string>("ProfileIdentifier")
                                 .IsRequired()
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.Property<long>("Size")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("bigint");
 
                             b1.Property<long>("SizeEncrypted")
-                                .HasColumnType("INTEGER");
+                                .HasColumnType("bigint");
 
                             b1.Property<string>("StagedPayloadRef")
-                                .HasColumnType("TEXT");
+                                .HasColumnType("text");
 
                             b1.HasKey("AppTemplateId");
 
@@ -849,6 +868,56 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Contract", b =>
+                {
+                    b.OwnsOne("PartnerCenterBridge.Core.Entities.OffboardingPolicy", "OffboardingPolicy", b1 =>
+                        {
+                            b1.Property<Guid>("ContractId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<bool>("BlockSignIn")
+                                .HasColumnType("boolean");
+
+                            b1.Property<bool>("ConvertMailboxToShared")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("FollowUpDays")
+                                .HasColumnType("integer");
+
+                            b1.Property<string>("ForwardTo")
+                                .HasColumnType("text");
+
+                            b1.Property<int>("GroupCleanup")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool>("HideFromGal")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("ManagerAccess")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool>("RemoveLicenses")
+                                .HasColumnType("boolean");
+
+                            b1.Property<bool>("RevokeSessions")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("WipeDevices")
+                                .HasColumnType("integer");
+
+                            b1.HasKey("ContractId");
+
+                            b1.ToTable("Contracts");
+
+                            b1.ToJson("OffboardingPolicy");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContractId");
+                        });
+
+                    b.Navigation("OffboardingPolicy");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Deployment", b =>

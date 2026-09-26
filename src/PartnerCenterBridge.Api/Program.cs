@@ -83,6 +83,8 @@ builder.Services.AddBridgeDiagnostics();
 builder.Services.AddScoped<PartnerCenterBridge.Core.Workflows.WorkflowCatalog>();
 builder.Services.AddGraphWorkflows();
 builder.Services.AddExchangeWorkflows();
+// Ops workbench: planned operations (Access Parity), person workspace, offboarding policy v2.
+PartnerCenterBridge.Api.Services.OperationsRegistration.AddOperations(builder.Services);
 builder.Services.Configure<NotificationOptions>(cfg.GetSection(NotificationOptions.SectionName));
 builder.Services.AddScoped<IRunNotifier, WebhookRunNotifier>();
 builder.Services.AddHttpClient("notifications");

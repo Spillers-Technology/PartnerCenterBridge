@@ -174,3 +174,39 @@ skuId), `groups` (id, displayName, category as above), `authMethods` (method typ
 /settings                  /settings/microsoft  /settings/security  /settings/workbench
 /login  /register
 ```
+
+## As built: workstream B deviations and details (authoritative over the sketch above)
+
+- Ids: `OperationPlan.tenantId`, `evidence.tenant.id`, `evidence.runId` are PCB registry GUIDs;
+  `evidence.tenant.tenantId` is the Entra tenant id. `preflight` uses the existing Finding shape
+  `{name, status: "Ok|Info|Warning|Blocker", detail}`. Skipped change: `attempted:false`;
+  already-in-place: `attempted:false, succeeded:true`. `WorkflowRunKind` gains `Plan`, `Apply`.
+- `GET /api/workflows/runs` rows add `outcome`, `targetId`, `targetDisplayName`.
+- Evidence export: `?format=markdown|md`, anything else 400; 403 without Viewer, 404 unknown run.
+- Access Parity apply: missing `itemIds` -> 400; empty array -> NoChangeNeeded. source==target,
+  unknown user -> 400; Graph failure -> 502. Item ids `group:{id}` / `role:{id}`; actions
+  `AddMember` / `AssignRole` (never eligible). Extra category `Other` (neither security- nor
+  mail-enabled), ineligible.
+- Person workspace: `userId` may be object id or UPN; response adds top-level `tenantId`,
+  `userId`. Section data: `profile {id, displayName, upn, mail, accountEnabled, jobTitle,
+  department, onPremisesSyncEnabled, createdDateTime, lastSignIn}`; `licenses [{skuPartNumber,
+  skuId}]`; `groups [{id, displayName, category}]`; `authMethods string[]`; `mailbox
+  {userPrincipalName, displayName, recipientTypeDetails, forwardingSmtpAddress,
+  deliverToMailboxAndForward} | null`; `devices [{id, deviceName, operatingSystem, osVersion,
+  complianceState, lastSyncDateTime, managementAgent}]`; `recentRuns` = runs row shape.
+- Offboarding: `POST /api/provisioning/terminate/plan` body = terminate body
+  `{tenantId, termination: {userId, blockSignIn?, revokeSessions?, removeLicenses?,
+  removeFromGroups?, convertMailboxToShared?, forwardingSmtpAddress?}, policy?}`; flags override
+  policy (request policy > contract policy > defaults). Terminate response keeps old fields and
+  adds `evidence`, `policy`; `steps` = one per plan item; `succeeded` = Succeeded|NoChangeNeeded.
+  Item ids: `block-sign-in`, `revoke-sessions`, `convert-mailbox`, `set-forwarding`,
+  `hide-from-gal`, `manager-access`, `group:{id}`, `role:{id}`, `license:{skuId}`,
+  `device:{id}`, `follow-up`. `hideFromGal`/`managerAccess` are always ineligible (no Exchange
+  op yet). Group and license removal wait for verified mailbox conversion when conversion is
+  requested.
+- Contract policy: `GET/PUT /api/contracts/{id}/offboarding-policy` (PUT needs ManageCatalog).
+  Defaults: blockSignIn true, revokeSessions true, groupCleanup RemoveAll,
+  convertMailboxToShared false, removeLicenses true, hideFromGal false, forwardTo null,
+  managerAccess None, wipeDevices None, followUpDays 0.
+- MCP: read-only `plan_access_parity`; apply only via existing `remediate_workflow` + approval
+  queue. Plan runs are recorded (Kind=Plan, Outcome=Planned).

@@ -4,6 +4,7 @@ using PartnerCenterBridge.Api.Services;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
+using PartnerCenterBridge.Core.Operations;
 using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Data;
 
@@ -64,6 +65,7 @@ public class WorkflowRemediateExecutor : IPendingActionExecutor
             run.Findings = result.PostState?.Findings ?? new();
             run.Healthy = result.PostState?.Healthy;
             run.Succeeded = result.Succeeded;
+            run.Evidence = result.Evidence;
         }
         catch (Exception ex)
         {
@@ -74,6 +76,7 @@ public class WorkflowRemediateExecutor : IPendingActionExecutor
         finally
         {
             run.DurationMs = sw.ElapsedMilliseconds;
+            WorkflowEvidenceAdapter.Finalize(run);
             _db.WorkflowRuns.Add(run);
             await _db.SaveChangesAsync(CancellationToken.None);
             await _notifier.NotifyAsync(run, CancellationToken.None);

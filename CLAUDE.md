@@ -51,13 +51,32 @@ the SPA): `./scripts/publish-local.ps1`. Run it with `--help` for the CLI (`doct
 
 ## Release checklist
 
-Release process is **manual**. The only GitHub Actions workflow is `.github/workflows/ui-overflow.yml`
-(the mobile overflow matrix on PRs and `main`); nothing builds, tests, or publishes .NET or images in CI.
-Automating this list is a candidate for later; until then, work through it by hand:
+Release process is **manual**, but CI now gates PRs and `main`. Two workflows run on
+`pull_request`/`push` to `main` (plus `workflow_dispatch`):
+
+- `.github/workflows/ui-overflow.yml` -- mobile overflow capture matrix (Playwright at phone
+  widths against the mocked dev server).
+- `.github/workflows/ci.yml`:
+  - `dotnet` -- restores, builds (`Release`), and runs the full xunit suite, including
+    `PostgresAuthorizationConcurrencyTests` against a `postgres:16` service container
+    (`PCB_TEST_POSTGRES` is set, so these no longer skip in CI as they do locally without that
+    env var). Uploads the `.trx` results on failure.
+  - `web` -- `npm ci`, `tsc -b`, `vitest run`, `npm run build`.
+  - `local-workbench` (Windows) -- runs `scripts/publish-local.ps1`, then smoke-tests the
+    published `PartnerCenterBridge.exe`: health check, `/api/system/status` profile, SPA
+    fallback HTML, loopback-only binding, and a stop/restart to confirm `pcb.db` persists.
+    Also runs `doctor` and prints its output (non-gating -- Exchange/SAM are expected
+    unconfigured in CI). Uploads the exe as the `partnercenterbridge-win-x64` artifact
+    (14-day retention).
+  - `docker` -- builds both container images (API and web) without pushing, to catch
+    Dockerfile regressions.
+
+None of this publishes anything -- no image push, no GitHub release, no tag. Work through the
+rest of this list by hand:
 
 1. Bump `web/package.json` version and `<Version>` in `src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj`
    (reported by `/api/system/status` and `--version`).
-2. `dotnet build` + `dotnet test` + `cd web && npm run build` all green.
+2. `dotnet build` + `dotnet test` + `cd web && npm run build` all green (CI just re-confirms this).
 3. Build and push both images, tagged `vX.Y.Z` and `latest`:
    ```bash
    docker build -t ghcr.io/spillers-technology/partnercenterbridge-api:vX.Y.Z -f src/PartnerCenterBridge.Api/Dockerfile .
