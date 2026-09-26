@@ -28,6 +28,12 @@ public class WorkflowRunResult
     /// </summary>
     public Dictionary<string, string> Ephemeral { get; set; } = new();
 
+    /// <summary>
+    /// Native evidence from a planned operation run through the classic remediate path. Null for
+    /// classic workflows; their evidence is adapted from steps and post-state when the run is recorded.
+    /// </summary>
+    public Operations.OperationEvidence? Evidence { get; set; }
+
     public bool Succeeded => Steps.Count > 0 && Steps.All(s => s.Success);
 }
 

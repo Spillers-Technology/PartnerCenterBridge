@@ -41,4 +41,17 @@ public class WorkflowRun
 
     public DateTimeOffset StartedAt { get; set; } = DateTimeOffset.UtcNow;
     public long DurationMs { get; set; }
+
+    /// <summary>
+    /// Who/what the run was about -- a user object id or UPN, lowercased so history can be
+    /// filtered per person. Null when the workflow has no single target.
+    /// </summary>
+    public string? TargetId { get; set; }
+    public string? TargetDisplayName { get; set; }
+
+    /// <summary>Verification-derived outcome (see <see cref="Operations.OutcomeRules"/>). Null on rows written before evidence existed.</summary>
+    public Operations.Outcome? Outcome { get; set; }
+
+    /// <summary>Structured evidence (preflight, plan, changes, verification, notes). JSON column; never contains secrets.</summary>
+    public Operations.OperationEvidence? Evidence { get; set; }
 }

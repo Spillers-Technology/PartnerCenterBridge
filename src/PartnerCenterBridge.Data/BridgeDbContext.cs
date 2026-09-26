@@ -33,6 +33,23 @@ public class BridgeDbContext : DbContext
             System.Text.Json.JsonSerializer.Serialize(v, (System.Text.Json.JsonSerializerOptions?)null),
             (System.Text.Json.JsonSerializerOptions?)null)!);
 
+    // Evidence is stored in its wire shape (camelCase, enums as names) so the jsonb is readable
+    // and matches what the API serves.
+    private static readonly System.Text.Json.JsonSerializerOptions EvidenceJson = new(System.Text.Json.JsonSerializerDefaults.Web)
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
+
+    private static readonly ValueConverter<Core.Operations.OperationEvidence, string> EvidenceConverter = new(
+        v => System.Text.Json.JsonSerializer.Serialize(v, EvidenceJson),
+        v => System.Text.Json.JsonSerializer.Deserialize<Core.Operations.OperationEvidence>(v, EvidenceJson)!);
+
+    private static readonly ValueComparer<Core.Operations.OperationEvidence> EvidenceComparer = new(
+        (a, b) => System.Text.Json.JsonSerializer.Serialize(a, EvidenceJson) == System.Text.Json.JsonSerializer.Serialize(b, EvidenceJson),
+        v => System.Text.Json.JsonSerializer.Serialize(v, EvidenceJson).GetHashCode(),
+        v => System.Text.Json.JsonSerializer.Deserialize<Core.Operations.OperationEvidence>(
+            System.Text.Json.JsonSerializer.Serialize(v, EvidenceJson), EvidenceJson)!);
+
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Contract> Contracts => Set<Contract>();
     public DbSet<AppTemplate> AppTemplates => Set<AppTemplate>();
@@ -63,6 +80,7 @@ public class BridgeDbContext : DbContext
         b.Entity<Contract>(e =>
         {
             e.Property(c => c.Name).IsRequired();
+            e.OwnsOne(c => c.OffboardingPolicy, o => o.ToJson());
             e.HasMany(c => c.DesiredApps).WithMany(a => a.DesiredByContracts)
                 .UsingEntity<Dictionary<string, object>>(
                     "ContractDesiredApps",
@@ -128,6 +146,11 @@ public class BridgeDbContext : DbContext
                 .HasConversion(JsonConverter<List<Core.Abstractions.ProvisioningStep>>(), JsonComparer<List<Core.Abstractions.ProvisioningStep>>());
             e.HasOne(r => r.Tenant).WithMany()
                 .HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
+            // Per-person history ("runs targeting this user in this tenant").
+            e.HasIndex(r => new { r.TenantId, r.TargetId, r.StartedAt });
+            e.Property(r => r.Outcome).HasConversion<string>();
+            e.Property(r => r.Evidence).HasColumnType("jsonb")
+                .HasConversion(EvidenceConverter, EvidenceComparer);
         });
 
         b.Entity<AppUser>(e =>

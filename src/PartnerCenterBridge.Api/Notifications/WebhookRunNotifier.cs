@@ -40,7 +40,7 @@ public class WebhookRunNotifier : IRunNotifier
     public async Task NotifyAsync(WorkflowRun run, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_opts.WebhookUrl)) return;
-        if (run.Succeeded && !(_opts.NotifyOnSuccess && run.Kind == WorkflowRunKind.Remediate)) return;
+        if (run.Succeeded && !(_opts.NotifyOnSuccess && run.Kind is WorkflowRunKind.Remediate or WorkflowRunKind.Apply)) return;
 
         try
         {

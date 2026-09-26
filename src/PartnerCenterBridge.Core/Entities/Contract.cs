@@ -25,5 +25,8 @@ public class Contract
     /// <summary>Per-contract new-hire provisioning defaults. Null until configured.</summary>
     public ProvisioningTemplate? ProvisioningTemplate { get; set; }
 
+    /// <summary>Offboarding policy for tenants on this contract (owned JSON). Null = <see cref="OffboardingPolicy"/> defaults.</summary>
+    public OffboardingPolicy? OffboardingPolicy { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }
