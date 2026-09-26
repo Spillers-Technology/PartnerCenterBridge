@@ -63,7 +63,7 @@ function PackageQuestRow({
         size="small"
         color="warning"
         disabled={uploading || removing}
-        label={uploading ? "Uploading package..." : "So close! Attach a package to unlock \u2192"}
+        label={uploading ? "Uploading package..." : "Attach a package to enable \u2192"}
         onClick={() => inputRef.current?.click()}
         sx={{ cursor: uploading || removing ? "default" : "pointer" }}
       />

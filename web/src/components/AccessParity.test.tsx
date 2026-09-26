@@ -31,10 +31,8 @@ function renderParity(params: AccessParityParams = { tenant: "t1", source: "ada@
   return { onParamsChange };
 }
 
-async function comparePlan(user: ReturnType<typeof userEvent.setup>) {
-  // The URL names both people; wait until the directory lookup has resolved their names.
-  await waitFor(() => expect(screen.getByLabelText("Copy access from")).toHaveValue("Ada Lovelace (ada@contoso.com)"));
-  await user.click(screen.getByRole("button", { name: "Compare" }));
+// The default link names the tenant and both people, so the page compares once on load.
+async function comparePlan(_user: ReturnType<typeof userEvent.setup>) {
   return screen.findByRole("region", { name: "Access parity plan" });
 }
 
@@ -47,12 +45,31 @@ describe("AccessParity", () => {
     vi.mocked(api.accessParity.apply).mockResolvedValue(makeEvidence());
   });
 
-  it("does not plan until asked, then plans with the chosen people", async () => {
+  it("compares once on load when the link names the tenant and both people", async () => {
     const user = userEvent.setup();
     renderParity();
     await comparePlan(user);
     expect(api.accessParity.plan).toHaveBeenCalledTimes(1);
-    expect(api.accessParity.plan).toHaveBeenCalledWith("t1", "u1", "u2");
+    expect(api.accessParity.plan).toHaveBeenCalledWith("t1", "ada@contoso.com", "grace@contoso.com");
+  });
+
+  it("does not plan an incomplete link until asked, then plans with the chosen people", async () => {
+    const user = userEvent.setup();
+    renderParity({ tenant: "t1", target: "grace@contoso.com" });
+    await user.type(screen.getByLabelText("Copy access from"), "Ada");
+    await user.click(await screen.findByRole("option", { name: /Ada Lovelace/ }, { timeout: 3000 }));
+    expect(api.accessParity.plan).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Compare" }));
+    await screen.findByRole("region", { name: "Access parity plan" });
+    expect(api.accessParity.plan).toHaveBeenCalledTimes(1);
+    expect(api.accessParity.plan).toHaveBeenLastCalledWith("t1", "u1", "u2");
+  });
+
+  it("does not auto-compare a link that names the same person twice", async () => {
+    renderParity({ tenant: "t1", source: "ada@contoso.com", target: "ADA@contoso.com" });
+    await screen.findByLabelText("Copy access from");
+    await new Promise((r) => setTimeout(r, 50));
+    expect(api.accessParity.plan).not.toHaveBeenCalled();
   });
 
   it("separates eligible additions from what is not copied, with reasons, and states the limits", async () => {

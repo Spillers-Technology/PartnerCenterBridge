@@ -56,8 +56,9 @@ function userRef(u: DirectoryObject | null): string | undefined {
 
 /**
  * Access Parity: plan, review and apply additive group-membership mirroring from a source user to a
- * target user. The plan is only computed when the operator asks for it (every plan is recorded as a
- * run, so a page refresh should not create audit noise); the tenant and both people live in the URL.
+ * target user. The tenant and both people live in the URL; a link that names all three compares
+ * once on load (operator's choice, 2026-09-26: speed over the extra audit run a refresh creates --
+ * every plan is still recorded as a read-only Plan run). Otherwise the plan runs on Compare.
  */
 export function AccessParity({
   params,
@@ -153,6 +154,17 @@ export function AccessParity({
       setBusy(null);
     }
   };
+
+  // A fully specified link compares once on mount; later edits go back to explicit Compare.
+  const autoCompared = useRef(false);
+  useEffect(() => {
+    if (autoCompared.current || !params.tenant || !params.source || !params.target) return;
+    if (params.source.toLowerCase() === params.target.toLowerCase()) return;
+    autoCompared.current = true;
+    void compare();
+    // Initial URL only, by design.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const eligible = useMemo(() => plan?.items.filter((i) => i.eligible) ?? [], [plan]);
   const already = useMemo(() => plan?.items.filter((i) => !i.eligible && i.category === "AlreadyMember") ?? [], [plan]);
