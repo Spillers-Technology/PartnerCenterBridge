@@ -149,7 +149,7 @@ public class BridgeDbContext : DbContext
             // Per-person history ("runs targeting this user in this tenant").
             e.HasIndex(r => new { r.TenantId, r.TargetId, r.StartedAt });
             e.Property(r => r.Outcome).HasConversion<string>();
-            e.Property(r => r.Evidence).HasColumnType("jsonb")
+            e.Property(r => r.Evidence!).HasColumnType("jsonb")
                 .HasConversion(EvidenceConverter, EvidenceComparer);
         });
 
