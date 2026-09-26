@@ -292,7 +292,7 @@ export interface SamStatus { bootstrapped: boolean }
 export type Outcome =
   | "Succeeded" | "PartiallySucceeded" | "Failed" | "NoChangeNeeded"
   | "VerificationFailed" | "Planned"
-  /** Applied and acknowledged by Microsoft, but PCB could not independently re-read and confirm it. */
+  /** Microsoft accepted the requested changes, but PCB could not confirm their effect (yet). */
   | "CompletedUnverified";
 
 export interface OperationTarget { kind: string; id: string; displayName: string }
