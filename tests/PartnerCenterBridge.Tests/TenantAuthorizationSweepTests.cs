@@ -65,12 +65,13 @@ public class TenantAuthorizationSweepTests
         var access = NewTenantAccess(db, admin.Id);
         var graph = new CountingGraphUserService();
         var exchange = new CountingExchangeService();
+        var offboarding = new CountingOffboardingService();
 
         var directoryResult = await new DirectoryController(db.Context, graph, access)
             .Users(tenant.Id, null, CancellationToken.None);
         var exchangeResult = await new ExchangeController(db.Context, exchange, access)
             .RemediateArchive(tenant.Id, "user@example.com", new(), CancellationToken.None);
-        var hireResult = await new ProvisioningController(db.Context, graph, exchange, access)
+        var hireResult = await new ProvisioningController(db.Context, graph, offboarding, access, OpsTest.Recorder(db))
             .Hire(new HireApiRequest(tenant.Id, new NewHireRequest
             {
                 DisplayName = "User", UserPrincipalName = "user@example.com", MailNickname = "user"
@@ -81,6 +82,7 @@ public class TenantAuthorizationSweepTests
         Assert.IsType<ForbidResult>(hireResult.Result);
         Assert.Equal(0, graph.Calls);
         Assert.Equal(0, exchange.Calls);
+        Assert.Equal(0, offboarding.Calls);
     }
 
     [Fact]

@@ -13,6 +13,7 @@ public class McpToolAnnotationTests
     [InlineData(typeof(TenantTools), nameof(TenantTools.ListTenants))]
     [InlineData(typeof(DashboardTools), nameof(DashboardTools.GetDashboard))]
     [InlineData(typeof(PendingActionTools), nameof(PendingActionTools.CheckPendingAction))]
+    [InlineData(typeof(OperationTools), nameof(OperationTools.PlanAccessParity))]
     public void Read_only_tools_are_annotated_non_destructive(Type toolType, string methodName)
     {
         var annotation = toolType.GetMethod(methodName)!
