@@ -3,8 +3,8 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  InstanceRole, InstanceUser, McpTokenInfo, OperationEvidence, OperationPlan, PasskeyInfo, PendingAction,
-  PersonWorkspace, ProvisioningResult, ProvisioningTemplate, SamStatus, SectionDiff, Sku, SystemDiagnostics, SystemStatus,
+  InstanceRole, InstanceUser, McpTokenInfo, OffboardingPolicy, OperationEvidence, OperationPlan, PasskeyInfo, PendingAction,
+  PersonWorkspace, ProvisioningResult, TerminateResult, ProvisioningTemplate, SamStatus, SectionDiff, Sku, SystemDiagnostics, SystemStatus,
   Tenant, TenantGrant, TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
@@ -27,11 +27,39 @@ async function authHeaders(init: RequestInit = {}): Promise<Headers> {
  */
 export class ApiError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  /** The raw response body (often the server's plain-text reason). */
+  readonly body: string;
+  constructor(status: number, message: string, body = "") {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.body = body;
   }
+}
+
+/**
+ * The server's own explanation for a failed call, for showing next to a form: a plain-text body
+ * ("Source and target must be different users."), a ProblemDetails title/errors, or the generic
+ * message when the body says nothing useful.
+ */
+export function errorText(e: unknown): string {
+  if (e instanceof ApiError && e.body.trim()) {
+    const body = e.body.trim();
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (typeof parsed === "string") return parsed;
+      if (parsed && typeof parsed === "object") {
+        const p = parsed as { title?: string; detail?: string; errors?: Record<string, string[]> };
+        const errors = p.errors ? Object.values(p.errors).flat() : [];
+        if (errors.length > 0) return errors.join(" ");
+        if (p.detail) return p.detail;
+        if (p.title) return p.title;
+      }
+    } catch {
+      if (body.length <= 500 && !body.startsWith("<")) return body;
+    }
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 /** True when `e` is an ApiError with the given HTTP status. */
@@ -42,7 +70,10 @@ export function isApiStatus(e: unknown, status: number): boolean {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = await authHeaders(init);
   const resp = await fetch(`${base}${path}`, { ...init, headers });
-  if (!resp.ok) throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${body}`, body);
+  }
   return resp.status === 204 ? (undefined as T) : ((await resp.json()) as T);
 }
 
@@ -124,7 +155,15 @@ export const api = {
     addDesiredApp: (contractId: string, templateId: string) =>
       request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "POST" }),
     removeDesiredApp: (contractId: string, templateId: string) =>
-      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "DELETE" })
+      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "DELETE" }),
+    /** 0.9.0+: the contract's offboarding policy (built-in defaults when none is set). */
+    getOffboardingPolicy: (contractId: string) =>
+      request<OffboardingPolicy>(`/api/contracts/${contractId}/offboarding-policy`),
+    /** Replaces the policy; needs instance.catalog.manage. 400 carries the validation messages. */
+    putOffboardingPolicy: (contractId: string, policy: OffboardingPolicy) =>
+      request<OffboardingPolicy>(`/api/contracts/${contractId}/offboarding-policy`, {
+        method: "PUT", body: JSON.stringify(policy)
+      })
   },
 
   templates: {
@@ -164,7 +203,7 @@ export const api = {
         body: JSON.stringify({ tenantId, hire })
       }),
     terminate: (tenantId: string, termination: Record<string, unknown>) =>
-      request<ProvisioningResult>("/api/provisioning/terminate", {
+      request<TerminateResult>("/api/provisioning/terminate", {
         method: "POST",
         body: JSON.stringify({ tenantId, termination })
       }),
@@ -197,7 +236,9 @@ export const api = {
     /** 0.9.0+: structured evidence for a persisted run. */
     evidence: (runId: string) => request<OperationEvidence>(`/api/workflows/runs/${runId}/evidence`),
     evidenceMarkdown: (runId: string) =>
-      download(`/api/workflows/runs/${runId}/evidence?format=markdown`, `run-${runId}-evidence.md`),
+      download(`/api/workflows/runs/${runId}/evidence?format=markdown`, `pcb-run-${runId}.md`),
+    evidenceJson: (runId: string) =>
+      download(`/api/workflows/runs/${runId}/evidence`, `pcb-run-${runId}.json`),
     diagnose: (id: string, tenantId: string, inputs: Record<string, string>) =>
       request<DiagnosisResult>(`/api/workflows/${id}/diagnose`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })
@@ -288,7 +329,10 @@ export const api = {
 async function download(path: string, filename: string): Promise<void> {
   const headers = await authHeaders();
   const resp = await fetch(`${base}${path}`, { headers });
-  if (!resp.ok) throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${body}`, body);
+  }
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

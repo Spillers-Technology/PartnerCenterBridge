@@ -1,34 +1,33 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { Link as RouterLink, Outlet, useLocation, useParams, useSearchParams } from "react-router";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
-import Chip from "@mui/material/Chip";
 import Link from "@mui/material/Link";
 import MenuItem from "@mui/material/MenuItem";
 import Skeleton from "@mui/material/Skeleton";
 import Stack from "@mui/material/Stack";
 import Tab from "@mui/material/Tab";
-import Table from "@mui/material/Table";
-import TableBody from "@mui/material/TableBody";
-import TableCell from "@mui/material/TableCell";
-import TableContainer from "@mui/material/TableContainer";
-import TableHead from "@mui/material/TableHead";
-import TableRow from "@mui/material/TableRow";
 import Tabs from "@mui/material/Tabs";
 import TextField from "@mui/material/TextField";
 import ToggleButton from "@mui/material/ToggleButton";
 import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import Typography from "@mui/material/Typography";
-import { api } from "../api";
-import { humanizeEnum, Timestamp } from "../format";
+import { api, isApiStatus } from "../api";
+import { Timestamp } from "../format";
 import { AccessNotice } from "../components/AccessNotice";
 import { Approvals } from "../components/Approvals";
 import { Deployments } from "../components/Deployments";
+import { EvidencePanel } from "../components/EvidencePanel";
+import { Fact, FindingList, OutcomeChip, RunResultChips } from "../components/operationUi";
 import { PageHeader } from "../components/PageHeader";
+import { RunList } from "../components/RunList";
 import { StepList } from "../components/StepList";
-import type { Finding, Outcome, Tenant, WorkflowRunRecord } from "../types";
+import type { OperationEvidence, Tenant, WorkflowRunRecord } from "../types";
+
+export { RunResultChips };
 
 type Kind = "all" | "runs" | "deployments";
 
@@ -50,30 +49,6 @@ export function ActivityLayout() {
 
 export function ApprovalsPage() {
   return <Approvals />;
-}
-
-const OUTCOME_COLOR: Record<Outcome, "success" | "warning" | "error" | "info" | "default"> = {
-  Succeeded: "success",
-  NoChangeNeeded: "success",
-  PartiallySucceeded: "warning",
-  VerificationFailed: "error",
-  Failed: "error",
-  Planned: "info"
-};
-
-export function RunResultChips({ run }: { run: WorkflowRunRecord }) {
-  return (
-    <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-      {run.outcome ? (
-        <Chip size="small" label={humanizeEnum(run.outcome)} color={OUTCOME_COLOR[run.outcome] ?? "default"} />
-      ) : (
-        <Chip size="small" label={run.succeeded ? "ok" : "failed"} color={run.succeeded ? "success" : "error"} />
-      )}
-      {run.healthy !== null && run.healthy !== undefined && (
-        <Chip size="small" label={run.healthy ? "healthy" : "needs fixing"} color={run.healthy ? "success" : "warning"} variant="outlined" />
-      )}
-    </Stack>
-  );
 }
 
 /** /activity?tenant=&kind= -- workflow runs and deployments, filterable, filters kept in the URL. */
@@ -153,43 +128,7 @@ export function ActivityHistory() {
           {runs && runs.length === 0 && (
             <Typography variant="body2" color="text.secondary">No runs recorded{tenantId ? " for this tenant" : ""} yet.</Typography>
           )}
-          {runs && runs.length > 0 && (
-            <TableContainer sx={{ overflowX: "auto" }}>
-              <Table size="small" aria-label="Workflow runs">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>When</TableCell>
-                    <TableCell>Operation</TableCell>
-                    <TableCell>Tenant</TableCell>
-                    <TableCell>Kind</TableCell>
-                    <TableCell>Operator</TableCell>
-                    <TableCell>Result</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {runs.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell><Timestamp value={r.startedAt} /></TableCell>
-                      <TableCell>
-                        <Link component={RouterLink} to={`/activity/runs/${r.id}`} underline="hover">{r.workflowName}</Link>
-                      </TableCell>
-                      <TableCell>
-                        <Link component={RouterLink} to={`/tenants/${r.tenantId}`} underline="hover" color="inherit">{r.tenantName}</Link>
-                      </TableCell>
-                      <TableCell>{r.kind}</TableCell>
-                      <TableCell>{r.operator}</TableCell>
-                      <TableCell>
-                        <RunResultChips run={r} />
-                        {!r.succeeded && r.error && (
-                          <Typography variant="body2" color="error" sx={{ mt: 0.5, wordBreak: "break-word" }}>{r.error}</Typography>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
+          {runs && runs.length > 0 && <RunList runs={runs} label="Workflow runs" />}
         </Box>
       )}
 
@@ -202,48 +141,67 @@ export function ActivityHistory() {
   );
 }
 
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Box sx={{ minWidth: 0 }}>
-      <Typography variant="caption" color="text.secondary" component="div">{label}</Typography>
-      <Typography variant="body2" component="div" sx={{ overflowWrap: "anywhere" }}>{children}</Typography>
-    </Box>
-  );
-}
-
-const FINDING_COLOR: Record<Finding["status"], "success" | "info" | "warning" | "error"> = {
-  Ok: "success", Info: "info", Warning: "warning", Blocker: "error"
-};
-
 /**
- * /activity/runs/:runId -- one recorded run: what was run where, by whom, what it found and what
- * it changed. Built from the run history (no per-run endpoint on older servers).
+ * /activity/runs/:runId -- one recorded run as evidence: outcome, who/what/where, what was
+ * checked, changed and verified, and ticket notes. Servers before 0.9.0 have no evidence endpoint;
+ * there the run is found in the recent history instead and shown as findings and steps.
  */
 export function RunDetailPage() {
   const { runId = "" } = useParams();
-  const [runs, setRuns] = useState<WorkflowRunRecord[] | null>(null);
+  const [evidence, setEvidence] = useState<OperationEvidence | null>(null);
+  const [legacyRun, setLegacyRun] = useState<WorkflowRunRecord | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "missing" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    api.workflows.runs({ take: 200 })
-      .then((r) => { if (alive) setRuns(r); })
-      .catch((e) => { if (alive) setError(e instanceof Error ? e.message : String(e)); });
+    setState("loading");
+    setEvidence(null);
+    setLegacyRun(null);
+    setError(null);
+    const fallback = async () => {
+      const runs = await api.workflows.runs({ take: 200 });
+      if (!alive) return;
+      const run = runs.find((r) => r.id === runId) ?? null;
+      setLegacyRun(run);
+      setState(run ? "ready" : "missing");
+    };
+    api.workflows.evidence(runId)
+      .then((e) => { if (alive) { setEvidence(e); setState("ready"); } })
+      .catch(async (e) => {
+        if (!alive) return;
+        if (isApiStatus(e, 403)) {
+          // The run's tenant isn't shared with this user.
+          setState("missing");
+          return;
+        }
+        // 404 is an unknown run -- or an older server without the endpoint; the history decides.
+        // Any other failure also falls back, so a flaky evidence read still shows what's known.
+        try {
+          await fallback();
+        } catch (inner) {
+          if (!alive) return;
+          setError(isApiStatus(e, 404) ? (inner instanceof Error ? inner.message : String(inner)) : (e instanceof Error ? e.message : String(e)));
+          setState("error");
+        }
+      });
     return () => { alive = false; };
-  }, [runId]);
+  }, [runId, attempt]);
 
-  const run = useMemo(() => runs?.find((r) => r.id === runId), [runs, runId]);
   const parent = { label: "Activity", to: "/activity" };
 
-  if (error) {
+  if (state === "error") {
     return (
       <Box>
         <PageHeader title="Run" parent={parent} />
-        <Alert severity="error">{error}</Alert>
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => setAttempt((n) => n + 1)}>Retry</Button>}>
+          {error}
+        </Alert>
       </Box>
     );
   }
-  if (runs === null) {
+  if (state === "loading") {
     return (
       <Box aria-busy="true">
         <PageHeader title="Run" parent={parent} />
@@ -251,20 +209,35 @@ export function RunDetailPage() {
       </Box>
     );
   }
-  if (!run) {
+  if (state === "missing") {
     return (
       <Box>
         <PageHeader title="Run not found" parent={parent} />
-        <AccessNotice title="This run isn't in the recent history">
-          It may be older than the last 200 runs, in a tenant that isn't shared with you, or the link
-          is wrong. <Link component={RouterLink} to="/activity">Browse all activity</Link>.
+        <AccessNotice title="This run isn't available to you">
+          It may be in a tenant that isn't shared with you, older than the recent history on this
+          server, or the link is wrong. <Link component={RouterLink} to="/activity">Browse all activity</Link>.
         </AccessNotice>
       </Box>
     );
   }
 
-  const inputs = Object.entries(run.inputs ?? {});
+  if (evidence) {
+    const who = evidence.target ? evidence.target.displayName || evidence.target.id : null;
+    return (
+      <Box>
+        <PageHeader
+          parent={parent}
+          title={evidence.operationName || "Run"}
+          meta={<OutcomeChip outcome={evidence.outcome} />}
+          subtitle={who ? `${who} in ${evidence.tenant.displayName}` : evidence.tenant.displayName}
+        />
+        <EvidencePanel evidence={evidence} />
+      </Box>
+    );
+  }
 
+  const run = legacyRun!;
+  const inputs = Object.entries(run.inputs ?? {});
   return (
     <Box>
       <PageHeader parent={parent} title={run.workflowName} meta={<RunResultChips run={run} />} />
@@ -294,31 +267,16 @@ export function RunDetailPage() {
           </CardContent>
         </Card>
 
+        <Typography variant="body2" color="text.secondary">
+          This server doesn't provide structured evidence for this run; showing what the run history recorded.
+        </Typography>
+
         {run.error && <Alert severity="error">{run.error}</Alert>}
 
         {run.findings.length > 0 && (
           <Box component="section">
             <Typography variant="h6" component="h3" gutterBottom>Findings</Typography>
-            <TableContainer sx={{ overflowX: "auto" }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Check</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell>Detail</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {run.findings.map((f, i) => (
-                    <TableRow key={i}>
-                      <TableCell>{f.name}</TableCell>
-                      <TableCell><Chip size="small" label={f.status} color={FINDING_COLOR[f.status]} /></TableCell>
-                      <TableCell sx={{ color: "text.secondary", overflowWrap: "anywhere" }}>{f.detail ?? ""}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+            <FindingList findings={run.findings} label="Findings" />
           </Box>
         )}
 

@@ -28,6 +28,8 @@ import type { DiagnosisResult, Finding, Tenant, WorkflowRunRecord, WorkflowRunRe
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
+import { EvidencePanel } from "./EvidencePanel";
+import { RunResultChips } from "./operationUi";
 import { StepList } from "./StepList";
 import type { WorkflowLaunch } from "./UserSearch";
 
@@ -344,7 +346,10 @@ export function Workflows({
 
               {actionError && <Alert severity="error">{actionError}</Alert>}
               {diagnosis && <Findings result={diagnosis} title="Diagnosis" />}
-              {run && (
+              {run?.evidence ? (
+                // Planned operations bring structured evidence; show it the same way Activity does.
+                <EvidencePanel evidence={run.evidence} title={selected.name} />
+              ) : run && (
                 <Box sx={{ overflowX: "auto" }}>
                   <StepList result={{ steps: run.steps, succeeded: run.succeeded }} />
                 </Box>
@@ -396,12 +401,7 @@ export function Workflows({
                     <TableCell>{r.kind}</TableCell>
                     <TableCell>{r.operator}</TableCell>
                     <TableCell>
-                      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-                        <Chip size="small" label={r.succeeded ? "ok" : "failed"} color={r.succeeded ? "success" : "error"} />
-                        {r.healthy !== null && r.healthy !== undefined && (
-                          <Chip size="small" label={r.healthy ? "healthy" : "needs fixing"} color={r.healthy ? "success" : "warning"} />
-                        )}
-                      </Stack>
+                      <RunResultChips run={r} />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -18,6 +18,7 @@ import DescriptionOutlined from "@mui/icons-material/DescriptionOutlined";
 import Inventory2Outlined from "@mui/icons-material/Inventory2Outlined";
 import { api } from "../api";
 import { AccessNotice } from "../components/AccessNotice";
+import { AccessParity, type AccessParityParams } from "../components/AccessParity";
 import { AppTemplates } from "../components/AppTemplates";
 import { Contracts } from "../components/Contracts";
 import { DeployWizard } from "../components/DeployWizard";
@@ -202,14 +203,18 @@ export function WorkflowsPage() {
 
 /**
  * /operations/access-parity?tenant=&source=&target= -- additive group-membership mirroring. The
- * route and its context are fixed here; the plan/apply screen is built on the access-parity
- * operation API.
+ * tenant and both people live in the URL, so a comparison is a shareable, refreshable link.
  */
 export function AccessParityPage() {
   const { status } = useWorkbench();
-  const [params] = useSearchParams();
-  const tenant = params.get("tenant");
-  const target = params.get("target");
+  const [params, setParams] = useSearchParams();
+  const value = useMemo<AccessParityParams>(() => ({
+    tenant: params.get("tenant") ?? undefined,
+    source: params.get("source") ?? undefined,
+    target: params.get("target") ?? undefined
+  }), [params]);
+  // The component owns its state after mount; the URL only mirrors it.
+  const [initial] = useState(value);
   return (
     <Box>
       <PageHeader
@@ -217,31 +222,22 @@ export function AccessParityPage() {
         title="Mirror access"
         subtitle="Give one person the same group memberships as a colleague in the same tenant."
       />
-      <Card variant="outlined" sx={{ mb: 2 }}>
-        <CardContent>
-          <Typography variant="subtitle1" component="h3" gutterBottom>What it does</Typography>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            PCB compares the two people's direct group memberships and plans only additions: Security
-            and Microsoft 365 cloud groups the colleague has and the target doesn't. Nothing the target
-            already has is removed. You review the plan, choose items, and PCB verifies the result.
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Not compared: SharePoint direct permissions, app role assignments, Exchange mailbox and
-            calendar permissions, and Teams private channels.
-          </Typography>
-        </CardContent>
-      </Card>
       {status === null ? (
         <AccessNotice title="Not available on this server">
           Mirroring access needs a Partner Center Bridge 0.9.0 or later server with the Access Parity
           operation. Until the server is upgraded, add the groups in the Microsoft 365 admin center.
         </AccessNotice>
       ) : (
-        <AccessNotice title="Planner not in this web build">
-          This server supports Access Parity, but this web build can't plan it yet
-          {tenant && target ? " -- the tenant and target person from your link are kept in the address bar" : ""}.
-          Update the web client to plan and apply from here.
-        </AccessNotice>
+        <AccessParity
+          params={initial}
+          onParamsChange={(next) => {
+            const q = new URLSearchParams();
+            if (next.tenant) q.set("tenant", next.tenant);
+            if (next.source) q.set("source", next.source);
+            if (next.target) q.set("target", next.target);
+            setParams(q, { replace: true });
+          }}
+        />
       )}
     </Box>
   );

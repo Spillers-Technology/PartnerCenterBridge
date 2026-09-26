@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import Typography from "@mui/material/Typography";
 import { useIsPhone } from "./useIsPhone";
 
 export interface ConfirmOptions {
@@ -13,6 +15,10 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /** The exact things that will change, listed under the message (e.g. the groups being added). */
+  items?: string[];
+  /** Accessible name for the items list. */
+  itemsLabel?: string;
 }
 
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
@@ -57,6 +63,17 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
         <DialogTitle>{pending?.options.title}</DialogTitle>
         <DialogContent>
           <DialogContentText>{pending?.options.message}</DialogContentText>
+          {pending?.options.items && pending.options.items.length > 0 && (
+            <Box
+              component="ul"
+              aria-label={pending.options.itemsLabel ?? "Items"}
+              sx={{ mt: 1.5, mb: 0, pl: 2.5, maxHeight: 280, overflowY: "auto", overflowWrap: "anywhere" }}
+            >
+              {pending.options.items.map((item, i) => (
+                <Typography component="li" variant="body2" key={i}>{item}</Typography>
+              ))}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
           {/* Destructive dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
