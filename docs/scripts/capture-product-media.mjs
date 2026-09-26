@@ -94,8 +94,8 @@ async function main() {
     await shoot(page, "pcbridge-person.jpg");
 
     console.log("Rendering Access Parity (plan)...");
+    // A link naming all three of tenant/source/target now compares automatically on load; no click needed.
     await gotoRoute(page, `/operations/access-parity?tenant=${CONTOSO}&source=priya.shah%40contoso.com&target=maya.chen%40contoso.com`);
-    await page.getByRole("button", { name: "Compare", exact: true }).click();
     await page.getByText("Groups to add", { exact: false }).first().waitFor({ timeout: 20_000 });
     await shoot(page, "pcbridge-access-parity.jpg");
 

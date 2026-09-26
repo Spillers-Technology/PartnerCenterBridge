@@ -130,10 +130,10 @@ async function gotoRoute(page, route) {
 // keeps them from matching the same word in the navigation.
 const heading = (page, name) => page.getByRole("heading", { name, exact: true }).first();
 
-// Access Parity with both people in the URL, compared: the plan with eligible and non-copied groups.
+// Access Parity with both people in the URL: a link naming all three of tenant/source/target now
+// compares automatically on load, so no click is needed here.
 async function openParityPlan(page) {
   await gotoRoute(page, `/operations/access-parity?tenant=${CONTOSO}&source=priya.shah%40contoso.com&target=maya.chen%40contoso.com`);
-  await page.getByRole("button", { name: "Compare", exact: true }).click();
   await page.getByText("Groups to add", { exact: false }).first().waitFor({ timeout: 20_000 });
 }
 
