@@ -230,6 +230,27 @@ public class OperationsEndpointsTests
     }
 
     [Fact]
+    public async Task Contract_offboarding_policy_read_needs_a_tenant_grant_even_for_catalog_managers()
+    {
+        using var db = new TestDb();
+        var contract = new Contract { Name = "Gold", OffboardingPolicy = new OffboardingPolicy { ForwardTo = "boss@contoso.com" } };
+        var tenant = new Tenant { TenantId = "t1", DisplayName = "Contoso", Contract = contract };
+        db.Context.AddRange(contract, tenant);
+        await db.Context.SaveChangesAsync();
+
+        // Instance Administrator/CatalogManager with no tenant grants: cannot read the policy...
+        var catalogManager = new ContractsController(db.Context, new RoleAccess(null), new FakeTenantAccessService(isSystemAdmin: true));
+        Assert.IsType<ForbidResult>((await catalogManager.GetOffboardingPolicy(contract.Id, CancellationToken.None)).Result);
+        // ...but can still replace it, and the PUT response carries what was saved.
+        var put = await catalogManager.PutOffboardingPolicy(contract.Id, new OffboardingPolicy { FollowUpDays = 7 }, CancellationToken.None);
+        Assert.Equal(7, Assert.IsType<OffboardingPolicy>(Assert.IsType<OkObjectResult>(put.Result).Value).FollowUpDays);
+
+        // A Viewer on a tenant under the contract reads it without any instance role.
+        var viewer = new ContractsController(db.Context, new RoleAccess(TenantRole.Viewer), new FakeTenantAccessService(isSystemAdmin: false));
+        Assert.IsType<OkObjectResult>((await viewer.GetOffboardingPolicy(contract.Id, CancellationToken.None)).Result);
+    }
+
+    [Fact]
     public async Task Terminate_merges_contract_policy_with_request_overrides_and_records_the_run()
     {
         using var db = new TestDb();
