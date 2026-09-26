@@ -27,9 +27,13 @@ node docs/scripts/capture-product-media.mjs
 
 ## `capture-mobile-media.mjs`
 
-Captures all 15 current views across five touch device profiles (75 captures) and checks each
-view/device pair for page-level horizontal overflow. Output is written to
-`docs/assets/screenshots/mobile/` by default; set `PCBRIDGE_CAPTURE_OUT` to override it.
+Captures all 39 current views (the Home/People/Tenants/Operations/Activity/Settings navigation, the
+person and tenant workspace tabs, every operation screen including plan/result states, the command
+palette, and the four unauthenticated views) across five touch device profiles (195 captures) and
+checks each view/device pair for page-level horizontal overflow. Output is written to
+`docs/assets/screenshots/mobile/` by default; set `PCBRIDGE_CAPTURE_OUT` to override it. The
+`AUTHENTICATED_VIEWS` map and `AUTH_VIEW_NAMES` list in the script itself are the source of truth
+for exactly which views exist.
 
 It shares `mock-api.mjs` with `capture-product-media.mjs`, so both scripts render against the same
 mocked API fixtures. Use the [Playwright setup](#playwright-setup) above, then run:
@@ -39,7 +43,7 @@ cd web && npm run dev
 node docs/scripts/capture-mobile-media.mjs
 ```
 
-CI runs all 15 views on three representative profiles: Galaxy (the primary
+CI runs all 39 views on three representative profiles: Galaxy (the primary
 phone path), folded foldable (the narrowest viewport), and unfolded foldable
 (the separate tablet/windowed-dialog path). Run all five profiles locally for a
 release or a broad layout change; screenshots still need human visual review.

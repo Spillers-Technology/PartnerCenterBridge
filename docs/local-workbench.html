@@ -14,6 +14,7 @@
 <meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
 <!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
 <script>
   var initOpts = {
@@ -108,10 +109,51 @@
   hosting profile, the persistence provider, and the auth defaults differ.
 </p>
 
-<!-- TODO(ui-docs): once the People/Tenants/Operations/Activity/Settings navigation and the
-     person workspace/evidence panel/command palette land from the web workstream, add a
-     first-run walkthrough here with screenshots (registration screen, home, a plan/apply
-     evidence view) captured via docs/scripts/capture-product-media.mjs. -->
+<h2 id="first-run-walkthrough">First run, click by click</h2>
+<p>
+  Start the exe, and it opens your browser to <code>http://localhost:5080</code> once it's healthy.
+  A brand-new install has no accounts yet, so <code>GET /api/system/status</code> reports
+  <code>needsFirstUser</code> and the SPA sends you straight to registration -- there is no separate
+  setup wizard to click through first.
+</p>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-register.jpg" alt="Register screen: email, display name and password fields under a Create an account heading." loading="lazy">
+  </button>
+</figure>
+<p>
+  The account you register here becomes the instance <strong>Administrator</strong>. Sign in
+  afterward (a passkey once you've registered one, or your password) and Home is where you land:
+  a person search, the four most common actions, and a <strong>Finish setting up</strong> card that
+  only lists what still needs attention -- it disappears once every check is clean.
+</p>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-dashboard.jpg" alt="Home screen with a Find a person search box, a Finish setting up checklist naming a tenant with no GDAP delegation and an unconfigured Exchange Online module, four action cards, and tenant/deployment stat tiles." loading="lazy">
+  </button>
+</figure>
+<p>
+  Each open check links straight to the screen that fixes it -- <a href="#diagnostics">the same
+  checks</a> <code>doctor</code> and <code>/settings/workbench</code> report -- or, for the Exchange
+  Online module, gives you the exact <code>Install-Module</code> command to copy and run. Nothing
+  here is guessed at: a missing GDAP relationship, an unbootstrapped SAM connection, or a missing
+  PowerShell module all show up by name, with their fix, instead of a generic "not configured."
+</p>
+<p>
+  Once a tenant is connected, every planned operation (mirroring access, offboarding) and every
+  known fix ends at the same evidence view, whether you just ran it or you're opening it later from
+  Activity or a person's History tab:
+</p>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-evidence.jpg" alt="Evidence view for a Partially succeeded Access Parity run, with a Failures panel, ticket notes ready to copy, and Download Markdown / Download JSON buttons." loading="lazy">
+  </button>
+</figure>
+<p>
+  See <a href="operations.html">Operations</a> for the full walkthrough of mirroring access and
+  offboarding, and <a href="#first-launch-and-the-first-administrator">below</a> for what the first
+  account and first launch actually do server-side.
+</p>
 
 <h2 id="running-it">Running it</h2>
 <pre><code>PartnerCenterBridge.exe [command] [options]
@@ -354,5 +396,6 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   </div>
 </footer>
 <script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
 </body>
 </html>

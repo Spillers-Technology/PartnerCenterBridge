@@ -17,7 +17,7 @@ reconciles every tenant on the contract to it.
 > |---|---|
 > | Templated Win32 `.intunewin` deploy across tenants, with updates | **Stable** |
 > | Contract-driven new-hire provisioning + offboarding via Graph | **Stable** |
-> | Cross-tenant Find User with per-person fix shortcuts | **Stable** |
+> | Cross-tenant person search (People) with per-person fix shortcuts | **Stable** |
 > | Known-fix workflow library (MFA reset, password reset, compromised lockdown, license repair) | **Beta** |
 > | Exchange Online mailbox ops via EXO PowerShell V3 (mailbox archive repair) | **Beta** |
 > | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
@@ -38,9 +38,10 @@ reconciles every tenant on the contract to it.
 > ~10-cmdlet dance. **Planned operations** (Access Parity, offboarding) generalize the same loop
 > with an explicit plan the operator reviews before choosing what to apply, and structured evidence
 > (preflight, plan, changes, verification) recorded on every run — see
-> [Operation evidence](#operation-evidence) below. The web UI for the reorganized navigation
-> (Home/People/Tenants/Operations/Activity/Settings) is still being finished; this README covers
-> what the backend does today.
+> [Operation evidence](#operation-evidence) below. The web UI has the reorganized navigation
+> (Home/People/Tenants/Operations/Activity/Settings), a person workspace, a Plan/Apply/Verify
+> screen for each of the two planned operations, and a Ctrl+K command palette -- see
+> [Using PCB](#using-pcb) below for a tour.
 
 ## Architecture
 
@@ -86,7 +87,93 @@ web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (c
 | `PartnerCenterBridge.Graph` | `IntuneWin32Service` (full beta upload state machine), `GraphUserService` (hire/offboard), `.intunewin` reader, tenant client factory, Identity workflows (MFA/password reset, lockdown, license repair), and the Operations workflows (`AccessParityOperation`, `OffboardingOperation`, `PersonDirectoryReader`, `GroupClassifier`). |
 | `PartnerCenterBridge.Exchange` | `ExchangeOnlineService` — mailbox config via EXO PowerShell V3 (app-only cert), run out-of-process through `PwshRunner`; the mailbox-archive workflow. |
 | `PartnerCenterBridge.Api` | Controllers, OIDC/Local/Dev auth, the `Hosting`/`Diagnostics` layer (profile resolution, CLI, `doctor`, SPA hosting), DI wiring, deploy + provisioning orchestration, workflow/operation dispatch + run recording. |
-| `web/` | React SPA: Home, People, Tenants, Operations (Access Parity, onboard/offboard, deploy, workflows, contracts, templates), Activity, Settings, plus sign-in, registration and account security for Local mode. Routing/IA rework is in progress on this branch. |
+| `web/` | React SPA: Home, People (search + person workspace), Tenants (list + tenant workspace), Operations (Access Parity, onboard/offboard, deploy, workflows, contracts, templates), Activity (history, approvals, run evidence), Settings, plus sign-in, registration, a Ctrl+K command palette and account security for Local mode. See [Using PCB](#using-pcb). |
+
+## Using PCB
+
+The workbench never has more than six top-level areas -- new screens get a route under an existing
+one instead of growing the navigation:
+
+| Area | What it's for |
+|---|---|
+| **Home** | A person search box, a **Finish setting up** card (only the checks that still need attention, each with its fix), the four most common actions, and the same triage tiles as before (tenants, deployments, failed runs). |
+| **People** | Cross-tenant person search, and the person workspace for whoever you pick. |
+| **Tenants** | The customer list, and a tenant workspace (overview, access, contract, config snapshots, history) for whoever you pick. |
+| **Operations** | Every operation, grouped by outcome: people lifecycle (onboard, offboard, mirror access), known fixes, app deployment, and standards (contracts, app templates). |
+| **Activity** | Everything PCB ran or deployed, unified: workflow runs, deployments, and the MCP approval queue, filterable by tenant. |
+| **Settings** | Your account and security, the Microsoft (SAM) connection, and workbench health diagnostics. |
+
+![Home screen with a Find a person search box, a Finish setting up checklist, four action cards, and tenant/deployment stat tiles](docs/assets/screenshots/pcbridge-dashboard.jpg)
+
+### The person workspace
+
+`/people/:tenantId/:userId` is one person in one tenant: seven tabs (Summary, Access, Licensing,
+Authentication, Mailbox, Devices, History), each read independently, so one section PCB can't read
+(no Exchange configured, missing Graph permission) never blocks the rest -- it shows
+**Unavailable** with the specific reason and, where there's something to do about it, a link
+straight to the screen that fixes it. The Summary tab's "at a glance" tiles double as shortcuts into
+the tab that has the detail. The Actions panel lists every fix and operation PCB can run against
+this person, with disruptive ones (MFA reset, password reset, offboarding) flagged so they're never
+a casual click, and grayed to preview-only for anyone without Operator on that tenant.
+
+![Person workspace for Maya Chen in Contoso Ltd, showing Summary tiles, a Profile card and an Actions list with Mirror access, Offboard, Reset MFA and other fixes](docs/assets/screenshots/pcbridge-person.jpg)
+
+### Mirror access (Access Parity)
+
+`/operations/access-parity` gives a target user the group memberships a source user has and they
+lack -- additive only. A link naming the tenant and both people compares automatically on load;
+otherwise pick a tenant and two people and press **Compare**. The plan splits eligible groups
+(checked by default, individually deselectable) from groups already held (no change needed) from
+groups PCB won't copy, each with its reason (dynamic membership, on-premises sync, role-assignable,
+mail-enabled/distribution, directory roles) -- the plan also states outright what it never compares
+at all (SharePoint direct permissions, direct app role assignments, Exchange mailbox/calendar
+permissions, Teams-only channels). Applying shows a confirmation naming the exact groups about to
+be added, then re-plans and verifies server-side. Full walkthrough: [Operations](https://spillerstech.us/PartnerCenterBridge/operations.html).
+
+![Mirror access screen comparing two Contoso users, with an additive-only notice, not-compared limitations, and a list of eligible groups to add](docs/assets/screenshots/pcbridge-access-parity.jpg)
+
+### Offboarding: plan preview and contract policy
+
+`/operations/offboard` starts from the tenant's contract [offboarding policy](#offboarding-policy-v2)
+(block sign-in, revoke sessions, remove licenses, remove groups, convert the mailbox) as pre-checked
+defaults an operator can still adjust for one leaver. **Preview plan** shows the full ordered list of
+steps -- including ones that won't run and why (`hideFromGal`/`managerAccess` have no Exchange
+operation yet) -- before anything changes. The same policy has its own editor on the Contracts
+screen (instance catalog manager role required to save), so a service tier's defaults are set once
+instead of re-typed on every offboarding.
+
+![Offboard screen for Priya Shah showing the contract policy defaults as checked actions and an ordered nine-step plan](docs/assets/screenshots/pcbridge-offboard-plan.jpg)
+
+### Evidence
+
+Applying Access Parity, running an offboarding, or opening a past run from Activity or a person's
+History tab all land on the same evidence view. Wording always follows the recorded outcome: a
+change reported successful that a re-read doesn't confirm shows **Verification failed**, not
+Succeeded. Every view has the outcome, who/what/where, failures and warnings called out above the
+fold, a **Copy ticket notes** button plus **Download Markdown** / **Download JSON**, and the full
+breakdown of changes attempted/completed/skipped, verification checks, preflight and plan --
+reachable directly at `/activity/runs/:runId`.
+
+![Evidence view for a Partially succeeded Access Parity run, with a Failures panel, ticket notes ready to copy, and Download Markdown/JSON buttons](docs/assets/screenshots/pcbridge-evidence.jpg)
+
+### Command palette (Ctrl+K)
+
+Ctrl+K (Cmd+K on macOS) opens a jump list from anywhere in the app: the six areas and their pages,
+"Find person: `<query>`", tenants by name, known fixes, and recent runs (with their outcome) -- all
+filtered by every word typed, arrow keys to move, Enter to open.
+
+![Command palette open over Home, filtered to "con", showing Find person, Contracts, Microsoft connection, Open tenant: Contoso Ltd, and two recent runs](docs/assets/screenshots/pcbridge-palette.jpg)
+
+### First run
+
+A fresh Local-mode install has no accounts, so `/api/system/status` reports `needsFirstUser` and the
+SPA sends you straight to registration instead of a sign-in form with nothing to sign in to. The
+account you register becomes the instance **Administrator**. From Home, the **Finish setting up**
+checklist walks through whatever still needs attention (a tenant with no GDAP delegation, an
+unconfigured Exchange module, SAM not bootstrapped), and `/settings/workbench` has the full set of
+diagnostics with the same fix links and copyable commands -- see
+[Local Workbench: first run, click by click](https://spillerstech.us/PartnerCenterBridge/local-workbench.html#first-run-walkthrough)
+for the full walkthrough with screenshots.
 
 ## Two ways to run it
 
