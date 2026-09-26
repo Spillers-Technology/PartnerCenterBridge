@@ -30,13 +30,24 @@ public class OffboardingOperationTests : IDisposable
             ["groupTypes"] = groupTypes ?? Array.Empty<string>(), ["securityEnabled"] = security, ["mailEnabled"] = mail
         };
 
+    // When the fake Graph accepted a revokeSignInSessions POST (null: never). The user's
+    // signInSessionsValidFromDateTime is a stale value until then, like the real one: an
+    // ineffective or missing revoke leaves it where it was.
+    private DateTimeOffset? _revokedAt;
+    private static readonly DateTimeOffset StaleCutoff = DateTimeOffset.UtcNow.AddMinutes(-4);
+
     /// <summary>User reads: the first (plan) returns <paramref name="before"/>, later ones (verification) <paramref name="after"/>.</summary>
     private void StubUser(object before, object? after = null)
     {
         var reads = 0;
         _server.Given(Request.Create().WithPath("/users/u1").UsingGet())
             .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(_ =>
-                System.Text.Json.JsonSerializer.Serialize(Interlocked.Increment(ref reads) == 1 ? before : after ?? before)));
+            {
+                var node = System.Text.Json.JsonSerializer.SerializeToNode(Interlocked.Increment(ref reads) == 1 ? before : after ?? before)!.AsObject();
+                if (node.ContainsKey("signInSessionsValidFromDateTime"))
+                    node["signInSessionsValidFromDateTime"] = (_revokedAt ?? StaleCutoff).ToString("o");
+                return node.ToJsonString();
+            }));
         _server.Given(Request.Create().WithPath("/users/u1/licenseDetails").UsingGet())
             .RespondWith(Response.Create().WithBodyAsJson(new { value = new[] { new { skuId = "sku-e3", skuPartNumber = "ENTERPRISEPACK" } } }));
     }
@@ -58,10 +69,15 @@ public class OffboardingOperationTests : IDisposable
                 System.Text.Json.JsonSerializer.Serialize(new { value = Interlocked.Increment(ref reads) == 1 ? before : after })));
     }
 
-    private void StubWrites()
+    private void StubWrites(bool revokeEffective = true)
     {
         _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
-        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost()).RespondWith(Response.Create().WithBodyAsJson(new { value = true }));
+        _server.Given(Request.Create().WithPath("/users/u1/revokeSignInSessions").UsingPost())
+            .RespondWith(Response.Create().WithHeader("Content-Type", "application/json").WithBody(_ =>
+            {
+                if (revokeEffective) _revokedAt = DateTimeOffset.UtcNow;
+                return "{\"value\":true}";
+            }));
         _server.Given(Request.Create().WithPath("/users/u1/assignLicense").UsingPost()).RespondWith(Response.Create().WithBodyAsJson(new { id = "u1" }));
         _server.Given(Request.Create().WithPath("/groups/*/members/u1/$ref").UsingDelete()).RespondWith(Response.Create().WithStatusCode(204));
     }
@@ -272,6 +288,22 @@ public class OffboardingOperationTests : IDisposable
 
         Assert.Equal(Outcome.Succeeded, e.Outcome);
         Assert.Contains("Retired 1 device (verified)", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Acknowledged_revoke_that_leaves_the_cutoff_unchanged_is_not_verified()
+    {
+        StubUser(CloudUser(), CloudUser(enabled: false, skus: []));
+        StubMemberOf([], []);
+        // Graph acknowledges the revoke, but the cutoff stays at an earlier (four-minute-old) value.
+        StubWrites(revokeEffective: false);
+
+        var e = await Op().ApplyAsync(Tenant(), "u1", new OffboardingPolicy());
+
+        var check = e.Verification.Single(v => v.PlanItemId == "revoke-sessions");
+        Assert.False(check.Passed);
+        Assert.Contains("did not move forward", check.Detail);
+        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
     }
 
     // --- Group-inherited licenses (finding 5) ---

@@ -51,6 +51,20 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
                 .WithBody(_ => System.Text.Json.JsonSerializer.Serialize(body(Interlocked.Increment(ref calls)))));
     }
 
+    // The fake user's signInSessionsValidFromDateTime: a stale cutoff (from four minutes before the
+    // run, i.e. an earlier revocation) until a revoke POST that takes effect moves it to "now".
+    private DateTimeOffset? _revokedAt;
+    private static readonly DateTimeOffset StaleCutoff = DateTimeOffset.UtcNow.AddMinutes(-4);
+    private string Cutoff() => (_revokedAt ?? StaleCutoff).ToString("o");
+
+    /// <summary>revokeSignInSessions: Graph acknowledges it; only an effective one moves the cutoff.</summary>
+    private void StubRevoke(bool effective = true) =>
+        StubJson("/users/u1/revokeSignInSessions", "POST", _ =>
+        {
+            if (effective) _revokedAt = DateTimeOffset.UtcNow;
+            return new { value = true };
+        });
+
     private static Dictionary<string, object> Method(string type, string id) =>
         new() { ["@odata.type"] = type, ["id"] = id };
 
@@ -58,8 +72,8 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
     public async Task Successful_mfa_reset_is_succeeded_even_though_the_user_now_has_no_strong_mfa()
     {
         StubJson("/users/user1", "GET", _ => new { id = "u1" });
-        StubJson("/users/u1", "GET", _ => new { id = "u1", signInSessionsValidFromDateTime = DateTimeOffset.UtcNow.ToString("o") });
-        StubJson("/users/u1/revokeSignInSessions", "POST", _ => new { value = true });
+        StubJson("/users/u1", "GET", _ => new { id = "u1", signInSessionsValidFromDateTime = Cutoff() });
+        StubRevoke();
         _server.Given(Request.Create().WithPath("/users/u1/authentication/microsoftAuthenticatorMethods/auth1").UsingDelete())
             .RespondWith(Response.Create().WithStatusCode(204));
         // First read (what to remove) has the authenticator; every later read (verification,
@@ -87,8 +101,8 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
     public async Task Mfa_method_still_registered_after_removal_fails_verification()
     {
         StubJson("/users/user1", "GET", _ => new { id = "u1" });
-        StubJson("/users/u1", "GET", _ => new { id = "u1", signInSessionsValidFromDateTime = DateTimeOffset.UtcNow.ToString("o") });
-        StubJson("/users/u1/revokeSignInSessions", "POST", _ => new { value = true });
+        StubJson("/users/u1", "GET", _ => new { id = "u1", signInSessionsValidFromDateTime = Cutoff() });
+        StubRevoke();
         _server.Given(Request.Create().WithPath("/users/u1/authentication/phoneMethods/ph1").UsingDelete())
             .RespondWith(Response.Create().WithStatusCode(204));
         StubJson("/users/u1/authentication/methods", "GET", _ => new { value = new[] { Method("#microsoft.graph.phoneAuthenticationMethod", "ph1") } });
@@ -106,11 +120,11 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
         StubJson("/users/user1", "GET", _ => new { id = "u1", accountEnabled = true, onPremisesSyncEnabled = (bool?)null });
         StubJson("/users/u1", "GET", _ => new
         {
-            id = "u1", signInSessionsValidFromDateTime = DateTimeOffset.UtcNow.ToString("o"),
+            id = "u1", signInSessionsValidFromDateTime = Cutoff(),
             passwordProfile = new { forceChangePasswordNextSignIn = true }
         });
         _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
-        StubJson("/users/u1/revokeSignInSessions", "POST", _ => new { value = true });
+        StubRevoke();
 
         using var db = new TestDb();
         var run = await RemediateAsync(db, Workflow("password-reset"));
@@ -125,6 +139,53 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
         Assert.DoesNotContain("all changes verified", run.Evidence.TicketNotes);
         Assert.Contains("could not be independently verified", run.Evidence.TicketNotes);
         Assert.Contains("| Temporary password set | not verifiable |", EvidenceRenderer.Markdown(run.Evidence));
+    }
+
+    [Theory]
+    [InlineData("mfa-reset")]
+    [InlineData("password-reset")]
+    [InlineData("compromised-lockdown")]
+    public async Task Revoke_that_leaves_a_recent_stale_cutoff_is_not_verified(string workflowId)
+    {
+        // Graph acknowledges the revoke, but the cutoff stays at an earlier revocation from four
+        // minutes before this run: that proves nothing about this run's revoke.
+        StubJson("/users/user1", "GET", _ => new { id = "u1", accountEnabled = true, onPremisesSyncEnabled = (bool?)null });
+        StubJson("/users/u1", "GET", _ => new
+        {
+            id = "u1", accountEnabled = false, signInSessionsValidFromDateTime = Cutoff(),
+            passwordProfile = new { forceChangePasswordNextSignIn = true }
+        });
+        _server.Given(Request.Create().WithPath("/users/u1").UsingPatch()).RespondWith(Response.Create().WithStatusCode(204));
+        StubRevoke(effective: false);
+        StubJson("/users/u1/authentication/methods", "GET", _ => new { value = Array.Empty<object>() });
+        StubJson("/users/u1/mailFolders/inbox/messageRules", "GET", _ => new { value = Array.Empty<object>() });
+
+        using var db = new TestDb();
+        var run = await RemediateAsync(db, Workflow(workflowId));
+
+        var check = Assert.Single(run.Evidence!.Verification, v => v.Name == "Sessions revoked");
+        Assert.False(check.Passed);
+        Assert.Contains("did not move forward", check.Detail);
+        Assert.NotEqual(Outcome.Succeeded, run.Outcome);
+        Assert.NotEqual(Outcome.CompletedUnverified, run.Outcome);
+    }
+
+    [Fact]
+    public void Session_cutoff_must_move_forward_and_cover_the_run()
+    {
+        var start = DateTimeOffset.UtcNow;
+        var before = new SessionCutoff(true, start.AddMinutes(-4), null);
+        Assert.False(WorkflowVerify.EvaluateCutoff(before, start.AddMinutes(-4), start).Passed);  // unchanged
+        Assert.True(WorkflowVerify.EvaluateCutoff(before, start.AddSeconds(1), start).Passed);
+        Assert.True(WorkflowVerify.EvaluateCutoff(before, start.AddSeconds(-30), start).Passed); // PCB clock slightly ahead
+        // Moved, but not to this run: an older value surfacing.
+        var older = new SessionCutoff(true, start.AddDays(-2), null);
+        Assert.False(WorkflowVerify.EvaluateCutoff(older, start.AddDays(-1), start).Passed);
+        // Never set before: only the run-start bound applies.
+        Assert.True(WorkflowVerify.EvaluateCutoff(new SessionCutoff(true, null, null), start, start).Passed);
+        // Unknown before or after: not confirmed.
+        Assert.False(WorkflowVerify.EvaluateCutoff(new SessionCutoff(false, null, "Graph 500"), start.AddSeconds(1), start).Passed);
+        Assert.False(WorkflowVerify.EvaluateCutoff(before, null, start).Passed);
     }
 
     [Fact]

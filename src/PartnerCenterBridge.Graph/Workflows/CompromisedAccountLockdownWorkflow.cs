@@ -64,6 +64,8 @@ internal sealed class CompromisedAccountLockdownWorkflow : IWorkflow
 
         using var user = await graph.GetAsync($"/users/{Uri.EscapeDataString(inputs["userUpn"])}?$select=id", ct);
         var userId = user.RootElement.GetProperty("id").GetString()!;
+        // The sign-in cutoff before anything changes: the revoke is proven only by it moving forward.
+        var cutoffBefore = await WorkflowVerify.ReadSessionCutoffAsync(graph, userId, ct);
         var startedAt = DateTimeOffset.UtcNow;
 
         await WorkflowSteps.RunAsync(run.Steps, "Block sign-in", async () =>
@@ -110,7 +112,7 @@ internal sealed class CompromisedAccountLockdownWorkflow : IWorkflow
             }
             catch (GraphRequestException ex) { run.Verify(blockStep, "Sign-in blocked", false, $"Could not re-read the user: {ex.Message}"); }
         }
-        await WorkflowVerify.SessionsRevokedAsync(graph, userId, startedAt, run, revokeStep, ct);
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, cutoffBefore, startedAt, run, revokeStep, ct);
         if (ruleSteps.Any(r => run.Steps[r.Step].Success))
         {
             List<RiskyRule>? after = null;

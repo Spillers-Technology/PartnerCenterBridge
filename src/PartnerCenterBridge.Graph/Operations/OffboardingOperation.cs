@@ -6,6 +6,7 @@ using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Core.Operations;
 using PartnerCenterBridge.Core.Workflows;
+using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
 using static PartnerCenterBridge.Core.Operations.EvidenceRenderer;
 
@@ -360,6 +361,8 @@ public class OffboardingOperation : IOffboardingService
         var conversionVerified = false;
         MailboxInfo? mailboxAfter = null;
         string? mailboxVerifyError = null;
+        // The sign-in cutoff read just before the revoke: the revoke is proven only by it moving forward.
+        SessionCutoff? cutoffBefore = null;
 
         try
         {
@@ -367,7 +370,10 @@ public class OffboardingOperation : IOffboardingService
             if (block is not null)
                 await Run(block, async () => { await graph.PatchAsync($"/users/{uid}", new { accountEnabled = false }, ct); return "accountEnabled=false"; });
             if (revoke is not null)
+            {
+                cutoffBefore = await WorkflowVerify.ReadSessionCutoffAsync(graph, user.Id, ct);
                 await Run(revoke, async () => { await graph.PostAsync($"/users/{uid}/revokeSignInSessions", new { }, ct); return "revoked"; });
+            }
 
             // 2. Mailbox conversion (+ forwarding in the same Exchange call), then verify it before
             // anything that can remove a license.
@@ -493,13 +499,9 @@ public class OffboardingOperation : IOffboardingService
         {
             if (userAfter is { } u)
             {
-                var validFrom = u.TryGetProperty("signInSessionsValidFromDateTime", out var vf) && vf.ValueKind == JsonValueKind.String
-                    && DateTimeOffset.TryParse(vf.GetString(), out var dt) ? dt : (DateTimeOffset?)null;
-                // Allow for clock skew between PCB and Entra.
-                var ok = validFrom is not null && validFrom >= startedAt.AddMinutes(-5);
-                Check(revoke!, ok, ok
-                    ? $"Sessions valid only from {validFrom:yyyy-MM-dd HH:mm:ss} UTC."
-                    : "signInSessionsValidFromDateTime did not move forward on re-read.");
+                var (ok, detail) = WorkflowVerify.EvaluateCutoff(
+                    cutoffBefore ?? new SessionCutoff(false, null, "not read"), WorkflowVerify.ParseCutoff(u), startedAt);
+                Check(revoke!, ok, detail);
             }
             else Check(revoke!, false, $"Could not re-read the user: {userVerifyError}");
         }

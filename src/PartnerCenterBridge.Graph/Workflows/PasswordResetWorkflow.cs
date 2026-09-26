@@ -67,6 +67,8 @@ internal sealed class PasswordResetWorkflow : IWorkflow
 
         using var user = await graph.GetAsync($"/users/{Uri.EscapeDataString(inputs["userUpn"])}?$select=id", ct);
         var userId = user.RootElement.GetProperty("id").GetString()!;
+        // The sign-in cutoff before anything changes: the revoke is proven only by it moving forward.
+        var cutoffBefore = await WorkflowVerify.ReadSessionCutoffAsync(graph, userId, ct);
         var startedAt = DateTimeOffset.UtcNow;
 
         var password = GeneratePassword();
@@ -117,7 +119,7 @@ internal sealed class PasswordResetWorkflow : IWorkflow
                 run.Verify(passwordStep, "Must change password at next sign-in", false, $"Could not re-read the user: {ex.Message}");
             }
         }
-        await WorkflowVerify.SessionsRevokedAsync(graph, userId, startedAt, run, revokeStep, ct);
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, cutoffBefore, startedAt, run, revokeStep, ct);
 
         run.PostState = await DiagnoseAsync(tenant, inputs, ct);
         return run;
