@@ -274,7 +274,9 @@ public class OffboardingOperationTests : IDisposable
         var check = e.Verification.Single(v => v.PlanItemId == "device:d1");
         Assert.False(check.Passed);
         Assert.True(check.Unverifiable);
-        Assert.Contains("retire issued for 1 device but not yet completed", e.TicketNotes);
+        Assert.Contains("retire requested for 1 device; completion not yet confirmed", e.TicketNotes);
+        Assert.DoesNotContain("were applied", e.TicketNotes);
+        Assert.Contains("Microsoft accepted the requested changes, but PCB could not confirm their effect yet", e.TicketNotes);
         Assert.False(OffboardingOperation.ToSteps(e).Single(s => s.Name.StartsWith("Retire")).Success);
     }
 

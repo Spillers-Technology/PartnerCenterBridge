@@ -600,7 +600,7 @@ public class OffboardingOperation : IOffboardingService
                             Check(item, true, $"managementState={ms}");
                             break;
                         case "retirepending" or "retireissued":
-                            Pending(item, $"Retire issued, not yet completed (managementState={ms}); the device completes it at its next check-in.");
+                            Pending(item, $"Retire requested; completion not yet confirmed (managementState={ms}). The device completes it at its next check-in.");
                             break;
                         case "retirefailed" or "retirecanceled":
                             Check(item, false, $"Retire did not complete: managementState={ms}.");
@@ -765,7 +765,8 @@ public class OffboardingOperation : IOffboardingService
             if (byStatus.TryGetValue("failed", out var f)) parts.Add($"{Count(f.Count, noun)} failed ({string.Join(", ", f.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("unknown", out var un))
                 parts.Add($"{Count(un.Count, noun)} sent but interrupted before Microsoft answered, so may or may not have been {verb.ToLowerInvariant()} ({string.Join(", ", un.Select(i => i.ObjectName))})");
-            if (byStatus.TryGetValue("pending", out var p)) parts.Add($"{(action == RetireDevice ? "retire issued for " : "")}{Count(p.Count, noun)}{(action == RetireDevice ? "" : " requested")} but not yet completed ({string.Join(", ", p.Select(i => i.ObjectName))})");
+            if (byStatus.TryGetValue("pending", out var p))
+                parts.Add($"{(action == RetireDevice ? "retire " : "")}requested for {Count(p.Count, noun)}; completion not yet confirmed ({string.Join(", ", p.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("group-removed", out var gr)) parts.Add($"{Count(gr.Count, noun)} removed with the licensing group membership (verified)");
             if (byStatus.TryGetValue("remaining", out var rem)) parts.Add($"{Count(rem.Count, noun)} still assigned through group-based licensing ({string.Join(", ", rem.Select(i => i.ObjectName))})");
             if (byStatus.TryGetValue("skipped", out var s))

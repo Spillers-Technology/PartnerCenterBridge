@@ -54,7 +54,7 @@ export const OUTCOME_META: Record<Outcome, OutcomeMeta> = {
     label: "Completed, not verified",
     color: "warning",
     severity: "warning",
-    summary: "Microsoft accepted the changes, but PCB could not re-read the tenant to confirm them. Check the result yourself before closing the ticket."
+    summary: "Microsoft accepted the requested changes, but PCB could not confirm their effect yet (for example a password value, or a device retire that is requested but not yet complete). Check the result yourself before closing the ticket."
   },
   Planned: {
     label: "Planned only",

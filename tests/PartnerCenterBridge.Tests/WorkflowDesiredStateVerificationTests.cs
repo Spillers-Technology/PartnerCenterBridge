@@ -137,7 +137,8 @@ public class WorkflowDesiredStateVerificationTests : IDisposable
         // The cloud-only diagnosis is not presented as verification of either change.
         Assert.DoesNotContain(checks, v => v.Name == "Directory sync");
         Assert.DoesNotContain("all changes verified", run.Evidence.TicketNotes);
-        Assert.Contains("could not be independently verified", run.Evidence.TicketNotes);
+        Assert.Contains("Microsoft accepted the requested changes, but PCB could not confirm their effect yet", run.Evidence.TicketNotes);
+        Assert.DoesNotContain("were applied", run.Evidence.TicketNotes);
         Assert.Contains("| Temporary password set | not verifiable |", EvidenceRenderer.Markdown(run.Evidence));
     }
 

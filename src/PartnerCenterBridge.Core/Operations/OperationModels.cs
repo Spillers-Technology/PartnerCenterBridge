@@ -16,9 +16,10 @@ public enum Outcome
     /// <summary>A plan (or read-only diagnosis) was produced; nothing was applied.</summary>
     Planned,
     /// <summary>
-    /// Changes were applied and acknowledged by Microsoft but could not be independently verified:
-    /// every attempted change succeeded, none failed verification, and at least one change has no
-    /// read-back that can confirm it (for example a password value, or a device retire still pending).
+    /// Microsoft accepted the requested changes, but their effect could not be confirmed (yet):
+    /// every attempted change was accepted, none failed verification, and at least one change has no
+    /// read-back that can confirm it (for example a password value, or a device retire that is
+    /// requested but not yet complete).
     /// </summary>
     CompletedUnverified
 }
