@@ -96,14 +96,17 @@ public class PeopleController : ControllerBase
         {
             var exchange = scope.ServiceProvider.GetRequiredService<IExchangeOnlineService>();
             var mailbox = await exchange.GetMailboxAsync(tenant, identity, ct);
+            // GetMailboxAsync returns null only when Exchange confirms there is no mailbox;
+            // lookup failures throw and land below.
             return mailbox is null
-                // The EXO script cannot distinguish "no mailbox" from a failed lookup; say so.
-                ? PersonSection<MailboxInfo>.Ok(null!, "Exchange Online returned no mailbox for this user (no mailbox, or the lookup failed).")
+                ? PersonSection<MailboxInfo>.Ok(null!, "Exchange Online has no mailbox for this user.")
                 : PersonSection<MailboxInfo>.Ok(mailbox);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return PersonSection<MailboxInfo>.Error(ex.Message);
+            return ex is PartnerCenterBridge.Api.Diagnostics.ExchangeDependencyException
+                ? PersonSection<MailboxInfo>.Unavailable(ex.Message)
+                : PersonSection<MailboxInfo>.Error(ex.Message);
         }
     }
 

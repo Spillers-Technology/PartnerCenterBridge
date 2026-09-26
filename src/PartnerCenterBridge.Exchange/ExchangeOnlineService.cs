@@ -39,8 +39,20 @@ public class ExchangeOnlineService : IExchangeOnlineService
     public async Task<MailboxInfo?> GetMailboxAsync(Tenant tenant, string identity, CancellationToken ct = default)
     {
         var script = await RunAsync(tenant, "getMailbox", new { identity }, ct);
-        return script.Data is { ValueKind: JsonValueKind.Object } d ? ToMailbox(d) : null;
+        if (script.Data is { ValueKind: JsonValueKind.Object } d) return ToMailbox(d);
+        // null means "Exchange confirmed there is no such mailbox". Anything else that failed
+        // (connect, auth, throttling, the pwsh dependency) is an error, not an absent mailbox.
+        var failure = script.Steps.FirstOrDefault(s => !s.Success);
+        if (failure is null || IsNotFound(failure.Detail)) return null;
+        throw new InvalidOperationException($"Exchange Online mailbox lookup failed: {failure.Detail}");
     }
+
+    /// <summary>EXO's "no such recipient" errors (Get-EXOMailbox / Get-Mailbox).</summary>
+    internal static bool IsNotFound(string? detail) =>
+        detail is not null
+        && (detail.Contains("couldn't be found", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("could not be found", StringComparison.OrdinalIgnoreCase)
+            || detail.Contains("ManagementObjectNotFound", StringComparison.OrdinalIgnoreCase));
 
     public async Task<ExoResult> ConvertToSharedAsync(
         Tenant tenant, string identity, string? forwardingSmtpAddress, bool deliverToMailboxAndForward, CancellationToken ct = default)
