@@ -11,7 +11,7 @@ or an action it cannot perform says so, with the reason, instead of pretending t
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Maturity (v0.8.0), feature by feature:**
+> **Maturity (v0.9.0), feature by feature:**
 >
 > | Capability | Status |
 > |---|---|
