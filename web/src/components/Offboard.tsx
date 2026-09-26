@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Chip from "@mui/material/Chip";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Checkbox from "@mui/material/Checkbox";
@@ -12,12 +14,71 @@ import Select from "@mui/material/Select";
 import Stack from "@mui/material/Stack";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
-import { api } from "../api";
+import { api, errorText } from "../api";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
-import type { DirectoryObject, ProvisioningResult, Tenant } from "../types";
+import type { DirectoryObject, OffboardingPolicy, OperationPlan, Tenant, TerminateResult } from "../types";
+import { EvidencePanel } from "./EvidencePanel";
+import { FindingList, outcomeMeta, planItemLabel, SentenceList } from "./operationUi";
 import { StepList } from "./StepList";
+
+/** Plain-language summary of the contract policy parts the checkboxes below don't show. */
+function policyExtras(p: OffboardingPolicy): string[] {
+  const extras: string[] = [];
+  if (p.groupCleanup === "RemoveAssignable") extras.push("group cleanup leaves role-assignable groups");
+  if (p.hideFromGal) extras.push("hide from the address list");
+  if (p.managerAccess === "FullAccess") extras.push("give the manager full mailbox access");
+  if (p.wipeDevices === "Retire") extras.push("retire managed devices");
+  if (p.followUpDays > 0) extras.push(`follow-up reminder after ${p.followUpDays} days`);
+  return extras;
+}
+
+/** The ordered offboarding plan: what runs, in order, what is destructive, and what won't run and why. */
+function PlanView({ plan }: { plan: OperationPlan }) {
+  const runs = plan.items.filter((i) => i.eligible);
+  return (
+    <Box component="section" aria-label="Offboarding plan" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+      <Typography variant="subtitle1" component="h3" sx={{ fontWeight: 600 }}>
+        Plan for {plan.target.displayName || "this user"}
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        {runs.length} of {plan.items.length} steps will run, in this order. Nothing has changed yet.
+      </Typography>
+      {plan.warnings.length > 0 && (
+        <Alert severity="warning" sx={{ mt: 1 }}>
+          <SentenceList items={plan.warnings} label="Plan warnings" />
+        </Alert>
+      )}
+      <Box component="ol" aria-label="Plan steps" sx={{ m: 0, mt: 1, pl: 3 }}>
+        {plan.items.map((i) => (
+          <Box component="li" key={i.id} sx={{ py: 0.75, color: i.eligible ? "text.primary" : "text.secondary" }}>
+            <Stack direction="row" spacing={1} useFlexGap sx={{ alignItems: "center", flexWrap: "wrap" }}>
+              <Typography variant="body2" sx={{ overflowWrap: "anywhere", minWidth: 0 }}>{planItemLabel(i)}</Typography>
+              {i.eligible && i.destructive && <Chip size="small" color="error" variant="outlined" label="Destructive" />}
+              {!i.eligible && <Chip size="small" variant="outlined" label="Won't run" />}
+            </Stack>
+            {i.reason && (
+              <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>{i.reason}</Typography>
+            )}
+          </Box>
+        ))}
+      </Box>
+      {plan.preflight.length > 0 && (
+        <Box sx={{ mt: 1.5 }}>
+          <Typography variant="subtitle2" component="h4">Preflight</Typography>
+          <FindingList findings={plan.preflight} label="Preflight checks" />
+        </Box>
+      )}
+      {plan.limitations.length > 0 && (
+        <Alert severity="info" variant="outlined" sx={{ mt: 1.5 }}>
+          <AlertTitle>Limitations</AlertTitle>
+          <SentenceList items={plan.limitations} label="Plan limitations" />
+        </Alert>
+      )}
+    </Box>
+  );
+}
 
 const ACTIONS = [
   ["blockSignIn", "Block sign-in"],
@@ -40,8 +101,10 @@ export function Offboard({
   const [userId, setUserId] = useState("");
   const [opts, setOpts] = useState({ blockSignIn: true, revokeSessions: true, removeLicenses: true, removeFromGroups: true, convertMailboxToShared: false });
   const [forwardingSmtpAddress, setForwardingSmtpAddress] = useState("");
-  const [result, setResult] = useState<ProvisioningResult | null>(null);
-  const [lastAction, setLastAction] = useState<"tenants" | "search" | "submit" | null>(null);
+  const [result, setResult] = useState<TerminateResult | null>(null);
+  const [lastAction, setLastAction] = useState<"tenants" | "search" | "submit" | "plan" | null>(null);
+  const [policy, setPolicy] = useState<OffboardingPolicy | null>(null);
+  const [plan, setPlan] = useState<{ key: string; plan: OperationPlan } | null>(null);
   // useAsyncAction's own busy flag only turns on once the terminate call actually starts, which
   // leaves a window open while the confirm dialog is awaited: a second click during that window
   // could queue a second confirm request (useConfirm queues rather than rejecting a second call)
@@ -65,14 +128,58 @@ export function Offboard({
   const selectedUser = users.find((user) => user.id === userId);
   const selectedTenant = tenants.find((t) => t.id === tenantId);
 
+  // The request body both the plan and the apply send; a plan is only shown while it still
+  // describes exactly this body.
+  const body = () => ({ userId, ...opts, forwardingSmtpAddress: forwardingSmtpAddress || undefined });
+  const bodyKey = JSON.stringify({ tenantId, ...body() });
+  const currentPlan = plan && plan.key === bodyKey ? plan.plan : null;
+
   const submitAction = useAsyncAction(async () => {
-    const offboardResult = await api.provisioning.terminate(tenantId, {
-      userId, ...opts,
-      forwardingSmtpAddress: forwardingSmtpAddress || undefined
-    });
+    const offboardResult = await api.provisioning.terminate(tenantId, body());
     setResult(offboardResult);
-    if (offboardResult.succeeded) toast(`${selectedUser?.displayName ?? "User"} offboarded`, "success");
+    setPlan(null);
+    const name = selectedUser?.displayName ?? "User";
+    const outcome = offboardResult.evidence?.outcome;
+    if (outcome) {
+      if (outcome === "Succeeded" || outcome === "NoChangeNeeded") toast(`${name} offboarded`, "success");
+      else toast(`Offboarding ${name} finished: ${outcomeMeta(outcome).label.toLowerCase()}. Review the result.`, "warning");
+    } else if (offboardResult.succeeded) {
+      toast(`${name} offboarded`, "success");
+    }
   });
+
+  const planAction = useAsyncAction(async () => {
+    const key = bodyKey;
+    try {
+      const p = await api.provisioning.terminatePlan(tenantId, body());
+      setPlan({ key, plan: p });
+    } catch (e) {
+      throw new Error(errorText(e));
+    }
+  });
+
+  // The tenant's contract policy sets the starting options (and the parts not shown as checkboxes).
+  useEffect(() => {
+    setPolicy(null);
+    const contractId = tenants.find((t) => t.id === tenantId)?.contractId;
+    if (!contractId) return;
+    let alive = true;
+    api.contracts.getOffboardingPolicy(contractId)
+      .then((p) => {
+        if (!alive) return;
+        setPolicy(p);
+        setOpts({
+          blockSignIn: p.blockSignIn,
+          revokeSessions: p.revokeSessions,
+          removeLicenses: p.removeLicenses,
+          removeFromGroups: p.groupCleanup !== "None",
+          convertMailboxToShared: p.convertMailboxToShared
+        });
+        // forwardTo stays with the policy: an empty field here means "use the policy's address".
+      })
+      .catch(() => { /* older server or no access: the built-in defaults apply */ });
+    return () => { alive = false; };
+  }, [tenantId, tenants]);
 
   // A stale userId (from before the most recent search, or a user no longer in the search
   // results) must never stay submittable -- selectedUser is the single source of truth for
@@ -116,6 +223,7 @@ export function Offboard({
     lastAction === "tenants" ? tenantsAction.error :
     lastAction === "search" ? searchAction.error :
     lastAction === "submit" ? submitAction.error :
+    lastAction === "plan" ? planAction.error :
     null;
 
   const find = () => {
@@ -137,9 +245,16 @@ export function Offboard({
     try {
       const enabledActions = ACTIONS.filter(([key]) => opts[key]).map(([, label]) => label.toLowerCase());
       const forwardingNote = forwardingSmtpAddress ? ` Mail will forward to ${forwardingSmtpAddress}.` : "";
+      const steps = currentPlan?.items.filter((i) => i.eligible) ?? [];
+      const destructiveCount = steps.filter((i) => i.destructive).length;
+      const who = `${selectedUser.displayName} (${selectedUser.userPrincipalName}) in ${selectedTenant?.displayName ?? "this tenant"} will be offboarded.`;
       const ok = await confirm({
         title: "Offboard this user?",
-        message: `${selectedUser.displayName} (${selectedUser.userPrincipalName}) in ${selectedTenant?.displayName ?? "this tenant"} will be offboarded. Actions: ${enabledActions.join(", ") || "none"}.${forwardingNote}`,
+        message: currentPlan
+          ? `${who} PCB re-checks the plan, then runs these ${steps.length} steps in order${destructiveCount > 0 ? `; ${destructiveCount} of them are destructive` : ""}.${forwardingNote}`
+          : `${who} Actions: ${enabledActions.join(", ") || "none"}.${forwardingNote}`,
+        items: currentPlan ? steps.map((i) => `${planItemLabel(i)}${i.destructive ? " (destructive)" : ""}`) : undefined,
+        itemsLabel: "Steps to run",
         confirmLabel: "Offboard",
         destructive: true
       });
@@ -172,6 +287,7 @@ export function Offboard({
             setUserId("");
             setForwardingSmtpAddress("");
             setResult(null);
+            setPlan(null);
           }}
         >
           <MenuItem value=""><em>Choose...</em></MenuItem>
@@ -206,6 +322,11 @@ export function Offboard({
 
           <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
             <Typography component="legend" variant="subtitle1">Actions</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {policy
+                ? `Defaults from this tenant's contract offboarding policy${policyExtras(policy).length > 0 ? `, which also asks to ${policyExtras(policy).join("; ")}` : ""}. Changes here apply to this offboarding only.`
+                : "Built-in defaults. A contract offboarding policy can change them for every leaver."}
+            </Typography>
             <FormGroup>
               {ACTIONS.map(([key, label]) => (
                 <FormControlLabel key={key} control={<Checkbox checked={opts[key]} onChange={(e) => setOpts({ ...opts, [key]: e.target.checked })} />} label={label} />
@@ -214,18 +335,28 @@ export function Offboard({
           </Box>
 
           {opts.convertMailboxToShared && (
-            <TextField fullWidth label="Forward mailbox to (optional SMTP)" placeholder="manager@contoso.com" value={forwardingSmtpAddress} onChange={(e) => setForwardingSmtpAddress(e.target.value)} />
+            <TextField fullWidth label="Forward mailbox to (optional SMTP)" placeholder={policy?.forwardTo ? `Policy default: ${policy.forwardTo}` : "manager@contoso.com"} value={forwardingSmtpAddress} onChange={(e) => setForwardingSmtpAddress(e.target.value)} />
           )}
 
-          <Box>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+            <Button
+              variant="outlined"
+              onClick={() => { setLastAction("plan"); setResult(null); void planAction.run(); }}
+              disabled={planAction.busy || submitAction.busy || confirming || !canSubmit}
+            >
+              {planAction.busy ? "Planning..." : currentPlan ? "Refresh plan" : "Preview plan"}
+            </Button>
             <Button variant="contained" color="error" onClick={() => void submit()} disabled={submitAction.busy || confirming || !canSubmit}>
               {submitAction.busy ? "Offboarding..." : "Offboard user"}
             </Button>
-          </Box>
+          </Stack>
+          {currentPlan && <PlanView plan={currentPlan} />}
         </Stack>
       )}
       {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
-      {result && <StepList result={result} />}
+      {result && (result.evidence
+        ? <Box sx={{ mt: 2 }}><EvidencePanel evidence={result.evidence} title="Offboarding" /></Box>
+        : <StepList result={result} />)}
     </Box>
   );
 }

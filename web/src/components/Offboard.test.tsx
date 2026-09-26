@@ -6,13 +6,17 @@ import { theme } from "../theme";
 import { ConfirmDialogProvider } from "../hooks/useConfirm";
 import { ToastProvider } from "../hooks/useToast";
 import { Offboard } from "./Offboard";
-import type { DirectoryObject, ProvisioningResult, Tenant } from "../types";
+import type { DirectoryObject, OperationPlan, ProvisioningResult, Tenant } from "../types";
+import { renderWithRouter } from "../test/renderWithRouter";
+import { makeEvidence } from "../test/fixtures";
 
 vi.mock("../api", () => ({
   api: {
     tenants: { list: vi.fn() },
     directory: { users: vi.fn() },
-    provisioning: { terminate: vi.fn() }
+    provisioning: { terminate: vi.fn(), terminatePlan: vi.fn() },
+    contracts: { getOffboardingPolicy: vi.fn() },
+    workflows: { evidenceMarkdown: vi.fn(), evidenceJson: vi.fn() }
   }
 }));
 
@@ -202,3 +206,94 @@ describe("Offboard", () => {
   });
 });
 
+
+const offboardPlan: OperationPlan = {
+  operationId: "offboarding",
+  operationName: "Offboarding",
+  tenantId: "t1",
+  target: { kind: "user", id: "u1", displayName: "Ada Lovelace" },
+  preflight: [{ name: "Directory sync", status: "Warning", detail: "Synced from on-premises AD." }],
+  items: [
+    { id: "block-sign-in", action: "BlockSignIn", objectType: "user", objectId: "u1", objectName: "Ada Lovelace", destructive: false, eligible: false, category: "SignIn", reason: "Account is synced from on-premises AD; disable it in on-premises AD." },
+    { id: "revoke-sessions", action: "RevokeSessions", objectType: "user", objectId: "u1", objectName: "Ada Lovelace", destructive: false, eligible: true, category: "SignIn" },
+    { id: "hide-from-gal", action: "HideFromGal", objectType: "mailbox", objectId: "ada@contoso.com", objectName: "Ada Lovelace", destructive: false, eligible: false, category: "Mailbox", reason: "Not executable yet: PCB has no Exchange operation for this." },
+    { id: "group:g1", action: "RemoveMember", objectType: "group", objectId: "g1", objectName: "Finance Team", destructive: true, eligible: true, category: "Group" },
+    { id: "license:sku-e3", action: "RemoveLicense", objectType: "license", objectId: "sku-e3", objectName: "SPE_E3", destructive: true, eligible: true, category: "License" }
+  ],
+  warnings: ["Hybrid account: disable the account in on-premises AD as well."],
+  limitations: []
+};
+
+describe("Offboard plan and evidence (0.9.0)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.tenants.list).mockResolvedValue([tenant]);
+    vi.mocked(api.directory.users).mockResolvedValue([directoryUser]);
+    vi.mocked(api.provisioning.terminatePlan).mockResolvedValue(offboardPlan);
+    vi.mocked(api.provisioning.terminate).mockResolvedValue({
+      ...result,
+      evidence: makeEvidence({ operationName: "Offboarding", target: { kind: "user", id: "u1", displayName: "Ada Lovelace" }, outcome: "PartiallySucceeded" })
+    });
+  });
+
+  it("previews the ordered plan with destructive and ineligible steps, then confirms the exact steps and shows the evidence", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<Offboard />);
+    await selectTenantAndUser(user);
+
+    await user.click(screen.getByRole("button", { name: "Preview plan" }));
+    const plan = await screen.findByRole("region", { name: "Offboarding plan" });
+    expect(api.provisioning.terminatePlan).toHaveBeenCalledWith("t1", expect.objectContaining({ userId: "u1", removeLicenses: true }));
+    const steps = within(plan).getByRole("list", { name: "Plan steps" });
+    const items = within(steps).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Block sign-in: Ada Lovelace");
+    expect(items[0]).toHaveTextContent("Won't run");
+    expect(items[0]).toHaveTextContent("disable it in on-premises AD");
+    expect(items[2]).toHaveTextContent("Not executable yet");
+    expect(items[3]).toHaveTextContent("Remove from: Finance Team");
+    expect(items[3]).toHaveTextContent("Destructive");
+    expect(within(plan).getByRole("list", { name: "Plan warnings" })).toHaveTextContent("Hybrid account");
+    expect(within(plan).getByText(/3 of 5 steps will run/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Offboard user" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Ada Lovelace (ada@contoso.com) in Contoso will be offboarded");
+    expect(dialog).toHaveTextContent("2 of them are destructive");
+    const listed = within(within(dialog).getByRole("list", { name: "Steps to run" })).getAllByRole("listitem").map((li) => li.textContent);
+    expect(listed).toEqual(["Revoke sessions: Ada Lovelace", "Remove from: Finance Team (destructive)", "Remove license: SPE_E3 (destructive)"]);
+    await user.click(within(dialog).getByRole("button", { name: "Offboard" }));
+
+    expect(await screen.findByTestId("evidence-outcome")).toHaveTextContent("Offboarding: Partially succeeded");
+    expect(await screen.findByText(/Offboarding Ada Lovelace finished: partially succeeded/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Offboarding plan" })).not.toBeInTheDocument();
+  });
+
+  it("drops a plan that no longer matches the options", async () => {
+    const user = userEvent.setup();
+    renderWithRouter(<Offboard />);
+    await selectTenantAndUser(user);
+    await user.click(screen.getByRole("button", { name: "Preview plan" }));
+    await screen.findByRole("region", { name: "Offboarding plan" });
+    await user.click(screen.getByLabelText("Remove licenses"));
+    expect(screen.queryByRole("region", { name: "Offboarding plan" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Preview plan" })).toBeEnabled();
+  });
+
+  it("starts from the tenant's contract offboarding policy", async () => {
+    vi.mocked(api.tenants.list).mockResolvedValue([{ ...tenant, contractId: "c1" }]);
+    vi.mocked(api.contracts.getOffboardingPolicy).mockResolvedValue({
+      blockSignIn: true, revokeSessions: true, groupCleanup: "RemoveAssignable", convertMailboxToShared: true,
+      removeLicenses: false, hideFromGal: false, forwardTo: "manager@contoso.com", managerAccess: "None", wipeDevices: "Retire", followUpDays: 30
+    });
+    const user = userEvent.setup();
+    renderWithRouter(<Offboard />);
+    await user.click(await screen.findByLabelText("Tenant"));
+    await user.click(screen.getByRole("option", { name: "Contoso" }));
+
+    await waitFor(() => expect(api.contracts.getOffboardingPolicy).toHaveBeenCalledWith("c1"));
+    await waitFor(() => expect(screen.getByLabelText("Remove licenses")).not.toBeChecked());
+    expect(screen.getByLabelText("Convert mailbox to shared (Exchange Online)")).toBeChecked();
+    expect(screen.getByText(/retire managed devices; follow-up reminder after 30 days/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Forward mailbox to (optional SMTP)")).toHaveAttribute("placeholder", "Policy default: manager@contoso.com");
+  });
+});

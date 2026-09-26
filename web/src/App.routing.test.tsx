@@ -7,6 +7,7 @@ import { theme } from "./theme";
 import { ConfirmDialogProvider } from "./hooks/useConfirm";
 import { ToastProvider } from "./hooks/useToast";
 import { LocationProbe, mockMatchMedia } from "./test/renderWithRouter";
+import { makeEvidence } from "./test/fixtures";
 import type { MeProfile, PersonWorkspace, Tenant, WorkflowRunRecord, WorkflowSummary } from "./types";
 
 vi.mock("./api", async (importOriginal) => {
@@ -28,7 +29,9 @@ vi.mock("./api", async (importOriginal) => {
       contracts: { list: vi.fn() },
       templates: { list: vi.fn() },
       deployments: { list: vi.fn() },
-      workflows: { list: vi.fn(), runs: vi.fn(), diagnose: vi.fn(), remediate: vi.fn() },
+      workflows: { list: vi.fn(), runs: vi.fn(), diagnose: vi.fn(), remediate: vi.fn(), evidence: vi.fn(), evidenceMarkdown: vi.fn(), evidenceJson: vi.fn() },
+      directory: { users: vi.fn() },
+      accessParity: { plan: vi.fn(), apply: vi.fn() },
       configSnapshots: { list: vi.fn(), sections: vi.fn() }
     }
   };
@@ -74,9 +77,11 @@ const ME: MeProfile = {
 };
 
 const WORKSPACE: PersonWorkspace = {
+  tenantId: "t1",
+  userId: "u1",
   profile: {
     status: "Ok",
-    data: { displayName: "Ada Lovelace", upn: "ada@contoso.com", accountEnabled: true, jobTitle: "Engineer" }
+    data: { id: "u1", displayName: "Ada Lovelace", upn: "ada@contoso.com", accountEnabled: true, jobTitle: "Engineer" }
   },
   licenses: { status: "Unavailable", reason: "later" },
   groups: { status: "Unavailable", reason: "later" },
@@ -132,6 +137,8 @@ describe("App routing", () => {
     vi.mocked(api.deployments.list).mockResolvedValue([]);
     vi.mocked(api.workflows.list).mockResolvedValue(CATALOG);
     vi.mocked(api.workflows.runs).mockResolvedValue(RUNS);
+    vi.mocked(api.workflows.evidence).mockRejectedValue(new ApiError(404, "404 Not Found: ", ""));
+    vi.mocked(api.directory.users).mockResolvedValue([]);
     vi.mocked(api.people.get).mockResolvedValue(WORKSPACE);
     vi.mocked(api.configSnapshots.list).mockResolvedValue([]);
     vi.mocked(api.search.users).mockResolvedValue({
@@ -179,7 +186,7 @@ describe("App routing", () => {
     expect(await pageHeading("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
     const actions = screen.getByRole("list", { name: "Actions for this person" });
-    expect(within(actions).getByRole("link", { name: /MFA reset/ }))
+    expect(within(actions).getByRole("link", { name: /Reset MFA/ }))
       .toHaveAttribute("href", "/operations/workflows/mfa-reset?tenant=t1&user=ada%40contoso.com");
     expect(within(actions).getByRole("link", { name: /Offboard/ }))
       .toHaveAttribute("href", "/operations/offboard?tenant=t1&user=ada%40contoso.com");
@@ -199,7 +206,7 @@ describe("App routing", () => {
     renderApp("/tenants/t1?tab=snapshots");
     expect(await pageHeading("Contoso Ltd")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Snapshots" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("heading", { name: "Config snapshots" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Config snapshots" }, { timeout: 5000 })).toBeInTheDocument();
     // Scoped to this tenant: no tenant picker, and the snapshots are this tenant's.
     expect(screen.queryByLabelText("Tenant")).not.toBeInTheDocument();
     await waitFor(() => expect(api.configSnapshots.list).toHaveBeenCalledWith("t1"));
@@ -244,6 +251,18 @@ describe("App routing", () => {
     expect(screen.getByRole("combobox", { name: "Tenant" })).toHaveTextContent("Contoso Ltd");
   });
 
+  it("opens the command palette from anywhere in the shell and jumps to the chosen page", async () => {
+    const user = userEvent.setup();
+    renderApp("/");
+    expect(await pageHeading("Home")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search and jump (Ctrl+K)" })).toBeInTheDocument();
+    await user.keyboard("{Control>}k{/Control}");
+    const dialog = await screen.findByRole("dialog", { name: "Command palette" });
+    await user.type(within(dialog).getByRole("combobox"), "mirror{ArrowDown}{Enter}");
+    expect(await pageHeading("Mirror access")).toBeInTheDocument();
+    expect(location()).toBe("/operations/access-parity");
+  });
+
   it("shows a helpful not-found page for an unknown route", async () => {
     renderApp("/no/such/place");
     expect(await pageHeading("Page not found")).toBeInTheDocument();
@@ -251,10 +270,35 @@ describe("App routing", () => {
     expect(within(list).getAllByRole("link")).toHaveLength(6);
   });
 
-  it("shows a run from Activity history at /activity/runs/:runId", async () => {
+  it("falls back to the run history at /activity/runs/:runId on a server without evidence", async () => {
     renderApp("/activity/runs/r1");
     expect(await pageHeading("MFA reset")).toBeInTheDocument();
+    expect(api.workflows.evidence).toHaveBeenCalledWith("r1");
     expect(screen.getByText("Revoke sessions")).toBeInTheDocument();
+  });
+
+  it("shows a run's evidence at /activity/runs/:runId", async () => {
+    vi.mocked(api.workflows.evidence).mockResolvedValue(makeEvidence({ runId: "r1", outcome: "PartiallySucceeded" }));
+    renderApp("/activity/runs/r1");
+    expect(await pageHeading("Access parity")).toBeInTheDocument();
+    expect(screen.getByTestId("evidence-outcome")).toHaveTextContent("Partially succeeded");
+    expect(screen.getByRole("button", { name: "Copy ticket notes" })).toBeInTheDocument();
+    expect(api.workflows.runs).not.toHaveBeenCalledWith({ take: 200 });
+  });
+
+  it("lists runs with outcome chips, the person they targeted, and a link to each run", async () => {
+    vi.mocked(api.workflows.runs).mockResolvedValue([
+      { ...RUNS[0], outcome: "VerificationFailed", targetId: "u1", targetDisplayName: "Ada Lovelace" },
+      { ...RUNS[1], outcome: "CompletedUnverified" },
+      { ...RUNS[1], id: "r3", outcome: "SomethingNew" as never }
+    ]);
+    renderApp("/activity");
+    const table = await screen.findByRole("table", { name: "Workflow runs" }, { timeout: 5000 });
+    expect(within(table).getByText("Verification failed")).toBeInTheDocument();
+    expect(within(table).getByText("Completed, not verified")).toBeInTheDocument();
+    expect(within(table).getByText("SomethingNew")).toBeInTheDocument();
+    expect(within(table).getByRole("link", { name: "Ada Lovelace" })).toHaveAttribute("href", "/people/t1/u1");
+    expect(within(table).getAllByRole("link", { name: "MFA reset" })[0]).toHaveAttribute("href", "/activity/runs/r1");
   });
 
   it("keeps Activity filters in the URL", async () => {

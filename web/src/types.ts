@@ -93,6 +93,8 @@ export interface WorkflowRunResult {
   /** Show-once secrets (e.g. a temporary password) - never persisted to run history. */
   ephemeral?: Record<string, string>;
   succeeded: boolean;
+  /** 0.9.0+: native evidence from a planned operation run through remediate; null for classic workflows. */
+  evidence?: OperationEvidence | null;
 }
 
 export interface GlobalUserHit {
@@ -136,7 +138,7 @@ export interface Dashboard {
   recentRuns: WorkflowRunRecord[];
 }
 
-export type WorkflowRunKind = "Diagnose" | "Remediate";
+export type WorkflowRunKind = "Diagnose" | "Remediate" | "Plan" | "Apply";
 export interface WorkflowRunRecord {
   id: string;
   workflowId: string;
@@ -149,12 +151,15 @@ export interface WorkflowRunRecord {
   findings: Finding[];
   steps: ProvisioningStep[];
   succeeded: boolean;
-  healthy?: boolean;
-  error?: string;
+  healthy?: boolean | null;
+  error?: string | null;
   startedAt: string;
   durationMs: number;
   /** 0.9.0+: structured outcome from the evidence model; absent on older servers. */
   outcome?: Outcome;
+  /** 0.9.0+: the user the run was about (normalized object id or UPN), when known. */
+  targetId?: string | null;
+  targetDisplayName?: string | null;
 }
 
 export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string; type: "text" | "bool" }
@@ -286,7 +291,9 @@ export interface SamStatus { bootstrapped: boolean }
 // --- Ops workbench (0.9.0): operation and evidence model (spec section B) -----------------------
 export type Outcome =
   | "Succeeded" | "PartiallySucceeded" | "Failed" | "NoChangeNeeded"
-  | "VerificationFailed" | "Planned";
+  | "VerificationFailed" | "Planned"
+  /** Applied and acknowledged by Microsoft, but PCB could not independently re-read and confirm it. */
+  | "CompletedUnverified";
 
 export interface OperationTarget { kind: string; id: string; displayName: string }
 
@@ -348,7 +355,7 @@ export interface OperationEvidence {
 /** Access Parity group categories; only Security and Microsoft365 cloud groups are eligible. */
 export type GroupCategory =
   | "Security" | "Microsoft365" | "MailEnabledSecurity" | "Distribution" | "Dynamic"
-  | "RoleAssignable" | "OnPremSynced" | "DirectoryRole" | "AlreadyMember";
+  | "RoleAssignable" | "OnPremSynced" | "DirectoryRole" | "AlreadyMember" | "Other";
 
 // --- Ops workbench (0.9.0): person workspace ----------------------------------------------------
 export type SectionStatus = "Ok" | "Unavailable" | "Error";
@@ -356,10 +363,12 @@ export type SectionStatus = "Ok" | "Unavailable" | "Error";
 export interface WorkspaceSection<T> { status: SectionStatus; reason?: string | null; data?: T | null }
 
 export interface PersonProfile {
+  id: string;
   displayName: string;
-  upn: string;
+  upn?: string | null;
   mail?: string | null;
-  accountEnabled: boolean;
+  /** Null when Graph did not return it. */
+  accountEnabled?: boolean | null;
   jobTitle?: string | null;
   department?: string | null;
   onPremisesSyncEnabled?: boolean | null;
@@ -368,15 +377,36 @@ export interface PersonProfile {
 }
 export interface PersonLicense { skuPartNumber: string; skuId: string }
 export interface PersonGroup { id: string; displayName: string; category: GroupCategory | string }
-export interface PersonDevice { id: string; deviceName?: string | null; operatingSystem?: string | null; complianceState?: string | null; lastSyncDateTime?: string | null }
+export interface PersonDevice {
+  id: string;
+  deviceName?: string | null;
+  operatingSystem?: string | null;
+  osVersion?: string | null;
+  complianceState?: string | null;
+  lastSyncDateTime?: string | null;
+  managementAgent?: string | null;
+}
+/** Exchange Online mailbox summary (MailboxInfo on the server). */
+export interface PersonMailbox {
+  userPrincipalName: string;
+  displayName: string;
+  recipientTypeDetails: string;
+  forwardingSmtpAddress?: string | null;
+  deliverToMailboxAndForward: boolean;
+}
 
 /** GET /api/tenants/{tenantId}/people/{userId} */
 export interface PersonWorkspace {
+  /** PCB tenant id (registry GUID). */
+  tenantId: string;
+  /** The user's resolved object id (the request may have used a UPN). */
+  userId: string;
   profile: WorkspaceSection<PersonProfile>;
   licenses: WorkspaceSection<PersonLicense[]>;
   groups: WorkspaceSection<PersonGroup[]>;
   authMethods: WorkspaceSection<string[]>;
-  mailbox: WorkspaceSection<Record<string, unknown>>;
+  /** Ok with null data (plus a reason) when Exchange returned no mailbox. */
+  mailbox: WorkspaceSection<PersonMailbox>;
   devices: WorkspaceSection<PersonDevice[]>;
   recentRuns: WorkspaceSection<WorkflowRunRecord[]>;
 }
@@ -392,5 +422,12 @@ export interface OffboardingPolicy {
   forwardTo?: string | null;
   managerAccess: "None" | "FullAccess";
   wipeDevices: "None" | "Retire";
-  followUpDays?: number | null;
+  /** Days after offboarding to revisit/delete the account; 0 = no follow-up. */
+  followUpDays: number;
+}
+
+/** POST /api/provisioning/terminate: the original fields plus evidence and the policy applied (0.9.0+). */
+export interface TerminateResult extends ProvisioningResult {
+  evidence?: OperationEvidence | null;
+  policy?: OffboardingPolicy | null;
 }

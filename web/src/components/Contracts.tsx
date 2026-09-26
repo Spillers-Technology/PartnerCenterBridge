@@ -20,6 +20,7 @@ import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useToast } from "../hooks/useToast";
 import type { AppTemplate, Contract, MeProfile } from "../types";
+import { OffboardingPolicyEditor } from "./OffboardingPolicyEditor";
 
 type PlanItem = Awaited<ReturnType<typeof api.contracts.plan>>[number];
 
@@ -91,6 +92,7 @@ export function Contracts({ me }: { me: MeProfile | null }) {
   const [plan, setPlan] = useState<PlanItem[] | null>(null);
   const [lastAction, setLastAction] = useState<"load" | "create" | "plan" | null>(null);
   const [managingId, setManagingId] = useState<string | null>(null);
+  const [policyId, setPolicyId] = useState<string | null>(null);
   const [showNoPackage, setShowNoPackage] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
   const [pendingUploadIds, setPendingUploadIds] = useState<Set<string>>(new Set());
@@ -223,6 +225,7 @@ export function Contracts({ me }: { me: MeProfile | null }) {
           <TableHead><TableRow><TableCell>Name</TableCell><TableCell>Tenants</TableCell><TableCell>Desired apps</TableCell><TableCell></TableCell></TableRow></TableHead>
           <TableBody>{contracts.map((contract) => {
             const isManaging = managingId === contract.id;
+            const showPolicy = policyId === contract.id;
             const desiredAppIds = contract.desiredAppIds ?? [];
             const visibleTemplates = templates.filter((template) => template.hasPackage || showNoPackage);
             return (
@@ -230,7 +233,7 @@ export function Contracts({ me }: { me: MeProfile | null }) {
                 <TableRow>
                   <TableCell>{contract.name}</TableCell><TableCell>{contract.tenantCount}</TableCell><TableCell>{contract.desiredAppCount}</TableCell>
                   <TableCell>
-                    <Stack direction="row" spacing={1}>
+                    <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: "wrap" }}>
                       <Button size="small" onClick={() => { setLastAction("plan"); setPlan(null); void planAction.run(contract.id); }} disabled={planAction.busy}>{planAction.busy ? "Loading plan..." : "Preview plan"}</Button>
                       {canManage && (
                         <Button
@@ -242,9 +245,27 @@ export function Contracts({ me }: { me: MeProfile | null }) {
                           Manage apps
                         </Button>
                       )}
+                      <Button
+                        size="small"
+                        aria-expanded={showPolicy}
+                        aria-controls={showPolicy ? `offboarding-policy-${contract.id}` : undefined}
+                        onClick={() => setPolicyId(showPolicy ? null : contract.id)}
+                      >
+                        Offboarding policy
+                      </Button>
                     </Stack>
                   </TableCell>
                 </TableRow>
+                {showPolicy && (
+                  <TableRow>
+                    <TableCell colSpan={4}>
+                      <Box id={`offboarding-policy-${contract.id}`} sx={{ py: 1 }}>
+                        <Typography variant="h6" component="h3" gutterBottom>Offboarding policy for {contract.name}</Typography>
+                        <OffboardingPolicyEditor contractId={contract.id} contractName={contract.name} canEdit={canManage} />
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                )}
                 {isManaging && (
                   <TableRow>
                     <TableCell colSpan={4}>

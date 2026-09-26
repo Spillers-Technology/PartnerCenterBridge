@@ -112,11 +112,14 @@ export function AppShell({
   displayName,
   onSignOut,
   badges = {},
+  headerActions,
   children
 }: {
   displayName: string | null;
   onSignOut?: () => void;
   badges?: Partial<Record<DestinationKey, number>>;
+  /** Shown in the top bar before the account menu (e.g. the command palette trigger). */
+  headerActions?: ReactNode;
   children: ReactNode;
 }) {
   const theme = useTheme();
@@ -176,6 +179,7 @@ export function AppShell({
           >
             {isPhone && activeLabel ? activeLabel : "Partner Center Bridge"}
           </Typography>
+          {headerActions}
           <IconButton
             aria-label="Account menu"
             aria-haspopup="true"

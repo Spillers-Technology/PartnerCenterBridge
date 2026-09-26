@@ -130,6 +130,23 @@ async function gotoRoute(page, route) {
 // keeps them from matching the same word in the navigation.
 const heading = (page, name) => page.getByRole("heading", { name, exact: true }).first();
 
+// Access Parity with both people in the URL, compared: the plan with eligible and non-copied groups.
+async function openParityPlan(page) {
+  await gotoRoute(page, `/operations/access-parity?tenant=${CONTOSO}&source=priya.shah%40contoso.com&target=maya.chen%40contoso.com`);
+  await page.getByRole("button", { name: "Compare", exact: true }).click();
+  await page.getByText("Groups to add", { exact: false }).first().waitFor({ timeout: 20_000 });
+}
+
+// Offboarding from a person link: the exact-match user is selected, then the plan is previewed.
+async function openOffboardPlan(page) {
+  await gotoRoute(page, `/operations/offboard?tenant=${CONTOSO}&user=priya.shah%40contoso.com`);
+  const preview = page.getByRole("button", { name: "Preview plan", exact: true });
+  await preview.waitFor({ timeout: 20_000 });
+  await page.waitForFunction(() => [...document.querySelectorAll("button")].some((b) => b.textContent === "Preview plan" && !b.disabled), null, { timeout: 20_000 });
+  await preview.click();
+  await page.getByText("steps will run", { exact: false }).waitFor({ timeout: 20_000 });
+}
+
 const AUTHENTICATED_VIEWS = {
   home: async (page) => {
     await gotoRoute(page, "/");
@@ -150,6 +167,28 @@ const AUTHENTICATED_VIEWS = {
   person: async (page) => {
     await gotoRoute(page, `/people/${CONTOSO}/u1`);
     await page.getByText("Operations Analyst", { exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByText("2 managed devices", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "person-access": async (page) => {
+    await gotoRoute(page, `/people/${CONTOSO}/u1?tab=access`);
+    await page.getByText("Operations - All (dynamic)", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "person-auth": async (page) => {
+    await gotoRoute(page, `/people/${CONTOSO}/u1?tab=auth`);
+    await page.getByText("FIDO2 security key", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "person-mailbox": async (page) => {
+    // The mocked workbench has no Exchange module: the Unavailable state with its fix link.
+    await gotoRoute(page, `/people/${CONTOSO}/u1?tab=mailbox`);
+    await page.getByText("Mailbox unavailable", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "person-devices": async (page) => {
+    await gotoRoute(page, `/people/${CONTOSO}/u1?tab=devices`);
+    await page.getByText("CONTOSO-LT-0142", { exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "person-history": async (page) => {
+    await gotoRoute(page, `/people/${CONTOSO}/u1?tab=history`);
+    await page.getByText("Open the latest run's evidence", { exact: true }).waitFor({ timeout: 20_000 });
   },
   tenants: async (page) => {
     await gotoRoute(page, "/tenants");
@@ -201,6 +240,29 @@ const AUTHENTICATED_VIEWS = {
     await gotoRoute(page, "/operations/access-parity");
     await heading(page, "Mirror access").waitFor({ timeout: 20_000 });
   },
+  "access-parity-plan": async (page) => {
+    await openParityPlan(page);
+  },
+  "access-parity-result": async (page) => {
+    await openParityPlan(page);
+    await page.getByRole("button", { name: "Add Maya Chen to 4 groups", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Add to 4 groups", exact: true }).click();
+    await page.getByRole("button", { name: "Copy ticket notes", exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "offboard-plan": async (page) => {
+    await openOffboardPlan(page);
+  },
+  "offboard-result": async (page) => {
+    await openOffboardPlan(page);
+    await page.getByRole("button", { name: "Offboard user", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Offboard", exact: true }).click();
+    await page.getByRole("button", { name: "Copy ticket notes", exact: true }).waitFor({ timeout: 20_000 });
+  },
+  "contract-policy": async (page) => {
+    await gotoRoute(page, "/operations/contracts");
+    await page.getByRole("button", { name: "Offboarding policy", exact: true }).first().click();
+    await page.getByRole("button", { name: "Save policy", exact: true }).waitFor({ timeout: 20_000 });
+  },
   contracts: async (page) => {
     await gotoRoute(page, "/operations/contracts");
     await page.getByText("Managed Workstations", { exact: false }).waitFor({ timeout: 20_000 });
@@ -224,6 +286,18 @@ const AUTHENTICATED_VIEWS = {
   run: async (page) => {
     await gotoRoute(page, "/activity/runs/r3");
     await page.getByText("SKU still in error state", { exact: false }).first().waitFor({ timeout: 20_000 });
+  },
+  "run-evidence": async (page) => {
+    // A partially successful Access Parity apply: changes, a failed verification, ticket notes.
+    await gotoRoute(page, "/activity/runs/r6");
+    await page.getByRole("button", { name: "Copy ticket notes", exact: true }).waitFor({ timeout: 20_000 });
+  },
+  palette: async (page) => {
+    await gotoRoute(page, "/");
+    await page.getByText("Needs attention", { exact: false }).waitFor({ timeout: 20_000 });
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("con");
+    await page.getByText("Open tenant: Contoso Ltd", { exact: true }).waitFor({ timeout: 20_000 });
   },
   settings: async (page) => {
     await gotoRoute(page, "/settings");
