@@ -12,6 +12,7 @@ import type { AuthMode, AuthResponse, MeProfile, SystemStatus } from "./types";
 import { AppShell } from "./components/AppShell";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
+import { CommandPalette, CommandPaletteTrigger, useCommandPaletteShortcut } from "./components/CommandPalette";
 import { PageLoading, RouteErrorBoundary } from "./components/RouteFallback";
 import { WorkbenchProvider, useWorkbench, type WorkbenchSession } from "./workbench";
 
@@ -317,13 +318,21 @@ function ShellLayout() {
   const { displayName, signOut } = useWorkbench();
   const location = useLocation();
   const pending = usePendingApprovals();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useCommandPaletteShortcut(setPaletteOpen);
   return (
-    <AppShell displayName={displayName} onSignOut={signOut} badges={{ activity: pending }}>
+    <AppShell
+      displayName={displayName}
+      onSignOut={signOut}
+      badges={{ activity: pending }}
+      headerActions={<CommandPaletteTrigger onOpen={() => setPaletteOpen(true)} />}
+    >
       <RouteErrorBoundary resetKey={location.pathname}>
         <Suspense fallback={<PageLoading />}>
           <Outlet />
         </Suspense>
       </RouteErrorBoundary>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </AppShell>
   );
 }

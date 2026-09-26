@@ -251,6 +251,18 @@ describe("App routing", () => {
     expect(screen.getByRole("combobox", { name: "Tenant" })).toHaveTextContent("Contoso Ltd");
   });
 
+  it("opens the command palette from anywhere in the shell and jumps to the chosen page", async () => {
+    const user = userEvent.setup();
+    renderApp("/");
+    expect(await pageHeading("Home")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Search and jump (Ctrl+K)" })).toBeInTheDocument();
+    await user.keyboard("{Control>}k{/Control}");
+    const dialog = await screen.findByRole("dialog", { name: "Command palette" });
+    await user.type(within(dialog).getByRole("combobox"), "mirror{ArrowDown}{Enter}");
+    expect(await pageHeading("Mirror access")).toBeInTheDocument();
+    expect(location()).toBe("/operations/access-parity");
+  });
+
   it("shows a helpful not-found page for an unknown route", async () => {
     renderApp("/no/such/place");
     expect(await pageHeading("Page not found")).toBeInTheDocument();
