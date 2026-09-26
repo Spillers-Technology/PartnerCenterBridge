@@ -30,8 +30,7 @@
     <AssemblyName>PartnerCenterBridge</AssemblyName>
     <!-- EF Core and the reflection-heavy libraries here are not trim-safe. -->
     <PublishTrimmed>false</PublishTrimmed>
-    <!-- One file to hand out: symbols inside the exe, no IIS web.config next to it. -->
-    <DebugType>embedded</DebugType>
+    <!-- One file to hand out: no IIS web.config next to it (the publish script embeds all symbols). -->
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
   </PropertyGroup>
 

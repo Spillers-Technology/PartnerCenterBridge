@@ -9,7 +9,8 @@
   Equivalent command:
     dotnet publish src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained `
       -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-      -p:EnableCompressionInSingleFile=true -p:PcbLocalWorkbench=true -o artifacts/local/win-x64
+      -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true `
+      -o artifacts/local/win-x64
 
 .EXAMPLE
   ./scripts/publish-local.ps1
@@ -31,6 +32,8 @@ $publishArgs = @(
     "-p:PublishSingleFile=true",
     "-p:IncludeNativeLibrariesForSelfExtract=true",
     "-p:EnableCompressionInSingleFile=true",
+    # Symbols of every project go inside the exe, so nothing but the exe lands in the output.
+    "-p:DebugType=embedded",
     "-p:PcbLocalWorkbench=true",
     "-o", $out
 )

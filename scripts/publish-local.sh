@@ -17,6 +17,6 @@ rm -rf "$out"
 dotnet publish "$root/src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj" \
   -c Release -r "$rid" --self-contained true \
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true \
-  -p:EnableCompressionInSingleFile=true -p:PcbLocalWorkbench=true \
+  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true \
   ${extra[@]+"${extra[@]}"} -o "$out"
 echo "Local Workbench: $out/PartnerCenterBridge"

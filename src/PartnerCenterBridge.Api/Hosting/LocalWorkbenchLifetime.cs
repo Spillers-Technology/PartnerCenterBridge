@@ -36,7 +36,7 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
         PrintBanner();
         if (!_options.OpenBrowser) return;
 
-        if (await WaitForHealthAsync(_options.CanonicalUrl, stoppingToken))
+        if (await WaitForHealthAsync(_options, stoppingToken))
             BrowserLauncher.TryOpen(_options.CanonicalUrl, _log);
         else
             _log.LogWarning("{Url}/health did not answer; not opening the browser. Open {Url} manually.",
@@ -64,14 +64,14 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
         _log.LogInformation("Local Workbench listening at {Url} (data {DataRoot})", _options.CanonicalUrl, _options.DataRoot);
     }
 
-    internal static async Task<bool> WaitForHealthAsync(string baseUrl, CancellationToken ct)
+    internal static async Task<bool> WaitForHealthAsync(LocalWorkbenchOptions options, CancellationToken ct)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         for (var attempt = 0; attempt < 40 && !ct.IsCancellationRequested; attempt++)
         {
             try
             {
-                using var response = await http.GetAsync(baseUrl + "/health", ct);
+                using var response = await http.SendAsync(LoopbackProbe.Get(options, "/health"), ct);
                 if (response.IsSuccessStatusCode) return true;
             }
             catch (HttpRequestException) { }
@@ -115,7 +115,7 @@ public static class PortPreflight
         // though our 127.0.0.1 bind succeeds.
         if (CanBind(options.ListenAddress, options.Port) && !await AcceptsConnectionAsync(IPAddress.IPv6Loopback, options.Port, ct))
             return PortState.Free;
-        return await IsBridgeAsync(options.CanonicalUrl, ct) ? PortState.ThisApp : PortState.OtherProgram;
+        return await IsBridgeAsync(options, ct) ? PortState.ThisApp : PortState.OtherProgram;
     }
 
     private static bool CanBind(IPAddress address, int port)
@@ -150,12 +150,12 @@ public static class PortPreflight
         }
     }
 
-    private static async Task<bool> IsBridgeAsync(string baseUrl, CancellationToken ct)
+    private static async Task<bool> IsBridgeAsync(LocalWorkbenchOptions options, CancellationToken ct)
     {
         try
         {
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            using var response = await http.GetAsync(baseUrl + "/api/system/status", ct);
+            using var response = await http.SendAsync(LoopbackProbe.Get(options, "/api/system/status"), ct);
             if (!response.IsSuccessStatusCode
                 || !response.Headers.TryGetValues(InstanceHeader, out var values)
                 || !values.Contains(InstanceHeaderValue))
@@ -167,5 +167,24 @@ public static class PortPreflight
         {
             return false;
         }
+    }
+}
+
+/// <summary>
+/// Requests to our own listener. They go to the bound IP (127.0.0.1 unless --listen chose another)
+/// with the canonical Host header: resolving "localhost" first tries [::1], and on Windows a refused
+/// loopback connect takes about two seconds before falling back, which would stall every probe.
+/// </summary>
+internal static class LoopbackProbe
+{
+    public static HttpRequestMessage Get(LocalWorkbenchOptions options, string path)
+    {
+        var address = options.ListenAddress.Equals(IPAddress.Any) ? IPAddress.Loopback
+            : options.ListenAddress.Equals(IPAddress.IPv6Any) ? IPAddress.IPv6Loopback
+            : options.ListenAddress;
+        var host = address.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{address}]" : address.ToString();
+        var request = new HttpRequestMessage(HttpMethod.Get, $"http://{host}:{options.Port}{path}");
+        request.Headers.Host = $"localhost:{options.Port}";
+        return request;
     }
 }
