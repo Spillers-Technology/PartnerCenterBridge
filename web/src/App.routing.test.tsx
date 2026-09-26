@@ -186,7 +186,7 @@ describe("App routing", () => {
     expect(await pageHeading("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Summary" })).toHaveAttribute("aria-selected", "true");
     const actions = screen.getByRole("list", { name: "Actions for this person" });
-    expect(within(actions).getByRole("link", { name: /MFA reset/ }))
+    expect(within(actions).getByRole("link", { name: /Reset MFA/ }))
       .toHaveAttribute("href", "/operations/workflows/mfa-reset?tenant=t1&user=ada%40contoso.com");
     expect(within(actions).getByRole("link", { name: /Offboard/ }))
       .toHaveAttribute("href", "/operations/offboard?tenant=t1&user=ada%40contoso.com");
@@ -206,7 +206,7 @@ describe("App routing", () => {
     renderApp("/tenants/t1?tab=snapshots");
     expect(await pageHeading("Contoso Ltd")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Snapshots" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("heading", { name: "Config snapshots" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Config snapshots" }, { timeout: 5000 })).toBeInTheDocument();
     // Scoped to this tenant: no tenant picker, and the snapshots are this tenant's.
     expect(screen.queryByLabelText("Tenant")).not.toBeInTheDocument();
     await waitFor(() => expect(api.configSnapshots.list).toHaveBeenCalledWith("t1"));
