@@ -166,9 +166,12 @@ public class OperationsEndpointsTests
         var diag = runs.Single(r => r.Kind == WorkflowRunKind.Diagnose);
         var rem = runs.Single(r => r.Kind == WorkflowRunKind.Remediate);
         Assert.Equal("user@contoso.com", rem.TargetId);
-        Assert.Equal(Outcome.Succeeded, rem.Outcome);
+        // No desired-state verification from this workflow: the post-run "Directory sync: Ok" is not
+        // proof the password changed, so the run is completed but unverified.
+        Assert.Equal(Outcome.CompletedUnverified, rem.Outcome);
         Assert.Equal("Set temporary password", rem.Evidence!.Changes.Single().Action);
-        Assert.Equal("Directory sync", rem.Evidence.Verification.Single().Name);
+        Assert.Empty(rem.Evidence.Verification);
+        Assert.Contains(rem.Evidence.Limitations, l => l.Contains("does not verify its changes"));
         Assert.Contains("1 of 1 step reported success", rem.Evidence.TicketNotes);
         Assert.Equal(Outcome.Planned, diag.Outcome);
         Assert.Equal("Directory sync", diag.Evidence!.Preflight.Single(f => f.Status == FindingStatus.Warning).Name);
@@ -196,8 +199,11 @@ public class OperationsEndpointsTests
 
         var e = Assert.IsType<OperationEvidence>(Assert.IsType<OkObjectResult>(await controller.Evidence(run.Id, null, CancellationToken.None)).Value);
 
-        // Steps reported ok but the re-diagnosis still shows a blocker: never "Succeeded".
-        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
+        // Legacy rows carry no per-change verification: never "Succeeded", and the post-run
+        // diagnosis is surfaced as an observation rather than as a verification result.
+        Assert.Equal(Outcome.CompletedUnverified, e.Outcome);
+        Assert.Empty(e.Verification);
+        Assert.Contains(e.Warnings, w => w.StartsWith("Post-run diagnosis: Usage location"));
         Assert.Equal("op", e.Operator);
     }
 

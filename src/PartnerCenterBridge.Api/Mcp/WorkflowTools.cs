@@ -110,11 +110,7 @@ public class WorkflowTools
             try
             {
                 var result = await workflow.RemediateAsync(tenant, inputs, ct);
-                run.Steps = result.Steps;
-                run.Findings = result.PostState?.Findings ?? new();
-                run.Healthy = result.PostState?.Healthy;
-                run.Succeeded = result.Succeeded;
-                run.Evidence = result.Evidence;
+                WorkflowEvidenceAdapter.ApplyRemediation(run, result);
                 var outcome = $"Executed immediately (tenant is in ClientTrust mode). Succeeded={result.Succeeded}.";
                 if (result.Ephemeral.Count > 0)
                     outcome += " One-time values: " + string.Join(", ", result.Ephemeral.Select(pair => $"{pair.Key}={pair.Value}")) + ".";

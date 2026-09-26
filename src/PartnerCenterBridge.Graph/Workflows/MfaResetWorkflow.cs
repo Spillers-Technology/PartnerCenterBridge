@@ -56,34 +56,64 @@ internal sealed class MfaResetWorkflow : IWorkflow
 
     public async Task<WorkflowRunResult> RemediateAsync(Tenant tenant, IReadOnlyDictionary<string, string> inputs, CancellationToken ct = default)
     {
-        var run = new WorkflowRunResult();
+        var run = new WorkflowRunResult { Verification = new() };
         var graph = await _graph.CreateAsync(tenant, ct);
         var userId = await ResolveUserIdAsync(graph, inputs["userUpn"], ct);
+        var startedAt = DateTimeOffset.UtcNow;
 
         await WorkflowSteps.RunAsync(run.Steps, "Revoke sign-in sessions", async () =>
         {
             await graph.PostAsync($"/users/{userId}/revokeSignInSessions", new { }, ct);
             return "revoked";
         });
+        var revokeStep = run.Steps.Count - 1;
 
         // Remove every deletable registered method so the user must re-register.
         using var doc = await graph.GetAsync($"/users/{userId}/authentication/methods", ct);
         var methods = doc.RootElement.TryGetProperty("value", out var v) ? v.EnumerateArray().ToList() : new();
-        var removed = 0;
+        var removals = new List<(int Step, string MethodId, string Type)>();
         foreach (var m in methods)
         {
             var type = m.TryGetProperty("@odata.type", out var t) ? t.GetString() : null;
             if (type is null || !Collections.TryGetValue(type, out var collection)) continue; // skip password / unknown
-            var methodId = m.GetProperty("id").GetString();
+            var methodId = m.GetProperty("id").GetString()!;
             await WorkflowSteps.RunAsync(run.Steps, $"Remove {FriendlyType(type)}", async () =>
             {
                 await graph.DeleteAsync($"/users/{userId}/authentication/{collection}/{methodId}", ct);
-                removed++;
                 return "removed";
             });
+            removals.Add((run.Steps.Count - 1, methodId, type));
         }
-        if (removed == 0)
+        if (removals.Count == 0)
+        {
             run.Steps.Add(new("Remove methods", true, "no removable methods registered"));
+            run.UnchangedSteps.Add(run.Steps.Count - 1);
+        }
+
+        // Desired-state verification: sessions revoked, and each removed method is gone. (The
+        // post-run diagnosis below warns "no strong MFA" -- that is the intended end state here, so
+        // it is shown for context only and is not the verification.)
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, startedAt, run, revokeStep, ct);
+        if (removals.Any(r => run.Steps[r.Step].Success))
+        {
+            HashSet<string>? remaining = null;
+            string? error = null;
+            try
+            {
+                using var after = await graph.GetAsync($"/users/{userId}/authentication/methods", ct);
+                remaining = (after.RootElement.TryGetProperty("value", out var av) ? av.EnumerateArray().ToList() : new())
+                    .Select(m => m.TryGetProperty("id", out var id) ? id.GetString() ?? "" : "")
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+            catch (GraphRequestException ex) { error = ex.Message; }
+            foreach (var (step, methodId, type) in removals.Where(r => run.Steps[r.Step].Success))
+            {
+                var name = $"{FriendlyType(type)} method removed";
+                if (remaining is null) run.Verify(step, name, false, $"Could not re-read authentication methods: {error}");
+                else if (remaining.Contains(methodId)) run.Verify(step, name, false, "Method is still registered on re-read.");
+                else run.Verify(step, name, true, "Method no longer registered on re-read.");
+            }
+        }
 
         run.PostState = await DiagnoseAsync(tenant, inputs, ct);
         return run;

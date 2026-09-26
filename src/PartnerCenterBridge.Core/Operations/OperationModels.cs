@@ -14,7 +14,13 @@ public enum Outcome
     NoChangeNeeded,
     VerificationFailed,
     /// <summary>A plan (or read-only diagnosis) was produced; nothing was applied.</summary>
-    Planned
+    Planned,
+    /// <summary>
+    /// Changes were applied and acknowledged by Microsoft but could not be independently verified:
+    /// every attempted change succeeded, none failed verification, and at least one change has no
+    /// read-back that can confirm it (for example a password value, or a device retire still pending).
+    /// </summary>
+    CompletedUnverified
 }
 
 /// <summary>The object an operation is about (usually a user).</summary>
@@ -97,13 +103,31 @@ public class VerificationCheck
     public bool Passed { get; set; }
     public string? Detail { get; set; }
 
+    /// <summary>
+    /// The plan item (change) this check verifies, e.g. <c>group:{id}</c> or <c>step-2</c>. Null for
+    /// whole-run checks and for records written before checks were linked to items.
+    /// </summary>
+    public string? PlanItemId { get; set; }
+
+    /// <summary>
+    /// The change was acknowledged but nothing PCB can read back confirms it (yet). Such a check is
+    /// neither passed nor failed: <see cref="Passed"/> is false and the outcome is at best
+    /// <see cref="Outcome.CompletedUnverified"/>, never <see cref="Outcome.Succeeded"/>.
+    /// </summary>
+    public bool Unverifiable { get; set; }
+
     public VerificationCheck() { }
-    public VerificationCheck(string name, bool passed, string? detail = null)
+    public VerificationCheck(string name, bool passed, string? detail = null, string? planItemId = null)
     {
         Name = name;
         Passed = passed;
         Detail = detail;
+        PlanItemId = planItemId;
     }
+
+    /// <summary>A change that was acknowledged but cannot be confirmed by a read-back.</summary>
+    public static VerificationCheck NotVerifiable(string name, string detail, string? planItemId = null) =>
+        new(name, false, detail, planItemId) { Unverifiable = true };
 }
 
 /// <summary>

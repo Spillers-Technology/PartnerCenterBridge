@@ -61,11 +61,7 @@ public class WorkflowRemediateExecutor : IPendingActionExecutor
         try
         {
             result = await workflow.RemediateAsync(tenant, payload.Inputs, ct);
-            run.Steps = result.Steps;
-            run.Findings = result.PostState?.Findings ?? new();
-            run.Healthy = result.PostState?.Healthy;
-            run.Succeeded = result.Succeeded;
-            run.Evidence = result.Evidence;
+            WorkflowEvidenceAdapter.ApplyRemediation(run, result);
         }
         catch (Exception ex)
         {
