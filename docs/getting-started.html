@@ -3,127 +3,207 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Getting started - Partner Center Bridge docs</title>
-<meta name="description" content="Run Partner Center Bridge locally with Docker Compose, then connect real customer tenants through GDAP and the Secure Application Model.">
-<meta name="theme-color" content="#ffffff">
+<title>Get started - Partner Center Bridge docs</title>
+<meta name="description" content="Download the signed Windows build of Partner Center Bridge, verify it, run it, create the administrator, and connect Microsoft 365 through GDAP and the Secure Application Model.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/getting-started.html">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Getting started - Partner Center Bridge docs">
-<meta property="og:description" content="Run Partner Center Bridge locally with Docker Compose, then connect real customer tenants through GDAP and the Secure Application Model.">
+<meta property="og:site_name" content="Partner Center Bridge">
+<meta property="og:title" content="Get started - Partner Center Bridge docs">
+<meta property="og:description" content="Download the signed Windows build of Partner Center Bridge, verify it, run it, create the administrator, and connect Microsoft 365 through GDAP and the Secure Application Model.">
 <meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/getting-started.html">
 <meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="960">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
 </head>
 <body>
-
 <a class="skip-link" href="#content">Skip to content</a>
+<!-- @header: shared across every page; keep in sync -->
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
     <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#features">Features</a>
       <a href="index.html#how-it-works">How it works</a>
-      <a href="index.html#screens">Screens</a>
-      <a href="index.html#status">Status</a>
-      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#security">Security</a>
+      <a href="getting-started.html" aria-current="page">Docs</a>
       <a href="index.html#faq">FAQ</a>
-      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a class="nav-icon" href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+      <a class="nav-download" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>Download</span></a>
     </nav>
   </div>
 </header>
+<!-- /@header -->
 
 <div class="docs-shell">
+  <!-- @sidebar: generated from the shared page list; keep in sync -->
   <aside class="docs-sidebar" aria-label="Documentation">
-    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Getting started</span><span class="chev" aria-hidden="true"></span></button>
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs</span>Get started</span><span class="chev" aria-hidden="true"></span></button>
     <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
-      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
       <div class="docs-nav-group">
         <p class="docs-nav-title">Get started</p>
         <ul>
-          <li><a href="getting-started.html" aria-current="page">Getting started</a></li>
+          <li><a href="getting-started.html" aria-current="page">Get started</a></li>
           <li><a href="local-workbench.html">Local Workbench</a></li>
-          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
-          <li><a href="deployment.html">Deployment</a></li>
         </ul>
       </div>
       <div class="docs-nav-group">
-        <p class="docs-nav-title">Concepts</p>
-        <ul>
-          <li><a href="architecture.html">Architecture</a></li>
-          <li><a href="authentication.html">Authentication</a></li>
-        </ul>
-      </div>
-      <div class="docs-nav-group">
-        <p class="docs-nav-title">Features</p>
+        <p class="docs-nav-title">Guides</p>
         <ul>
           <li><a href="operations.html">Operations</a></li>
           <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
         </ul>
       </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Reference</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-download">
+        <p><strong>Partner Center Bridge for Windows</strong>Signed, self-contained, no server needed.</p>
+        <a class="btn btn-primary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download</a>
+      </div>
     </nav>
   </aside>
+  <!-- /@sidebar -->
 
   <main id="content" class="docs-main">
 <article class="doc">
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
-<h1>Getting started</h1>
-
-<h2 id="local-workbench-quick-start">Local Workbench quick start (no server, no Docker)</h2>
-<p>
-  If you just want to run the app on your own Windows machine without standing up Postgres or
-  Docker at all, download or build <code>PartnerCenterBridge.exe</code> and run it:
-</p>
-<pre><code>PartnerCenterBridge.exe
-# Opens http://localhost:5080 in your browser once it is healthy.
-# Data (SQLite, keys, logs) lives under %LOCALAPPDATA%\PartnerCenterBridge.</code></pre>
-<p>
-  Register the first account -- it becomes the instance Administrator -- and you have a working,
-  self-registered, passkey-capable install with no external identity provider and no database
-  server. <code>PartnerCenterBridge.exe doctor</code> checks configuration and dependencies
-  (including Exchange Online, which is optional) and exits with a report. Build it yourself with
-  <code>./scripts/publish-local.ps1</code>, or see
-  <a href="local-workbench.html">Local Workbench</a> for the full CLI, data layout, diagnostics,
-  and how secrets are protected. This mode still needs the same partner app registration and GDAP
-  relationships as the server path below to reach real customer tenants -- see
-  <a href="#2-connect-real-tenants">Connect real tenants</a>.
+<h1>Get started</h1>
+<p class="lead">
+  Partner Center Bridge ships as one signed Windows program. Download it, run it, create the
+  administrator account (or skip it on an already-secured machine), and connect it to your partner
+  tenant. There is no server, database or
+  identity provider to set up first. If your team wants one shared instance instead, see
+  <a href="deployment.html">Run as a server</a>.
 </p>
 
-<h2 id="1-five-minute-local-demo-docker-compose">1. Five-minute local demo (docker-compose)</h2>
-<p>The fastest way to see the product. Auth is disabled in compose, so the UI works without
-an identity provider - you just can't reach real tenants yet. The published images on
-ghcr.io are public, so no clone or build is needed:</p>
-<pre><code>curl -LO https://raw.githubusercontent.com/Spillers-Technology/PartnerCenterBridge/main/docker-compose.ghcr.yml
-docker compose -f docker-compose.ghcr.yml up
-# SPA:  http://localhost:8082
-# API:  http://localhost:5080  (Swagger at /swagger)</code></pre>
-<p>Or build from source:</p>
-<pre><code>git clone https://github.com/Spillers-Technology/PartnerCenterBridge.git
-cd PartnerCenterBridge
-docker compose up --build</code></pre>
-<p>To point the same stack at real tenants later, create a <code>.env</code> file next to
-the compose file (see <code>.env.example</code> in the repo) and fill in the
-<code>PARTNER_*</code> (and optionally <code>EXCHANGE_*</code>) values - compose picks
-them up automatically.</p>
+<div class="download-panel">
+  <div>
+    <h3>Partner Center Bridge v0.9.0 for Windows</h3>
+    <p>PartnerCenterBridge-v0.9.0-win-x64.zip &middot; about 66 MB &middot; signed by Joseph Spillers &middot; SHA-256 checksum published next to it</p>
+  </div>
+  <a class="btn btn-primary" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download from GitHub Releases</a>
+</div>
 
-<p>Or run the pieces directly:</p>
-<pre><code># API (needs a Postgres; connection string in appsettings.json)
-dotnet run --project src/PartnerCenterBridge.Api
+<h2 id="requirements">Requirements</h2>
+<ul>
+  <li><strong>64-bit Windows (x64).</strong> The release is self-contained, so you do not need to
+      install .NET. Only a <code>win-x64</code> build is published. There is no macOS or Linux
+      executable.</li>
+  <li><strong>A current browser</strong> on the same machine. The app is served at
+      <code>http://localhost:5080</code>. Passkey sign-in needs a browser with WebAuthn support.</li>
+  <li><strong>To work in customer tenants:</strong> a CSP partner tenant, a multi-tenant Entra app
+      registration, and a GDAP relationship with each customer. See
+      <a href="#connect-microsoft">Connect Microsoft</a>.</li>
+  <li><strong>For mailbox features only:</strong> PowerShell 7, the
+      <code>ExchangeOnlineManagement</code> module and an app-only certificate. Everything else works
+      without them. See <a href="#exchange-online">Exchange Online</a>.</li>
+</ul>
 
-# SPA (proxies /api to http://localhost:5080)
-cd web &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
+<h2 id="download-and-verify">1. Download and verify</h2>
+<span id="local-workbench-quick-start"></span>
+<p>
+  From the <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">latest
+  release</a>, download <code>PartnerCenterBridge-v0.9.0-win-x64.zip</code> and the
+  <code>.sha256</code> file published next to it. Before you unzip, check that the hash matches. In
+  PowerShell, from the download folder:
+</p>
+<pre data-copy><code>$zip = "PartnerCenterBridge-v0.9.0-win-x64.zip"
+$expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
+(Get-FileHash $zip -Algorithm SHA256).Hash -eq $expected   # True means the zip is intact</code></pre>
+<p>
+  The executable is Authenticode-signed by Joseph Spillers. After unzipping you can confirm the
+  signature in the file's <strong>Properties &rsaquo; Digital Signatures</strong> tab, or run:
+</p>
+<pre data-copy><code>Get-AuthenticodeSignature .\PartnerCenterBridge.exe | Format-List Status, SignerCertificate</code></pre>
+<p class="muted">
+  If you would rather build it yourself, <code>./scripts/publish-local.ps1</code> produces the same
+  single-file exe from source. See <a href="local-workbench.html#building-it">Local Workbench: building it</a>.
+</p>
 
-<p>Tests need no tenant at all - orchestration is covered against WireMock:</p>
-<pre><code>dotnet test</code></pre>
+<h2 id="run-it">2. Run it</h2>
+<p>Unzip to a folder of your choice and start the program:</p>
+<pre data-copy><code>.\PartnerCenterBridge.exe</code></pre>
+<p>
+  On first launch it creates its data folder, sets up its SQLite database, prints a short banner
+  with the address and data path, waits until it is healthy, and then opens
+  <code>http://localhost:5080</code> in your browser. Leave the window open while you work and
+  press <kbd>Ctrl</kbd>+<kbd>C</kbd> in it to stop. Launching it a second time while it is already
+  running simply opens the browser to the running copy.
+</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Good to know</th><th>Detail</th></tr>
+  <tr><td>Where your data lives</td><td><code>%LOCALAPPDATA%\PartnerCenterBridge</code>: the database, encryption keys, logs and uploaded app packages. Change it with <code>--data-dir</code>.</td></tr>
+  <tr><td>Who can reach it</td><td>Only this machine. It listens on the loopback address unless you pass <code>--listen</code>.</td></tr>
+  <tr><td>Another port</td><td><code>.\PartnerCenterBridge.exe --port 5090</code></td></tr>
+  <tr><td>Check dependencies</td><td><code>.\PartnerCenterBridge.exe doctor</code> prints every check with its fix and exits (exit code 1 if anything is an error).</td></tr>
+  <tr><td>All options</td><td><code>.\PartnerCenterBridge.exe --help</code>, or see <a href="local-workbench.html#running-it">Local Workbench: running it</a>.</td></tr>
+</table>
+</div>
 
-<h2 id="2-connect-real-tenants">2. Connect real tenants</h2>
-<p>To act in customer tenants the bridge needs the standard CSP plumbing you likely
-already have as an MSP:</p>
+<h2 id="create-the-administrator">3. First launch: create the administrator</h2>
+<p>
+  A new install has no accounts, so the first screen asks how you want to use it:
+</p>
+<ul>
+  <li><strong>Create an administrator account (recommended).</strong> The first account you
+      register becomes the instance Administrator. After that you sign in with a passkey (once you
+      register one under your account's Security settings) or your password, and you can add TOTP
+      two-factor authentication. Anyone else who registers later starts with no access until you
+      share tenants with them. See <a href="authentication.html">Authentication</a>.</li>
+  <li><strong>Skip &mdash; use without an account on this computer.</strong> An explicit choice
+      for a machine that is already secured: screen lock, disk encryption, and no shared Windows
+      account. The program opens your browser with a one-time launch link tied to your Windows user
+      (its secret is stored DPAPI-protected in the data folder), so other Windows users and web pages
+      cannot use it. Opening a bookmark later just tells you to start it from
+      <code>PartnerCenterBridge.exe</code> again. You can add a password later in Settings.</li>
+</ul>
+<div class="callout">
+  The no-account option exists only in the Windows program. It is never available in server or
+  Docker mode, and it is turned off when the program is exposed to the network with
+  <code>--listen</code>.
+</div>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-register.jpg" alt="Register screen: email, display name and password fields under a Create an account heading." loading="lazy">
+  </button>
+</figure>
+<p>
+  You land on Home. Its <strong>Finish setting up</strong> card lists only what still needs
+  attention, such as the Microsoft connection, a tenant without GDAP delegation or the Exchange
+  module, and links each item to the screen that fixes it.
+</p>
+
+<h2 id="connect-microsoft">4. Connect Microsoft</h2>
+<span id="2-connect-real-tenants"></span>
+<p>
+  To act in customer tenants, the bridge uses the same CSP setup most MSPs already have. It reaches
+  each tenant through your GDAP relationship and a multi-tenant app under the Secure Application
+  Model. Nothing is installed in the customer tenant.
+</p>
 <div class="table-wrap">
 <table>
   <tr><th>Requirement</th><th>Why</th></tr>
@@ -135,7 +215,7 @@ already have as an MSP:</p>
   <tr>
     <td><strong>GDAP relationship</strong> per customer, with roles covering what you use
         (Intune administration, user management, Exchange recipient management)</td>
-    <td>Scopes what the bridge can touch in each tenant. No GDAP, no access - the tenant
+    <td>Scopes what the bridge can touch in each tenant. No GDAP, no access: the tenant
         shows as <span class="badge err">NoDelegation</span>.</td>
   </tr>
   <tr>
@@ -157,7 +237,36 @@ already have as an MSP:</p>
 </table>
 </div>
 
-<h3>App registration permissions</h3>
+<h3 id="configure-the-partner-app">Tell the bridge about your app registration</h3>
+<p>
+  The Windows build reads optional settings from <code>pcb.local.json</code> in its data folder.
+  Create <code>%LOCALAPPDATA%\PartnerCenterBridge\pcb.local.json</code> with your app's details, then
+  restart the program:
+</p>
+<pre data-copy><code>{
+  "Partner": {
+    "ClientId": "&lt;application (client) id of the multi-tenant app&gt;",
+    "ClientSecret": "&lt;client secret&gt;",
+    "PartnerTenantId": "&lt;your partner tenant id&gt;"
+  }
+}</code></pre>
+<p>
+  This file is plain JSON inside a folder only your Windows account can read. If you would rather not
+  keep the secret in a file, set it as an environment variable (<code>Partner__ClientSecret</code>)
+  or pass it on the command line (<code>--Partner:ClientSecret=...</code>). Both take precedence over
+  <code>pcb.local.json</code>.
+</p>
+
+<h3 id="bootstrap-sam">Run the one-time SAM bootstrap</h3>
+<pre data-copy><code>.\PartnerCenterBridge.exe bootstrap-sam</code></pre>
+<p>
+  It prints a sign-in URL and code. Sign in with an MFA'd admin-agent account from your partner
+  tenant. The bridge stores the refresh token encrypted in its data folder and rotates it on every
+  use. The command exits when it is done and does not start the web app. Other ways to seed the
+  token are described in <a href="sam-bootstrap.html">SAM bootstrap</a>.
+</p>
+
+<h3 id="app-registration-permissions">App registration permissions</h3>
 <p>The Secure Application Model uses <strong>delegated</strong> (App+User) permissions: the
 bridge acts as the admin agent whose refresh token you seed at bootstrap. Grant these
 delegated permissions on the multi-tenant app registration and admin-consent them in your
@@ -204,44 +313,85 @@ this list with the roles on that customer's GDAP relationship.</p>
   <tr>
     <td>Microsoft Graph</td>
     <td><code>Policy.Read.All</code></td>
-    <td><a href="config-snapshots.html">Config Snapshots</a>: reading Conditional Access Policies and Named Locations.</td>
+    <td><a href="config-snapshots.html">Config snapshots</a>: reading Conditional Access Policies and Named Locations.</td>
   </tr>
   <tr>
     <td>Microsoft Graph</td>
     <td><code>DeviceManagementConfiguration.Read.All</code></td>
-    <td><a href="config-snapshots.html">Config Snapshots</a>: reading Device Compliance Policies.</td>
+    <td><a href="config-snapshots.html">Config snapshots</a>: reading Device Compliance Policies.</td>
   </tr>
 </table>
 </div>
 <div class="callout">Treat this as the minimum. Because tokens are requested with
-<code>/.default</code>, the bridge can only ever use what is consented on the app - adding a
+<code>/.default</code>, the bridge can only ever use what is consented on the app. Adding a
 permission later means re-consenting in the partner tenant (customer tenants inherit via
 GDAP + the multi-tenant consent).</div>
 
-<h2 id="3-first-session">3. First session</h2>
-<ol>
-  <li><strong>Sync tenants:</strong> the Tenants tab pulls your customer list from Partner Center.</li>
-  <li><strong>Create a contract:</strong> a named group of tenants sharing a desired state.</li>
-  <li><strong>Assign tenants</strong> to the contract.</li>
-  <li><strong>Add an app template</strong> (upload an <code>.intunewin</code> produced by the
-      Microsoft Win32 Content Prep Tool) or a <strong>provisioning template</strong>
-      (licenses, groups, UPN domain).</li>
-  <li><strong>Deploy / provision / run workflows.</strong> Everything shows its plan or its
-      diagnosis before it acts, and its steps after.</li>
-  <li><strong>Take a config snapshot</strong> (optional): the Config Snapshots tab backs up
-      Conditional Access, Named Locations, and Device Compliance Policies for a tenant and diffs
-      any two runs. See <a href="config-snapshots.html">Config Snapshots</a>.</li>
+<h2 id="add-tenants">5. Add your customer tenants</h2>
+<p>
+  Open <strong>Tenants</strong> and choose <strong>Sync from Partner Center</strong> to pull in your
+  customer list, or add a tenant by hand. Adding tenants is an Administrator task, and the
+  Administrator who adds a tenant becomes its <strong>Owner</strong>. Each tenant shows its
+  delegation status, so a customer without a GDAP relationship is flagged
+  <span class="badge err">NoDelegation</span> instead of failing later.
+</p>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-tenants.jpg" alt="Tenants screen listing customer tenants with their delegation status and assigned contract, and a Sync from Partner Center button." loading="lazy">
+  </button>
+</figure>
+<p>
+  To give colleagues access on the same instance, share a tenant with them as
+  <strong>Viewer</strong>, <strong>Operator</strong> or <strong>Owner</strong>. Even an instance
+  Administrator cannot bypass these per-tenant grants.
+</p>
+
+<h2 id="exchange-online">Optional: Exchange Online</h2>
+<p>
+  Mailbox operations (mailbox archive repair, and converting or forwarding a leaver's mailbox during
+  offboarding) run through Exchange Online PowerShell, out of process. They need three things,
+  and the app says which one is missing instead of failing silently:
+</p>
+<ol class="doc-steps">
+  <li><strong>PowerShell 7</strong> (<code>pwsh</code>) on PATH, or its path in <code>Exchange:PwshPath</code>.</li>
+  <li><strong>The ExchangeOnlineManagement module</strong> installed for it:
+<pre data-copy><code>pwsh -c "Install-Module ExchangeOnlineManagement -Scope CurrentUser"</code></pre></li>
+  <li><strong>An app-only certificate</strong>: set <code>Exchange:AppId</code> in
+      <code>pcb.local.json</code> and place the PFX at <code>certs\exo.pfx</code> in the data folder
+      (or set <code>Exchange:CertificatePath</code>). The app needs <code>Exchange.ManageAsApp</code>
+      and the Exchange Administrator role.</li>
+</ol>
+<p>
+  Run <code>.\PartnerCenterBridge.exe doctor</code> afterwards. The <code>pwsh</code>,
+  <code>exchange-module</code> and <code>exchange-app</code> checks should all pass. Full detail:
+  <a href="local-workbench.html#exchange-online-as-an-optional-dependency">Exchange Online as an optional dependency</a>.
+</p>
+
+<h2 id="3-first-session">Your first session</h2>
+<ol class="doc-steps">
+  <li><strong>Find a person.</strong> Search from Home or People across every active tenant and open
+      their workspace: summary, access, licensing, authentication, mailbox, devices and history.</li>
+  <li><strong>Run a known fix.</strong> MFA reset, password reset, compromised-account lockdown,
+      license repair or mailbox archive repair. Each one shows its diagnosis before anything changes.
+      See <a href="workflows.html">Workflows</a>.</li>
+  <li><strong>Mirror access or offboard someone.</strong> Review the plan, apply what you choose, and
+      copy the ticket notes from the evidence view. See <a href="operations.html">Operations</a>.</li>
+  <li><strong>Set up a contract.</strong> Group tenants into a contract, add an app template (an
+      <code>.intunewin</code> from the Microsoft Win32 Content Prep Tool) or provisioning defaults
+      (licenses, groups, UPN domain), and deploy.</li>
+  <li><strong>Take a config snapshot</strong> (optional). Back up Conditional Access, Named Locations
+      and Device Compliance policies for a tenant and diff any two captures. See
+      <a href="config-snapshots.html">Config snapshots</a>.</li>
 </ol>
 
-<div class="callout">
-  <strong>Operator auth:</strong> two real options for production, not just one. Put the SPA and
-  API behind your own OIDC provider (tested with Authentik) via the <code>Auth</code> section
-  (authority, audience) and matching <code>VITE_OIDC_*</code> SPA variables -- or set
-  <code>Auth:Mode=Local</code> for self-registered accounts (passkeys, TOTP, per-tenant sharing)
-  with no external IdP at all. Full detail: <a href="authentication.html">Authentication</a>.
-  <code>Auth:Mode=Dev</code> (<code>Auth:Enabled=false</code>) is for local development only --
-  never on a deployed instance.
-</div>
+<h2 id="1-five-minute-local-demo-docker-compose">Prefer Docker or a shared server?</h2>
+<p>
+  The same app also runs as containers (Postgres, the API and the web app) for teams that want one
+  shared instance, with sign-in through your own OIDC provider or local accounts. Docker Compose
+  with the published <code>ghcr.io</code> images is the quickest way to evaluate it, and the
+  repository includes a Kustomize template for Kubernetes. See
+  <a href="deployment.html">Run as a server</a>.
+</p>
 
 <nav class="doc-pager" aria-label="Previous and next page">
   <a class="next" href="local-workbench.html"><span>Next &rarr;</span>Local Workbench</a>
@@ -254,56 +404,51 @@ GDAP + the multi-tenant consent).</div>
   </aside>
 </div>
 
+<!-- @footer: shared across every page; keep in sync -->
 <footer class="site-footer">
-  <div class="wrap stack-strip">
-    <span class="stack-strip-label">Built on</span>
-    <span>ASP.NET Core 8</span>
-    <span>React + Vite + TS</span>
-    <span>PostgreSQL</span>
-    <span>Microsoft Graph</span>
-    <span>Partner Center API</span>
-    <span>Exchange Online PowerShell V3</span>
-  </div>
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <span class="brand-name">Partner Center <b>Bridge</b></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center Bridge</span>
       </a>
-      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+      <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>
+      <p class="footer-release"><a class="btn btn-secondary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download for Windows</a></p>
     </div>
     <nav class="footer-col" aria-label="Product">
       <h2>Product</h2>
       <ul>
-        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#features">Features</a></li>
         <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#security">Security</a></li>
+        <li><a href="index.html#status">Maturity</a></li>
         <li><a href="index.html#screens">Screens</a></li>
-        <li><a href="index.html#status">What's real today</a></li>
         <li><a href="index.html#faq">FAQ</a></li>
       </ul>
     </nav>
     <nav class="footer-col" aria-label="Documentation">
       <h2>Docs</h2>
       <ul>
-          <li><a href="getting-started.html">Getting started</a></li>
+          <li><a href="getting-started.html">Get started</a></li>
           <li><a href="local-workbench.html">Local Workbench</a></li>
-          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
-          <li><a href="deployment.html">Deployment</a></li>
-          <li><a href="architecture.html">Architecture</a></li>
-          <li><a href="authentication.html">Authentication</a></li>
           <li><a href="operations.html">Operations</a></li>
           <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
       </ul>
     </nav>
     <nav class="footer-col" aria-label="Project">
       <h2>Project</h2>
       <ul>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">Releases</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" rel="noopener">Security policy</a></li>
         <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
       </ul>
     </nav>
@@ -313,6 +458,8 @@ GDAP + the multi-tenant consent).</div>
     <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
   </div>
 </footer>
+<!-- /@footer -->
 <script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
 </body>
 </html>
