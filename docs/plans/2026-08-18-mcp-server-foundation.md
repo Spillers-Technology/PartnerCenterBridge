@@ -15,7 +15,7 @@ approves them, which invokes the same service call a direct controller action wo
 **Tech Stack:** .NET 8, EF Core (Postgres in prod, Sqlite in tests), `ModelContextProtocol.AspNetCore`,
 React/Vite/TS.
 
-**Spec:** `docs/superpowers/specs/2026-08-18-mcp-server-design.md`
+**Spec:** `docs/specs/2026-08-18-mcp-server-design.md`
 
 ## Global Constraints
 

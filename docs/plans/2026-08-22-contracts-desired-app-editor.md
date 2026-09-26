@@ -12,7 +12,7 @@
 
 **Tech Stack:** ASP.NET Core 8 / EF Core (Sqlite in-memory for tests) on the backend; React 19 + MUI v9 + Vitest/Testing Library on the frontend.
 
-**Spec:** `docs/superpowers/specs/2026-08-22-contracts-desired-app-editor-design.md`
+**Spec:** `docs/specs/2026-08-22-contracts-desired-app-editor-design.md`
 
 ## Global Constraints
 
