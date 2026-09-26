@@ -166,13 +166,13 @@ public class ExchangeOnlineServiceTests
     }
 
     [Fact]
-    public async Task GetMailbox_returns_null_only_when_exchange_confirms_no_such_mailbox()
+    public async Task GetMailbox_returns_null_only_on_the_scripts_not_found_marker()
     {
         var runner = new FakeRunner(new PwshResult(0,
             """
-            {"success":false,"steps":[{"name":"Connect","success":true,"detail":"contoso"},
-              {"name":"Error","success":false,"detail":"The operation couldn't be performed because object 'nobody@contoso.com' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'."}],
-             "data":null}
+            {"success":true,"steps":[{"name":"Connect","success":true,"detail":"contoso"},
+              {"name":"Mailbox not found","success":true,"detail":"Exchange Online has no mailbox 'nobody@contoso.com'."}],
+             "data":null,"notFound":true}
             """, ""));
 
         Assert.Null(await Service(runner).GetMailboxAsync(Tenant(), "nobody@contoso.com"));
@@ -185,11 +185,121 @@ public class ExchangeOnlineServiceTests
         var runner = new FakeRunner(new PwshResult(0,
             """
             {"success":false,"steps":[{"name":"Error","success":false,"detail":"AADSTS700027: Client assertion contains an invalid signature."}],
-             "data":null}
+             "data":null,"notFound":false}
             """, ""));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Service(runner).GetMailboxAsync(Tenant(), "ada@contoso.com"));
         Assert.Contains("AADSTS700027", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetMailbox_throws_on_a_connect_failure_that_says_could_not_be_found()
+    {
+        // Not the mailbox lookup: the certificate (or the organization) could not be found. Only the
+        // structured marker means "no mailbox", never a message that happens to read like one.
+        var runner = new FakeRunner(new PwshResult(0,
+            """
+            {"success":false,"steps":[{"name":"Error","success":false,"detail":"The certificate file '/certs/exo.pfx' could not be found."}],
+             "data":null,"notFound":false}
+            """, ""));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Service(runner).GetMailboxAsync(Tenant(), "ada@contoso.com"));
+        Assert.Contains("could not be found", ex.Message);
+    }
+
+    [Fact]
+    public async Task GetMailbox_throws_when_the_result_has_neither_data_nor_a_not_found_marker()
+    {
+        var runner = new FakeRunner(new PwshResult(0, """{"success":true,"steps":[],"data":null}""", ""));
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => Service(runner).GetMailboxAsync(Tenant(), "ada@contoso.com"));
+        Assert.Contains("did not confirm", ex.Message);
+    }
+
+    /// <summary>
+    /// The real exo-op.ps1 against a stand-in ExchangeOnlineManagement module: only a lookup that
+    /// Exchange reports as "object not found" becomes the notFound marker. Soft-skips without pwsh 7.
+    /// </summary>
+    [Theory]
+    [InlineData("ada@contoso.com", "contoso.onmicrosoft.com", "found")]
+    [InlineData("nobody@contoso.com", "contoso.onmicrosoft.com", "null")]      // ObjectNotFound category
+    [InlineData("gone@contoso.com", "contoso.onmicrosoft.com", "null")]        // REST error: lookup message fallback
+    [InlineData("busy@contoso.com", "contoso.onmicrosoft.com", "throws")]      // throttled lookup
+    [InlineData("ada@contoso.com", "nocert.onmicrosoft.com", "throws")]        // connect says "could not be found"
+    public async Task Script_marks_not_found_only_for_the_lookup(string identity, string organization, string expected)
+    {
+        if (!PwshAvailable()) return;
+        var dir = Path.Combine(Path.GetTempPath(), "pcb-exo-fake-" + Guid.NewGuid().ToString("N"));
+        var module = Path.Combine(dir, "modules", "ExchangeOnlineManagement");
+        Directory.CreateDirectory(module);
+        await File.WriteAllTextAsync(Path.Combine(module, "ExchangeOnlineManagement.psm1"),
+            """
+            function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword)
+                if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." } }
+            function Disconnect-ExchangeOnline { param($Confirm) }
+            function Get-EXOMailbox { [CmdletBinding()] param($Identity, $Properties)
+                switch -Wildcard ($Identity) {
+                    'nobody@*' { Write-Error -Message "The operation couldn't be performed because object '$Identity' couldn't be found." -Category ObjectNotFound -ErrorAction Stop }
+                    'gone@*' { throw "Error while querying REST service. HttpStatusCode=404 ErrorMessage=The operation couldn't be performed because object '$Identity' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'." }
+                    'busy@*' { throw 'Server is busy; the request was throttled.' }
+                    default { [pscustomobject]@{ UserPrincipalName = $Identity; DisplayName = 'Ada'; RecipientTypeDetails = 'UserMailbox';
+                                                 ForwardingSmtpAddress = $null; DeliverToMailboxAndForward = $false } }
+                } }
+            """);
+        try
+        {
+            var service = new ExchangeOnlineService(new FakeModuleRunner(Path.Combine(dir, "modules"), dir),
+                Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
+                NullLogger<ExchangeOnlineService>.Instance);
+            var tenant = new Tenant { TenantId = "t-id", DisplayName = "Contoso", DefaultDomain = organization };
+
+            switch (expected)
+            {
+                case "found":
+                    Assert.Equal(identity, (await service.GetMailboxAsync(tenant, identity))!.UserPrincipalName);
+                    break;
+                case "null":
+                    Assert.Null(await service.GetMailboxAsync(tenant, identity));
+                    break;
+                default:
+                    await Assert.ThrowsAsync<InvalidOperationException>(() => service.GetMailboxAsync(tenant, identity));
+                    break;
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
+    }
+
+    /// <summary>Runs the given script through a wrapper that puts the stand-in module first on PSModulePath.</summary>
+    private sealed class FakeModuleRunner(string modulePath, string workDir) : IPwshRunner
+    {
+        public async Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
+        {
+            var wrapper = Path.Combine(workDir, $"wrapper-{Guid.NewGuid():N}.ps1");
+            await File.WriteAllTextAsync(wrapper,
+                "param([string]$PayloadPath)\n" +
+                $"$env:PSModulePath = '{modulePath.Replace("'", "''")}' + [IO.Path]::PathSeparator + $env:PSModulePath\n" +
+                $"& '{scriptPath.Replace("'", "''")}' -PayloadPath $PayloadPath\n", ct);
+            return await new PwshRunner("pwsh", timeoutSeconds: 120).RunAsync(wrapper, payloadJson, ct);
+        }
+    }
+
+    private static bool PwshAvailable()
+    {
+        try
+        {
+            using var p = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "pwsh", Arguments = "-NoProfile -Command \"exit 0\"",
+                UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true
+            });
+            if (p is null) return false;
+            p.WaitForExit(10000);
+            return true;
+        }
+        catch { return false; }
     }
 
     private sealed class FakeRunner : IPwshRunner
