@@ -116,6 +116,47 @@ public sealed class LocalHostingSecurityTests : IDisposable
     }
 
     [Fact]
+    public void Existing_data_root_shared_with_another_named_principal_is_refused()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        Assert.Empty(LocalDataDirectory.Ensure(Options(dataDir: _dataDir))); // fresh, private root
+        Assert.Null(LocalDataDirectory.FindInsecurePermissions(_dataDir));
+        // Not one of the broad groups: a specific group (or another user) that is still not the
+        // current user, SYSTEM or Administrators.
+        var other = new SecurityIdentifier(WellKnownSidType.BuiltinBackupOperatorsSid, null);
+        var info = new DirectoryInfo(_dataDir);
+        var security = info.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(other, FileSystemRights.Read,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+        info.SetAccessControl(security);
+
+        Assert.NotNull(LocalDataDirectory.FindInsecurePermissions(_dataDir));
+        var error = Assert.Throws<InvalidOperationException>(() => LocalDataDirectory.Ensure(Options(dataDir: _dataDir)));
+        Assert.Contains("not private to the current user", error.Message);
+    }
+
+    [Fact]
+    public void Sensitive_file_shared_explicitly_inside_a_private_root_is_refused()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var options = Options(dataDir: _dataDir);
+        Assert.Empty(LocalDataDirectory.Ensure(options)); // fresh, private root
+        File.WriteAllText(options.DatabasePath, "db");
+        Assert.Empty(LocalDataDirectory.Ensure(options)); // inherited-only file: fine
+
+        var file = new FileInfo(options.DatabasePath);
+        var security = file.GetAccessControl();
+        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinBackupOperatorsSid, null),
+            FileSystemRights.Read, AccessControlType.Allow));
+        file.SetAccessControl(security);
+
+        Assert.Null(LocalDataDirectory.FindInsecurePermissions(_dataDir)); // the root itself is still private
+        var error = Assert.Throws<InvalidOperationException>(() => LocalDataDirectory.Ensure(options));
+        Assert.Contains("pcb.db", error.Message);
+        Assert.Contains("icacls", error.Message);
+    }
+
+    [Fact]
     public void Existing_private_data_root_and_a_fresh_root_are_accepted()
     {
         // Fresh: created and restricted here.
