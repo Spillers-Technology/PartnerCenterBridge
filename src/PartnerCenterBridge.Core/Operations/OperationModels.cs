@@ -158,3 +158,14 @@ public class OperationEvidence
 
 /// <summary>Raised when operation inputs are invalid in a way the caller must fix (maps to HTTP 400).</summary>
 public class OperationInputException(string message) : Exception(message);
+
+/// <summary>
+/// An apply was cut short (request cancelled, or an unexpected error) after it may already have
+/// changed something. <see cref="Partial"/> records the completed changes and marks the rest as
+/// interrupted, so callers persist it rather than a bare failure.
+/// </summary>
+public class OperationInterruptedException(OperationEvidence partial, Exception inner)
+    : Exception($"The operation was interrupted after partial changes: {inner.Message}", inner)
+{
+    public OperationEvidence Partial { get; } = partial;
+}

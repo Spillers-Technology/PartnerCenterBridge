@@ -67,6 +67,7 @@ public class WorkflowRemediateExecutor : IPendingActionExecutor
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             throw;
         }
         finally

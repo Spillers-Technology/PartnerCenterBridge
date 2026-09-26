@@ -148,10 +148,11 @@ public class AccessParityOperationTests : IDisposable
         StubAdd("g1");
         StubAdd("g2");
 
-        // Selecting an ineligible item must not cause a write for it.
+        // Selecting an ineligible item must not cause a write for it -- and, being selected but not
+        // fulfilled, it keeps the run from counting as a full success.
         var e = await Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:g2", "group:d1", "group:dl"]);
 
-        Assert.Equal(Outcome.Succeeded, e.Outcome);
+        Assert.Equal(Outcome.PartiallySucceeded, e.Outcome);
         Assert.DoesNotContain("DELETE", Methods());
         Assert.DoesNotContain("PATCH", Methods());
         Assert.DoesNotContain("PUT", Methods());
@@ -163,7 +164,9 @@ public class AccessParityOperationTests : IDisposable
 
         Assert.Equal(
             "Compared Bob Target's group memberships against source user Alice Source. " +
-            "Added 2 missing eligible group memberships. " +
+            "Added 2 missing eligible group memberships (verified). " +
+            "2 selected items could not be applied: Dyn One (Skipped: Dynamic group; membership is rule-managed and cannot be changed directly); " +
+            "Staff DL (Skipped: Managed in Exchange Online; not modified by this operation). " +
             "2 dynamic groups were identified and skipped because membership is rule-managed. " +
             "1 mail-enabled security group or distribution list was skipped because they are managed in Exchange Online. " +
             "Existing target memberships were preserved. " +
@@ -219,7 +222,7 @@ public class AccessParityOperationTests : IDisposable
         Assert.True(failed.Attempted);
         Assert.False(failed.Succeeded);
         Assert.Contains("insufficient privileges", e.Failures.Single(), StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Added 1 missing eligible group membership.", e.TicketNotes);
+        Assert.Contains("Added 1 missing eligible group membership (verified).", e.TicketNotes);
         Assert.Contains("1 membership could not be added: Payroll (insufficient privileges).", e.TicketNotes);
         Assert.Contains("Post-change verification confirmed the 1 addition.", e.TicketNotes);
     }
@@ -258,5 +261,73 @@ public class AccessParityOperationTests : IDisposable
         Assert.NotNull(run.Evidence);
         Assert.Equal(Outcome.Succeeded, run.Evidence!.Outcome);
         Assert.Single(_server.LogEntries.Where(l => l.RequestMessage.Method == "POST"));
+    }
+
+    [Fact]
+    public async Task Selected_items_that_are_no_longer_eligible_count_against_the_outcome()
+    {
+        StubUsers();
+        StubSource(Group("g1", "Finance"), Group("dyn", "Dyn", groupTypes: ["DynamicMembership"]));
+        StubTarget(before: [], after: []);
+
+        // One selection vanished from the plan, the other became ineligible: nothing was fulfilled.
+        var e = await Op().ApplyAsync(Tenant(), In(), ["group:gone", "group:dyn"]);
+
+        Assert.Equal(Outcome.Failed, e.Outcome);
+        Assert.DoesNotContain("POST", Methods());
+
+        // ...and alongside a verified addition it is a partial success, not a success.
+        _server.Reset();
+        StubUsers();
+        StubSource(Group("g1", "Finance"));
+        StubTarget(before: [], after: [Group("g1", "Finance")]);
+        StubAdd("g1");
+        var mixed = await Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:gone"]);
+        Assert.Equal(Outcome.PartiallySucceeded, mixed.Outcome);
+    }
+
+    [Fact]
+    public async Task Notes_say_added_only_for_verified_memberships()
+    {
+        StubUsers();
+        StubSource(Group("g1", "Finance"), Group("g2", "Sales"));
+        StubTarget(before: [], after: [Group("g1", "Finance")]); // g2 reported added, not present
+        StubAdd("g1");
+        StubAdd("g2");
+
+        var e = await Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:g2"]);
+
+        Assert.Equal(Outcome.VerificationFailed, e.Outcome);
+        Assert.Contains("Added 1 missing eligible group membership (verified).", e.TicketNotes);
+        Assert.Contains("1 membership reported added by Graph but not confirmed: Sales.", e.TicketNotes);
+        Assert.DoesNotContain("Added 2", e.TicketNotes);
+    }
+
+    [Fact]
+    public async Task Cancellation_mid_apply_keeps_the_completed_addition_as_partial_evidence()
+    {
+        StubUsers();
+        StubSource(Group("g1", "Finance"), Group("g2", "Sales"));
+        StubTarget(before: [], after: []);
+        StubAdd("g1");
+        using var cts = new CancellationTokenSource();
+        // The second add hangs until the request is cancelled.
+        _server.Given(Request.Create().WithPath("/groups/g2/members/$ref").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(204).WithDelay(TimeSpan.FromSeconds(30)));
+        cts.CancelAfter(TimeSpan.FromSeconds(3));
+
+        var ex = await Assert.ThrowsAsync<OperationInterruptedException>(
+            () => Op().ApplyAsync(Tenant(), In(), ["group:g1", "group:g2"], cts.Token));
+
+        var e = ex.Partial;
+        var g1 = e.Changes.Single(c => c.PlanItemId == "group:g1");
+        Assert.True(g1.Attempted && g1.Succeeded);
+        var g2 = e.Changes.Single(c => c.PlanItemId == "group:g2");
+        Assert.False(g2.Attempted);
+        Assert.StartsWith("Interrupted", g2.Detail);
+        Assert.False(e.Verification.Single(v => v.PlanItemId == "group:g1").Passed);
+        Assert.NotEqual(Outcome.Succeeded, e.Outcome);
+        Assert.Contains(e.Failures, f => f.StartsWith("Interrupted"));
+        Assert.IsAssignableFrom<OperationCanceledException>(ex.InnerException);
     }
 }

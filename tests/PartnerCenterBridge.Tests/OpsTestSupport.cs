@@ -114,6 +114,7 @@ internal sealed class FakePlannedOperation : IPlannedOperation
     public int PlanCalls { get; private set; }
     public int ApplyCalls { get; private set; }
     public IReadOnlyCollection<string>? LastSelection { get; private set; }
+    public Exception? ApplyThrows { get; set; }
 
     public OperationEvidence Evidence { get; set; } = new()
     {
@@ -141,6 +142,7 @@ internal sealed class FakePlannedOperation : IPlannedOperation
     {
         ApplyCalls++;
         LastSelection = selectedItemIds;
+        if (ApplyThrows is not null) throw ApplyThrows;
         return Task.FromResult(Evidence);
     }
 

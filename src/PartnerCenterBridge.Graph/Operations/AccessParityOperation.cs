@@ -147,7 +147,25 @@ internal sealed class AccessParityOperation : IPlannedOperation
         };
 
         var attempts = new List<Attempt>();
-        foreach (var id in selectedItemIds.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase))
+        var outcomes = new List<ItemOutcome>();
+        var selected = selectedItemIds.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var processed = 0;
+        Exception? interrupted = null;
+        try
+        {
+            foreach (var id in selected)
+            {
+                await ApplyOneAsync(id);
+                processed++;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Cancellation or an unexpected error mid-apply: keep what already happened.
+            interrupted = ex;
+        }
+
+        async Task ApplyOneAsync(string id)
         {
             var item = plan.Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
             if (item is null)
@@ -158,7 +176,8 @@ internal sealed class AccessParityOperation : IPlannedOperation
                     Detail = "Not in the current plan (the source may no longer be a member); skipped."
                 });
                 e.Warnings.Add($"Selected item {id} is no longer in the plan and was skipped.");
-                continue;
+                outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true)); // selected, not fulfilled
+                return;
             }
             if (item.Category == MembershipCategory.AlreadyMember)
             {
@@ -167,7 +186,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
                     PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName,
                     Attempted = false, Succeeded = true, Detail = "Already a member; no change needed."
                 });
-                continue;
+                return; // genuine no-op
             }
             if (!item.Eligible)
             {
@@ -176,7 +195,8 @@ internal sealed class AccessParityOperation : IPlannedOperation
                     PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName,
                     Attempted = false, Succeeded = false, Detail = "Skipped: " + item.Reason
                 });
-                continue;
+                outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true)); // selected, not fulfilled
+                return;
             }
 
             var change = new ChangeResult
@@ -213,6 +233,32 @@ internal sealed class AccessParityOperation : IPlannedOperation
             attempts.Add(new Attempt(item, change, alreadyExisted));
         }
 
+        if (interrupted is not null)
+        {
+            foreach (var id in selected.Skip(processed))
+            {
+                var item = plan.Items.FirstOrDefault(i => string.Equals(i.Id, id, StringComparison.OrdinalIgnoreCase));
+                if (item is null || !item.Eligible) continue;
+                e.Changes.Add(new ChangeResult
+                {
+                    PlanItemId = item.Id, Action = item.Action, ObjectName = item.ObjectName, Attempted = false, Succeeded = false,
+                    Detail = "Interrupted: the run stopped before this item was confirmed applied; its state is unknown until re-checked."
+                });
+                outcomes.Add(new ItemOutcome(false, false, false, RequiredButNotDone: true));
+            }
+            foreach (var attempt in attempts)
+            {
+                e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", false,
+                    "Not verified: the run was interrupted before the verification re-read.", attempt.Item.Id));
+                outcomes.Add(new ItemOutcome(true, attempt.Change.Succeeded, false));
+            }
+            e.Failures.Add($"Interrupted: {(interrupted is OperationCanceledException ? "the request was cancelled" : interrupted.Message)}.");
+            e.Outcome = OutcomeRules.Derive(outcomes);
+            e.TicketNotes = BuildNotes(state, e, attempts, null, "the run was interrupted") +
+                            " The run was interrupted before it finished; re-run the plan to see the current state.";
+            throw new OperationInterruptedException(e, interrupted);
+        }
+
         // Verify by re-reading the target's memberships from Graph, never by trusting the POST.
         HashSet<string>? after = null;
         string? verifyError = null;
@@ -230,7 +276,6 @@ internal sealed class AccessParityOperation : IPlannedOperation
             }
         }
 
-        var outcomes = new List<ItemOutcome>();
         foreach (var attempt in attempts)
         {
             var present = after?.Contains(attempt.Item.ObjectId) == true;
@@ -240,7 +285,7 @@ internal sealed class AccessParityOperation : IPlannedOperation
                 : present ? "Target is a direct member on re-read."
                 : attempt.Change.Succeeded ? "Add was reported, but the target is not a member on re-read."
                 : "Target is not a member (the add failed).";
-            e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", present, detail));
+            e.Verification.Add(new VerificationCheck($"Membership: {attempt.Item.ObjectName}", present, detail, attempt.Item.Id));
             outcomes.Add(new ItemOutcome(Attempted: true, ReportedOk: attempt.Change.Succeeded, Verified: present));
         }
 
@@ -270,20 +315,30 @@ internal sealed class AccessParityOperation : IPlannedOperation
         var plan = state.Plan;
         sb.Append($"Compared {state.Target.DisplayName}'s group memberships against source user {state.Source.DisplayName}. ");
 
-        var added = attempts.Where(a => a.Change.Succeeded && !a.AlreadyExisted).ToList();
+        // "Added" is claimed only for memberships the verification re-read confirmed.
+        var confirmed = attempts.Where(a => a.Change.Succeeded && !a.AlreadyExisted && a.Verified).ToList();
+        var unconfirmedAdds = attempts.Where(a => a.Change.Succeeded && !a.AlreadyExisted && !a.Verified).ToList();
         var failed = attempts.Where(a => !a.Change.Succeeded).ToList();
         var alreadyPresent = attempts.Count(a => a.AlreadyExisted)
                              + e.Changes.Count(c => !c.Attempted && c.Succeeded);
 
-        if (added.Count > 0)
-            sb.Append($"Added {Count(added.Count, "missing eligible group membership")}. ");
-        else if (failed.Count == 0)
+        if (confirmed.Count > 0)
+            sb.Append($"Added {Count(confirmed.Count, "missing eligible group membership")} (verified). ");
+        if (unconfirmedAdds.Count > 0)
+            sb.Append($"{Count(unconfirmedAdds.Count, "membership")} reported added by Graph but not confirmed: ")
+              .Append(string.Join(", ", unconfirmedAdds.Select(a => a.Item.ObjectName))).Append(". ");
+        if (confirmed.Count == 0 && unconfirmedAdds.Count == 0 && failed.Count == 0)
             sb.Append("No group memberships were added. ");
         if (alreadyPresent > 0)
             sb.Append($"{Count(alreadyPresent, "selected group")} {(alreadyPresent == 1 ? "was" : "were")} already present and needed no change. ");
         if (failed.Count > 0)
             sb.Append($"{Count(failed.Count, "membership")} could not be added: ")
               .Append(string.Join("; ", failed.Select(f => $"{f.Item.ObjectName} ({ShortReason(f.Change.Detail)})")))
+              .Append(". ");
+        var unfulfilled = e.Changes.Where(c => !c.Attempted && !c.Succeeded).ToList();
+        if (unfulfilled.Count > 0)
+            sb.Append($"{Count(unfulfilled.Count, "selected item")} could not be applied: ")
+              .Append(string.Join("; ", unfulfilled.Select(c => $"{c.ObjectName} ({ShortReason(c.Detail)})")))
               .Append(". ");
 
         var selectedIds = e.Changes.Select(c => c.PlanItemId).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -356,12 +411,9 @@ internal sealed class AccessParityOperation : IPlannedOperation
         var plan = await PlanAsync(tenant, inputs, ct);
         var evidence = await ApplyAsync(tenant, inputs, plan.Items.Where(i => i.Eligible).Select(i => i.Id).ToList(), ct);
         var run = new WorkflowRunResult { Evidence = evidence };
-        // Verification checks are emitted in the same order as the attempted changes.
-        var attempted = evidence.Changes.Where(c => c.Attempted).ToList();
-        for (var i = 0; i < attempted.Count; i++)
+        foreach (var c in evidence.Changes.Where(c => c.Attempted))
         {
-            var c = attempted[i];
-            var verified = i < evidence.Verification.Count && evidence.Verification[i].Passed;
+            var verified = evidence.Verification.Any(v => v.PlanItemId == c.PlanItemId && v.Passed);
             run.Steps.Add(new ProvisioningStep($"Add to {c.ObjectName}", c.Succeeded && verified, c.Detail));
         }
         if (run.Steps.Count == 0)

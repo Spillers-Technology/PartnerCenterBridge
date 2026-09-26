@@ -81,7 +81,12 @@ public class OperationsController : ControllerBase
         {
             evidence = await op.ApplyAsync(tenant, inputs, req.ItemIds, ct);
         }
-        catch (OperationInputException ex) { error = ex; }
+        catch (OperationInterruptedException ex)
+        {
+            // Cancelled or failed mid-apply: persist what already changed, marked as interrupted.
+            evidence = ex.Partial;
+            error = ex.InnerException ?? ex;
+        }
         catch (Exception ex) { error = ex; }
         finally
         {

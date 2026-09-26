@@ -97,6 +97,12 @@ public class ProvisioningController : ControllerBase
         {
             evidence = await _offboarding.ApplyAsync(tenant, req.Termination.UserId, policy!, ct);
         }
+        catch (OperationInterruptedException ex)
+        {
+            // Cancelled or failed mid-apply: persist what already changed, marked as interrupted.
+            evidence = ex.Partial;
+            error = ex.InnerException ?? ex;
+        }
         catch (Exception ex) { error = ex; }
         finally
         {

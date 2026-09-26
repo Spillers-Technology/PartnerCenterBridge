@@ -189,6 +189,7 @@ public class WorkflowsController : ControllerBase
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             return StatusCode(502, ex.Message);
         }
         finally

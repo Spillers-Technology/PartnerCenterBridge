@@ -69,6 +69,7 @@ public class WorkflowTools
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             throw;
         }
         finally
@@ -120,6 +121,7 @@ public class WorkflowTools
             {
                 run.Succeeded = false;
                 run.Error = ex.Message;
+                if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
                 throw;
             }
             finally

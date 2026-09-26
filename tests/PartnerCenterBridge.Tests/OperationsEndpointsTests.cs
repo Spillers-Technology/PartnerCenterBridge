@@ -150,6 +150,35 @@ public class OperationsEndpointsTests
     }
 
     [Fact]
+    public async Task Interrupted_apply_persists_the_partial_evidence_of_completed_changes()
+    {
+        using var db = new TestDb();
+        var tenant = await OpsTest.AddTenantAsync(db);
+        var partial = new OperationEvidence
+        {
+            OperationId = "access-parity", OperationName = "Access parity", Target = new("user", "TGT-ID", "Target User"),
+            Outcome = Outcome.VerificationFailed,
+            Changes =
+            {
+                new ChangeResult { PlanItemId = "group:g1", Action = "AddMember", ObjectName = "Finance", Attempted = true, Succeeded = true },
+                new ChangeResult { PlanItemId = "group:g2", Action = "AddMember", ObjectName = "Sales", Attempted = false, Detail = "Interrupted: ..." }
+            },
+            Failures = { "Interrupted: the request was cancelled." }
+        };
+        var op = new FakePlannedOperation { ApplyThrows = new OperationInterruptedException(partial, new OperationCanceledException()) };
+
+        await Ops(db, TenantRole.Operator, op).ApplyAccessParity(tenant.Id, new("alice", "bob", ["group:g1", "group:g2"]), CancellationToken.None);
+
+        var run = await db.Context.WorkflowRuns.SingleAsync();
+        Assert.False(run.Succeeded);
+        Assert.NotNull(run.Error);
+        Assert.Equal(Outcome.VerificationFailed, run.Outcome);
+        Assert.Contains(run.Evidence!.Changes, c => c.PlanItemId == "group:g1" && c.Attempted && c.Succeeded);
+        Assert.Contains(run.Steps, s => s.Name == "AddMember: Finance");
+        Assert.Equal("tgt-id", run.TargetId);
+    }
+
+    [Fact]
     public async Task Existing_workflow_runs_now_carry_evidence_without_secrets()
     {
         using var db = new TestDb();
