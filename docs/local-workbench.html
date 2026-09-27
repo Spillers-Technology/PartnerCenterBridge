@@ -202,7 +202,9 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   account you register becomes the instance Administrator</strong> -- there is no separate setup
   wizard. <code>GET /api/system/status</code> (anonymous, nothing sensitive) reports
   <code>needsFirstUser</code> so the SPA can send you straight to registration instead of a sign-in
-  form that would otherwise fail with nothing to sign in to. The Local profile refuses to start at
+  form that would otherwise fail with nothing to sign in to. A Local first run requires the
+  single-use setup link the exe opens (or prints with <code>--no-browser</code>); it expires after
+  30 minutes. Open the exe again if the link has expired. The Local profile refuses to start at
   all with <code>Auth:Mode=Dev</code> -- that mode has no credentials, which combined with a bound
   network port would let anyone who can reach it act as administrator.
 </p>
@@ -217,12 +219,11 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   tenant.
 </p>
 <ul>
-  <li>The exe opens your browser with a <strong>launch link</strong> tied to your Windows user (a
-      secret stored DPAPI-protected in the data folder, so other Windows users on the machine, and
-      web pages in your browser, cannot use it). It is not one-time: the same link keeps working,
-      across restarts, until you protect the workbench with an account. Running
-      <code>PartnerCenterBridge.exe</code> again reopens a signed-in window with that same link
-      rather than minting a new one.</li>
+  <li>The exe opens your browser with a <strong>single-use launch link</strong> minted by the
+      running process. The ticket expires after two minutes and is consumed when used. Running
+      <code>PartnerCenterBridge.exe</code> again requests a fresh link over a Windows named pipe
+      restricted to your user; the second process verifies the running process's owner before
+      opening that link. A copied or bookmarked link cannot be reused.</li>
   <li>With <code>--no-browser</code>, the launch link is printed to this console window instead of
       being opened -- never written to the log file, so it never lands in <code>logs\</code>.</li>
   <li>Opening a bookmark later does not sign you in (there is no sign-in form to use without an
@@ -233,9 +234,9 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
       <strong>Settings &gt; Account &amp; security &gt; Protect with an account</strong>. MCP access
       tokens are not blocked -- you can create one for a scripted client the same as any account.</li>
   <li><strong>Protect with an account</strong>, from Settings &gt; Account &amp; security, turns this
-      into an ordinary Local account (email + password): the launch link stops working, and
-      passkeys, TOTP, and further registrations become available. Tenants, settings, and history are
-      untouched.</li>
+      into an ordinary Local account (email + password): outstanding launch tickets and earlier
+      sessions and MCP tokens are revoked, and passkeys, TOTP, and further registrations become
+      available. Tenants, settings, and history are untouched.</li>
   <li>It exists only in the Local Workbench. It is never available in the Server profile (Docker or
       Kubernetes), and first run refuses to offer it -- not just "turn it off" -- when the exe is
       started with a non-loopback <code>--listen</code> address.</li>
@@ -243,14 +244,12 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
 
 <h2 id="second-launch-and-port-collisions">Second launch and port collisions</h2>
 <p>
-  Before binding its port, the Local profile checks what is already there. If the port already
-  answers as <em>this app</em> -- verified by calling its <code>/api/system/status</code> and
-  checking for the <code>X-PCB-Instance: PartnerCenterBridge</code> response header, not just "a
-  port is listening" -- it opens your browser to that existing instance and exits 0, so
-  double-launching (or a shortcut that starts it every time) is harmless. If the port belongs to
-  something else, it fails with an actionable error instead of trying to bind anyway. IPv6 is
-  checked too: because browsers resolve <code>localhost</code> to <code>::1</code> first, something
-  already listening on <code>[::1]</code> would otherwise shadow a successful IPv4 bind.
+  Before binding its port, the Local profile checks both loopback addresses. If the port is in
+  use, the exe requests a fresh link through a current-user-only Windows named pipe and verifies
+  the server process belongs to your Windows user. A verified workbench opens the new link and
+  the second process exits. If verification fails, the exe reports a port collision without
+  opening a URL or exposing a ticket. The default listener holds both <code>127.0.0.1</code> and
+  <code>[::1]</code> when IPv6 is available, so another process cannot shadow localhost on IPv6.
 </p>
 
 <h2 id="the-canonical-origin">The canonical origin</h2>

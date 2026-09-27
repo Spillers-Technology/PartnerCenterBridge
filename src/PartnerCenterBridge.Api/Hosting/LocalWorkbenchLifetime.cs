@@ -149,9 +149,16 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
     }
 }
 
+/// <summary>
+/// Opens the browser. The URL may carry a one-time ticket in its fragment, and a failed
+/// <see cref="Process.Start(ProcessStartInfo)"/> puts the whole file name (the URL) into the
+/// exception message, so neither the exception nor the URL ever reaches a logger: only the
+/// exception type and native error code are logged. The URL goes to this console alone, so the
+/// operator can still open it by hand.
+/// </summary>
 public static class BrowserLauncher
 {
-    public static void TryOpen(string url, ILogger? log = null)
+    public static void TryOpen(string url, ILogger? log = null, TextWriter? console = null)
     {
         try
         {
@@ -159,9 +166,12 @@ public static class BrowserLauncher
         }
         catch (Exception ex)
         {
-            // The log file never gets a launch secret: only the part before the fragment is logged.
-            log?.LogWarning(ex, "Could not open the browser; open {Url} manually.", url.Split('#')[0]);
-            Console.Out.WriteLine($"Could not open the browser; open {url} manually.");
+            var nativeError = ex is System.ComponentModel.Win32Exception win32 ? win32.NativeErrorCode : (int?)null;
+            log?.LogWarning("Could not open the browser ({ExceptionType}, native error {NativeError}); the link was printed to the console.",
+                ex.GetType().Name, nativeError?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "none");
+            (console ?? Console.Out).WriteLine(url.Contains("#ticket=", StringComparison.Ordinal)
+                ? $"Could not open the browser; open this one-time link yourself: {url}"
+                : $"Could not open the browser; open {url} yourself.");
         }
     }
 }

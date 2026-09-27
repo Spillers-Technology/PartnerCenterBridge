@@ -168,7 +168,8 @@ filtered by every word typed, arrow keys to move, Enter to open.
 
 A fresh Local-mode install has no accounts, so `/api/system/status` reports `needsFirstUser` and the
 SPA sends you straight to registration instead of a sign-in form with nothing to sign in to. The
-account you register becomes the instance **Administrator**. From Home, the **Finish setting up**
+exe opens a single-use setup link, required to create the first account or choose no-account mode.
+The account you register becomes the instance **Administrator**. From Home, the **Finish setting up**
 checklist walks through whatever still needs attention (a tenant with no GDAP delegation, an
 unconfigured Exchange module, SAM not bootstrapped), and `/settings/workbench` has the full set of
 diagnostics with the same fix links and copyable commands -- see
@@ -217,21 +218,21 @@ Options:
 - **First run without an account**: on a machine that's already secured (screen lock, disk
   encryption, no shared Windows account), first run can instead skip registration and create a
   built-in workbench owner (instance Administrator, no tenant access until it adds one), signed in
-  through a launch link tied to your Windows user. That link is not one-time — it keeps working,
-  across restarts, until the owner runs **Protect with an account** from Settings > Account &
-  security, which sets a password and turns it into an ordinary account. Until then,
+  through a single-use launch link minted by the running exe. The link expires after two minutes;
+  run the exe again to get a fresh one. **Protect with an account** from Settings > Account &
+  security sets a password and turns it into an ordinary account. Until then,
   self-registration, password login, passkeys and TOTP are all blocked for that account (MCP
   access tokens are not). Never offered outside the Local Workbench, and refused outright — not
   just hidden — when `--listen` binds a non-loopback address.
-- **Network**: Kestrel binds `127.0.0.1` only by default. The canonical origin is
+- **Network**: Kestrel binds `127.0.0.1` and `[::1]` by default when IPv6 is available. The canonical origin is
   `http://localhost:<port>` — a request addressed to the loopback IP literal (`127.0.0.1` or
   `[::1]`) is redirected (GET/HEAD) or rejected with 421 (everything else) so passkeys, which are
   bound to one origin, always see the same host. `--listen <addr>` exposes the app to the network
   and prints a standing warning; it is off by default.
-- **Second launch on an occupied port**: if that port already answers as this app (checked via
-  `/api/system/status` and an `X-PCB-Instance` response header, not just "something is
-  listening"), the exe opens your browser to it and exits 0 instead of failing. If the port
-  belongs to something else, it fails with an actionable message.
+- **Second launch on an occupied port**: the exe asks the running instance for a fresh link over
+  a Windows named pipe restricted to the current user and verifies the pipe server's owner. It
+  opens the returned link and exits 0. If it cannot verify the running instance, it reports the
+  port collision without opening a URL or exposing a ticket.
 - **Build it**: `./scripts/publish-local.ps1` (needs the .NET 8 SDK and Node for the SPA build) →
   `artifacts/local/win-x64/PartnerCenterBridge.exe`. Equivalent to `dotnet publish
   src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained -p:PublishSingleFile=true

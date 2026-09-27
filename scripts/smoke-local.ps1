@@ -40,7 +40,7 @@ if (-not $exe) { throw "published exe not found at $ExePath" }
 $exe = $exe.Path
 
 if (Test-Path $DataDir) { Remove-Item -Recurse -Force $DataDir }
-New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+# Let the app create its data directory so it applies the private ACL used on a fresh install.
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 $baseUrl = "http://localhost:$Port"
@@ -61,7 +61,7 @@ function Wait-Healthy {
 function Start-Pcb {
     Start-Process -FilePath $exe `
         -ArgumentList @("--no-browser", "--port", "$Port", "--data-dir", $DataDir) `
-        -PassThru -NoNewWindow `
+        -PassThru -WindowStyle Hidden `
         -RedirectStandardOutput (Join-Path $LogDir "pcb-smoke-stdout.log") `
         -RedirectStandardError (Join-Path $LogDir "pcb-smoke-stderr.log")
 }

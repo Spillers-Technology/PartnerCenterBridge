@@ -141,8 +141,8 @@ controllers use the same <code>[Authorize]</code> attribute and the same
   stored encrypted with the same Data Protection key ring as the SAM token. The first account
   registered becomes the instance Administrator. Everything below about Local accounts, sharing,
   TOTP and passkeys applies exactly the same way in that mode. On a machine that is already
-  secured you can instead choose to use it without an account, through a launch link tied to your
-  Windows user that keeps working (not one-time) until you protect the workbench with an account --
+  secured you can instead choose to use it without an account, through single-use launch links
+  minted by the running exe. Each expires after two minutes; run the exe again for a new one --
   self-registration, password login, passkeys and TOTP are all blocked for that account until then,
   though MCP access tokens still work. That option is Local Workbench only, gets instance
   Administrator and no tenant access until it adds a tenant, and first run refuses to offer it with
@@ -152,8 +152,9 @@ controllers use the same <code>[Authorize]</code> attribute and the same
 
 <h2 id="local-accounts-open-signup-scoped-power">Local accounts: open signup, scoped power</h2>
 <p>
-  Registration (<code>POST /api/auth/register</code>) is deliberately open: no invite code, no
-  admin approval queue. The safety story isn't the signup gate, it's that a fresh account starts
+  After setup, registration (<code>POST /api/auth/register</code>) is deliberately open: no invite
+  code, no admin approval queue. On a Local Workbench's first run, the exe's single-use setup
+  ticket is required before creating the first account. A fresh account starts
   with <strong>zero tenant access</strong>. It can log in and see the app shell, but can't run a
   single workflow or deployment against a customer tenant until someone shares that tenant with
   it.
