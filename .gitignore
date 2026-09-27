@@ -135,3 +135,6 @@ TestResults/
 test-results/
 playwright-report/
 playwright/.cache/
+
+# Pages build output (scripts/build-site.sh)
+site-out/
