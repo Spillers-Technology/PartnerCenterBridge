@@ -106,7 +106,14 @@ function DeploymentRow({
   );
 }
 
-export function Deployments() {
+export function Deployments({
+  tenantId,
+  heading = "Deployment history"
+}: {
+  /** Shows only this tenant's deployments. */
+  tenantId?: string;
+  heading?: string;
+} = {}) {
   const [deployments, setDeployments] = useState<Deployment[] | null>(null);
   const [tenants, setTenants] = useState<Tenant[] | null>(null);
   const [templates, setTemplates] = useState<AppTemplate[] | null>(null);
@@ -138,7 +145,7 @@ export function Deployments() {
     return (
       <Box>
         <Typography variant="h5" component="h2" gutterBottom>
-          Deployment history
+          {heading}
         </Typography>
         <Alert severity="error">{error}</Alert>
       </Box>
@@ -149,7 +156,7 @@ export function Deployments() {
     return (
       <Box aria-busy="true">
         <Typography variant="h5" component="h2" gutterBottom>
-          Deployment history
+          {heading}
         </Typography>
         <Box component="span" sx={visuallyHidden}>Loading deployment history...</Box>
         <Skeleton variant="rounded" height={200} />
@@ -157,15 +164,17 @@ export function Deployments() {
     );
   }
 
+  const visible = tenantId ? deployments.filter((d) => d.tenantId === tenantId) : deployments;
+
   return (
     <Box>
       <Typography variant="h5" component="h2" gutterBottom>
-        Deployment history
+        {heading}
       </Typography>
 
-      {deployments.length === 0 ? (
+      {visible.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No deployments yet.
+          {tenantId ? "No deployments for this tenant yet." : "No deployments yet."}
         </Typography>
       ) : (
         <TableContainer sx={{ overflowX: "auto" }}>
@@ -181,7 +190,7 @@ export function Deployments() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {deployments.map((d) => {
+              {visible.map((d) => {
                 const needsAction = d.status === "Failed" || d.status === "UpdateAvailable";
                 const template = templates.find((t) => t.id === d.appTemplateId);
                 return (

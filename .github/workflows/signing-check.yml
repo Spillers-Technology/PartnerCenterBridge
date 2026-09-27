@@ -1,0 +1,68 @@
+name: Signing check
+
+# Proves code signing works end to end without publishing anything: publishes the real Local
+# Workbench exe, signs it through the same composite action release.yml uses, and verifies the
+# result. Run it after changing signing configuration, and before tagging a release, so a broken
+# credential shows up now and not on release day. The signed exe is kept as a private workflow
+# artifact for a day; nothing is attached to a release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  sign:
+    name: Sign and verify (no release)
+    runs-on: windows-latest
+    # Same environment release.yml's windows job uses: the federated credential trusts exactly
+    # this repository's `environment: release` subject.
+    environment: release
+    timeout-minutes: 20
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Publish Local Workbench
+        shell: pwsh
+        run: ./scripts/publish-local.ps1
+
+      - name: Stage exe for signing
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item artifacts/local/win-x64/PartnerCenterBridge.exe dist/PartnerCenterBridge.exe
+
+      - name: Sign and verify the exe
+        uses: ./.github/actions/sign-release
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          endpoint: ${{ vars.SIGNING_ENDPOINT }}
+          account: ${{ vars.SIGNING_ACCOUNT }}
+          profile: ${{ vars.SIGNING_PROFILE }}
+          expected-subject: ${{ vars.SIGNING_EXPECTED_SUBJECT }}
+          folder: dist
+          filter: exe
+          verify: dist/PartnerCenterBridge.exe
+
+      - name: Keep the signed exe for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-binaries
+          path: dist/PartnerCenterBridge.exe
+          retention-days: 1

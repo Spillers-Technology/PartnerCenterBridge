@@ -3,8 +3,9 @@ import { getLocalToken } from "./session";
 import type {
   AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
-  InstanceRole, InstanceUser, McpTokenInfo, PasskeyInfo, PendingAction, ProvisioningResult, ProvisioningTemplate, SectionDiff, Sku, Tenant, TenantGrant,
-  TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
+  InstanceRole, InstanceUser, McpTokenInfo, OffboardingPolicy, OperationEvidence, OperationPlan, PasskeyInfo, PendingAction,
+  PersonWorkspace, ProvisioningResult, TerminateResult, ProvisioningTemplate, SamStatus, SectionDiff, Sku, SystemDiagnostics, SystemStatus,
+  Tenant, TenantGrant, TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
 
@@ -19,10 +20,60 @@ async function authHeaders(init: RequestInit = {}): Promise<Headers> {
   return headers;
 }
 
+/**
+ * A non-2xx API response. The message keeps the historical "status statusText: body" shape every
+ * screen already displays; `status` lets callers branch on it (e.g. 404 from an older server that
+ * predates an endpoint) without parsing the message.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  /** The raw response body (often the server's plain-text reason). */
+  readonly body: string;
+  constructor(status: number, message: string, body = "") {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+/**
+ * The server's own explanation for a failed call, for showing next to a form: a plain-text body
+ * ("Source and target must be different users."), a ProblemDetails title/errors, or the generic
+ * message when the body says nothing useful.
+ */
+export function errorText(e: unknown): string {
+  if (e instanceof ApiError && e.body.trim()) {
+    const body = e.body.trim();
+    try {
+      const parsed = JSON.parse(body) as unknown;
+      if (typeof parsed === "string") return parsed;
+      if (parsed && typeof parsed === "object") {
+        const p = parsed as { title?: string; detail?: string; errors?: Record<string, string[]> };
+        const errors = p.errors ? Object.values(p.errors).flat() : [];
+        if (errors.length > 0) return errors.join(" ");
+        if (p.detail) return p.detail;
+        if (p.title) return p.title;
+      }
+    } catch {
+      if (body.length <= 500 && !body.startsWith("<")) return body;
+    }
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
+/** True when `e` is an ApiError with the given HTTP status. */
+export function isApiStatus(e: unknown, status: number): boolean {
+  return e instanceof ApiError && e.status === status;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = await authHeaders(init);
   const resp = await fetch(`${base}${path}`, { ...init, headers });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${body}`, body);
+  }
   return resp.status === 204 ? (undefined as T) : ((await resp.json()) as T);
 }
 
@@ -30,6 +81,37 @@ export const api = {
   health: () => request<{ status: string }>("/health"),
 
   dashboard: () => request<Dashboard>("/api/dashboard"),
+
+  /** Workbench host status + diagnostics (0.9.0+). Older servers answer 404. */
+  system: {
+    status: () => request<SystemStatus>("/api/system/status"),
+    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics")
+  },
+
+  /** Instance-level Secure Application Model credential (requires instance.sam.manage). */
+  sam: {
+    status: () => request<SamStatus>("/api/admin/sam/status"),
+    seed: (refreshToken: string) =>
+      request<void>("/api/admin/sam/seed", { method: "POST", body: JSON.stringify({ refreshToken }) })
+  },
+
+  /** Person workspace (0.9.0+): each section loads independently with its own status. */
+  people: {
+    get: (tenantId: string, userId: string) =>
+      request<PersonWorkspace>(`/api/tenants/${tenantId}/people/${encodeURIComponent(userId)}`)
+  },
+
+  /** Access Parity (0.9.0+): additive group-membership mirroring from a source to a target user. */
+  accessParity: {
+    plan: (tenantId: string, sourceUserId: string, targetUserId: string) =>
+      request<OperationPlan>(`/api/tenants/${tenantId}/operations/access-parity/plan`, {
+        method: "POST", body: JSON.stringify({ sourceUserId, targetUserId })
+      }),
+    apply: (tenantId: string, sourceUserId: string, targetUserId: string, itemIds: string[]) =>
+      request<OperationEvidence>(`/api/tenants/${tenantId}/operations/access-parity/apply`, {
+        method: "POST", body: JSON.stringify({ sourceUserId, targetUserId, itemIds })
+      })
+  },
 
   search: {
     users: (q: string) => request<GlobalSearchResult>(`/api/search/users?q=${encodeURIComponent(q)}`)
@@ -73,7 +155,15 @@ export const api = {
     addDesiredApp: (contractId: string, templateId: string) =>
       request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "POST" }),
     removeDesiredApp: (contractId: string, templateId: string) =>
-      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "DELETE" })
+      request<Contract>(`/api/contracts/${contractId}/desired-apps/${templateId}`, { method: "DELETE" }),
+    /** 0.9.0+: the contract's offboarding policy (built-in defaults when none is set). */
+    getOffboardingPolicy: (contractId: string) =>
+      request<OffboardingPolicy>(`/api/contracts/${contractId}/offboarding-policy`),
+    /** Replaces the policy; needs instance.catalog.manage. 400 carries the validation messages. */
+    putOffboardingPolicy: (contractId: string, policy: OffboardingPolicy) =>
+      request<OffboardingPolicy>(`/api/contracts/${contractId}/offboarding-policy`, {
+        method: "PUT", body: JSON.stringify(policy)
+      })
   },
 
   templates: {
@@ -113,7 +203,13 @@ export const api = {
         body: JSON.stringify({ tenantId, hire })
       }),
     terminate: (tenantId: string, termination: Record<string, unknown>) =>
-      request<ProvisioningResult>("/api/provisioning/terminate", {
+      request<TerminateResult>("/api/provisioning/terminate", {
+        method: "POST",
+        body: JSON.stringify({ tenantId, termination })
+      }),
+    /** 0.9.0+: ordered, destructive-flagged offboarding plan (no changes made). */
+    terminatePlan: (tenantId: string, termination: Record<string, unknown>) =>
+      request<OperationPlan>("/api/provisioning/terminate/plan", {
         method: "POST",
         body: JSON.stringify({ tenantId, termination })
       }),
@@ -128,14 +224,21 @@ export const api = {
 
   workflows: {
     list: () => request<WorkflowSummary[]>("/api/workflows"),
-    runs: (opts?: { tenantId?: string; workflowId?: string; take?: number }) => {
+    runs: (opts?: { tenantId?: string; workflowId?: string; targetId?: string; take?: number }) => {
       const q = new URLSearchParams();
       if (opts?.tenantId) q.set("tenantId", opts.tenantId);
+      if (opts?.targetId) q.set("targetId", opts.targetId);
       if (opts?.workflowId) q.set("workflowId", opts.workflowId);
       if (opts?.take) q.set("take", String(opts.take));
       const qs = q.toString();
       return request<WorkflowRunRecord[]>(`/api/workflows/runs${qs ? `?${qs}` : ""}`);
     },
+    /** 0.9.0+: structured evidence for a persisted run. */
+    evidence: (runId: string) => request<OperationEvidence>(`/api/workflows/runs/${runId}/evidence`),
+    evidenceMarkdown: (runId: string) =>
+      download(`/api/workflows/runs/${runId}/evidence?format=markdown`, `pcb-run-${runId}.md`),
+    evidenceJson: (runId: string) =>
+      download(`/api/workflows/runs/${runId}/evidence`, `pcb-run-${runId}.json`),
     diagnose: (id: string, tenantId: string, inputs: Record<string, string>) =>
       request<DiagnosisResult>(`/api/workflows/${id}/diagnose`, {
         method: "POST", body: JSON.stringify({ tenantId, inputs })
@@ -155,11 +258,21 @@ export const api = {
 
   auth: {
     mode: () => request<{ mode: AuthMode }>("/api/auth/mode"),
-    register: (email: string, password: string, displayName: string) =>
-      request<AuthResponse>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
+    /** On a Local Workbench's first run the first account needs the one-time setup ticket the exe opened. */
+    register: (email: string, password: string, displayName: string, ticket?: string | null) =>
+      request<AuthResponse>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, ticket: ticket ?? undefined }) }),
     login: (email: string, password: string) =>
       request<AuthResponse | MfaChallengeResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
     logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+    /** First run: use this Local Workbench without an account (creates the built-in owner); needs the setup ticket. */
+    setupNoAccount: (ticket: string | null) =>
+      request<AuthResponse>("/api/auth/setup/no-account", { method: "POST", body: JSON.stringify({ confirm: true, ticket }) }),
+    /** Exchanges the one-time sign-in ticket from the URL fragment for a session. */
+    launch: (ticket: string) =>
+      request<AuthResponse>("/api/auth/launch", { method: "POST", body: JSON.stringify({ ticket }) }),
+    /** Converts the no-account owner into a password account (launch links stop working). */
+    protectOwner: (email: string, password: string, displayName: string) =>
+      request<AuthResponse>("/api/auth/owner/protect", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
     me: () => request<MeProfile>("/api/auth/me")
   },
 
@@ -226,7 +339,10 @@ export const api = {
 async function download(path: string, filename: string): Promise<void> {
   const headers = await authHeaders();
   const resp = await fetch(`${base}${path}`, { headers });
-  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}: ${await resp.text()}`);
+  if (!resp.ok) {
+    const body = await resp.text();
+    throw new ApiError(resp.status, `${resp.status} ${resp.statusText}: ${body}`, body);
+  }
   const blob = await resp.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

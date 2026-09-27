@@ -18,7 +18,12 @@ import { useToast } from "../hooks/useToast";
 import type { DirectoryObject, ProvisioningResult, Sku, Tenant } from "../types";
 import { StepList } from "./StepList";
 
-export function NewHire() {
+export function NewHire({
+  initialTenantId
+}: {
+  /** Pre-selects this tenant once the tenant list confirms the caller can see it. */
+  initialTenantId?: string;
+} = {}) {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [skus, setSkus] = useState<Sku[]>([]);
@@ -41,7 +46,11 @@ export function NewHire() {
   const currentTenantRef = useRef("");
 
   const tenantsAction = useAsyncAction(async () => {
-    setTenants(await api.tenants.list());
+    const loaded = await api.tenants.list();
+    setTenants(loaded);
+    // Nothing tenant-scoped has been entered yet on first load, so selecting here needs none of
+    // the synchronous reset the tenant Select's onChange does.
+    if (initialTenantId && loaded.some((t) => t.id === initialTenantId)) setTenantId(initialTenantId);
   });
 
   const directoryAction = useAsyncAction(async (id: string) => {

@@ -1,10 +1,12 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from "react";
+import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Dialog from "@mui/material/Dialog";
 import DialogActions from "@mui/material/DialogActions";
 import DialogContent from "@mui/material/DialogContent";
 import DialogContentText from "@mui/material/DialogContentText";
 import DialogTitle from "@mui/material/DialogTitle";
+import Typography from "@mui/material/Typography";
 import { useIsPhone } from "./useIsPhone";
 
 export interface ConfirmOptions {
@@ -13,6 +15,15 @@ export interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   destructive?: boolean;
+  /**
+   * A real mutation that is not destructive (e.g. adding group memberships): keeps the neutral
+   * styling but, like destructive, autofocuses Cancel so a stray Enter cannot apply it.
+   */
+  mutating?: boolean;
+  /** The exact things that will change, listed under the message (e.g. the groups being added). */
+  items?: string[];
+  /** Accessible name for the items list. */
+  itemsLabel?: string;
 }
 
 type ConfirmFn = (options: ConfirmOptions) => Promise<boolean>;
@@ -45,6 +56,8 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
     setClosing(false);
   };
 
+  const safeFocus = !!(pending?.options.destructive || pending?.options.mutating);
+
   return (
     <ConfirmContext.Provider value={confirm}>
       {children}
@@ -57,19 +70,30 @@ export function ConfirmDialogProvider({ children }: { children: ReactNode }) {
         <DialogTitle>{pending?.options.title}</DialogTitle>
         <DialogContent>
           <DialogContentText>{pending?.options.message}</DialogContentText>
+          {pending?.options.items && pending.options.items.length > 0 && (
+            <Box
+              component="ul"
+              aria-label={pending.options.itemsLabel ?? "Items"}
+              sx={{ mt: 1.5, mb: 0, pl: 2.5, maxHeight: 280, overflowY: "auto", overflowWrap: "anywhere" }}
+            >
+              {pending.options.items.map((item, i) => (
+                <Typography component="li" variant="body2" key={i}>{item}</Typography>
+              ))}
+            </Box>
+          )}
         </DialogContent>
         <DialogActions>
-          {/* Destructive dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
+          {/* Destructive and mutating dialogs autofocus Cancel, not Confirm -- so pressing Enter right after
               the dialog opens (e.g. a stray keypress carried over from what triggered it) lands
               on the safe choice instead of defaulting to the destructive one. */}
-          <Button onClick={() => close(false)} autoFocus={pending?.options.destructive}>
+          <Button onClick={() => close(false)} autoFocus={safeFocus}>
             {pending?.options.cancelLabel ?? "Cancel"}
           </Button>
           <Button
             onClick={() => close(true)}
             color={pending?.options.destructive ? "error" : "primary"}
             variant="contained"
-            autoFocus={!pending?.options.destructive}
+            autoFocus={!safeFocus}
           >
             {pending?.options.confirmLabel ?? "Confirm"}
           </Button>

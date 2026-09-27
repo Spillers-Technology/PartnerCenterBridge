@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
+using PartnerCenterBridge.Core.Operations;
 using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Data;
 
@@ -17,19 +19,22 @@ public record WorkflowRunDto(
     Guid Id, string WorkflowId, string WorkflowName, Guid TenantId, string TenantName,
     WorkflowRunKind Kind, string Operator, Dictionary<string, string> Inputs,
     List<Finding> Findings, List<ProvisioningStep> Steps,
-    bool Succeeded, bool? Healthy, string? Error, DateTimeOffset StartedAt, long DurationMs)
+    bool Succeeded, bool? Healthy, string? Error, DateTimeOffset StartedAt, long DurationMs,
+    Outcome Outcome, string? TargetId, string? TargetDisplayName)
 {
+    /// <summary>Rows written before evidence existed get their outcome adapted from the stored findings/steps.</summary>
     public static WorkflowRunDto From(WorkflowRun r) => new(
         r.Id, r.WorkflowId, r.WorkflowName, r.TenantId, r.Tenant?.DisplayName ?? "",
         r.Kind, r.Operator, r.Inputs, r.Findings, r.Steps,
-        r.Succeeded, r.Healthy, r.Error, r.StartedAt, r.DurationMs);
+        r.Succeeded, r.Healthy, r.Error, r.StartedAt, r.DurationMs,
+        r.Outcome ?? WorkflowEvidenceAdapter.Build(r).Outcome, r.TargetId, r.TargetDisplayName);
 }
 
 /// <summary>
 /// Uniform catalog + dispatch for the "known-fix" workflows. The UI lists these, renders their
 /// inputs, and calls diagnose/remediate generically — adding a workflow needs no controller change.
-/// Every run is persisted as a <see cref="WorkflowRun"/> audit record and pushed to the configured
-/// notifier on failure.
+/// Every run is persisted as a <see cref="WorkflowRun"/> audit record with structured evidence and
+/// pushed to the configured notifier on failure.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
@@ -57,14 +62,16 @@ public class WorkflowsController : ControllerBase
             .ToList();
 
     /// <summary>
-    /// Recent run history, newest first, optionally filtered by tenant and/or workflow. Under
-    /// <c>Auth:Mode=Local</c>, a non-admin caller who omits <paramref name="tenantId"/> only sees
-    /// runs for tenants they hold a grant on -- otherwise this endpoint would be a way to read
-    /// every other customer's history regardless of sharing.
+    /// Recent run history, newest first, optionally filtered by tenant, workflow and/or target
+    /// (a user object id or UPN; matched case-insensitively). Under <c>Auth:Mode=Local</c>, a
+    /// non-admin caller who omits <paramref name="tenantId"/> only sees runs for tenants they hold
+    /// a grant on -- otherwise this endpoint would be a way to read every other customer's history
+    /// regardless of sharing.
     /// </summary>
     [HttpGet("runs")]
     public async Task<ActionResult<IReadOnlyList<WorkflowRunDto>>> Runs(
-        [FromQuery] Guid? tenantId, [FromQuery] string? workflowId, [FromQuery] int take, CancellationToken ct)
+        [FromQuery] Guid? tenantId, [FromQuery] string? workflowId, [FromQuery] int take,
+        [FromQuery] string? targetId, CancellationToken ct)
     {
         if (tenantId is not null && !await _access.HasRoleAsync(tenantId.Value, TenantRole.Viewer, ct))
             return Forbid();
@@ -72,6 +79,8 @@ public class WorkflowsController : ControllerBase
         var query = _db.WorkflowRuns.AsNoTracking().Include(r => r.Tenant).AsQueryable();
         if (tenantId is not null) query = query.Where(r => r.TenantId == tenantId);
         if (!string.IsNullOrEmpty(workflowId)) query = query.Where(r => r.WorkflowId == workflowId);
+        var target = WorkflowEvidenceAdapter.NormalizeTargetId(targetId);
+        if (target is not null) query = query.Where(r => r.TargetId == target);
 
         if (tenantId is null)
         {
@@ -85,6 +94,33 @@ public class WorkflowsController : ControllerBase
                 .Take(Math.Clamp(take == 0 ? 50 : take, 1, 200))
                 .ToListAsync(ct))
             .Select(WorkflowRunDto.From).ToList());
+    }
+
+    /// <summary>
+    /// The run's structured evidence (JSON), or with <c>?format=markdown</c> a ticket-ready
+    /// Markdown download. Rows written before evidence existed are adapted on read. Viewer grant
+    /// on the run's tenant required.
+    /// </summary>
+    [HttpGet("runs/{runId:guid}/evidence")]
+    public async Task<IActionResult> Evidence(Guid runId, [FromQuery] string? format, CancellationToken ct)
+    {
+        var run = await _db.WorkflowRuns.AsNoTracking().Include(r => r.Tenant)
+            .FirstOrDefaultAsync(r => r.Id == runId, ct);
+        if (run is null) return NotFound("Run not found.");
+        if (!await _access.HasRoleAsync(run.TenantId, TenantRole.Viewer, ct)) return Forbid();
+
+        var evidence = run.Evidence ?? WorkflowEvidenceAdapter.Build(run);
+        WorkflowEvidenceAdapter.Stamp(evidence, run);
+
+        if (string.Equals(format, "markdown", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(format, "md", StringComparison.OrdinalIgnoreCase))
+        {
+            var bytes = Encoding.UTF8.GetBytes(EvidenceRenderer.Markdown(evidence));
+            return File(bytes, "text/markdown; charset=utf-8", $"pcb-run-{run.StartedAt:yyyyMMdd-HHmm}-{run.WorkflowId}-{runId.ToString()[..8]}.md");
+        }
+        if (!string.IsNullOrEmpty(format) && !string.Equals(format, "json", StringComparison.OrdinalIgnoreCase))
+            return BadRequest("format must be json or markdown.");
+        return Ok(evidence);
     }
 
     [HttpPost("{id}/diagnose")]
@@ -113,17 +149,15 @@ public class WorkflowsController : ControllerBase
         return await Record(workflow!, tenant!, req, WorkflowRunKind.Remediate, async run =>
         {
             var result = await workflow!.RemediateAsync(tenant!, req.Inputs, ct);
-            run.Steps = result.Steps;
-            run.Findings = result.PostState?.Findings ?? new();
-            run.Healthy = result.PostState?.Healthy;
-            run.Succeeded = result.Succeeded;
+            WorkflowEvidenceAdapter.ApplyRemediation(run, result);
             return result;
         });
     }
 
     /// <summary>
-    /// Runs the action, persisting a <see cref="WorkflowRun"/> whatever happens. Persistence and
-    /// notification use CancellationToken.None so an aborted request still leaves an audit trail.
+    /// Runs the action, persisting a <see cref="WorkflowRun"/> (with evidence) whatever happens.
+    /// Persistence and notification use CancellationToken.None so an aborted request still leaves
+    /// an audit trail.
     /// </summary>
     private async Task<ActionResult<T>> Record<T>(
         IWorkflow workflow, Tenant tenant, WorkflowRunRequest req, WorkflowRunKind kind,
@@ -145,15 +179,23 @@ public class WorkflowsController : ControllerBase
         {
             return Ok(await action(run));
         }
+        catch (OperationInputException ex)
+        {
+            run.Succeeded = false;
+            run.Error = ex.Message;
+            return BadRequest(ex.Message);
+        }
         catch (Exception ex)
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             return StatusCode(502, ex.Message);
         }
         finally
         {
             run.DurationMs = sw.ElapsedMilliseconds;
+            WorkflowEvidenceAdapter.Finalize(run);
             _db.WorkflowRuns.Add(run);
             await _db.SaveChangesAsync(CancellationToken.None);
             await _notifier.NotifyAsync(run, CancellationToken.None);

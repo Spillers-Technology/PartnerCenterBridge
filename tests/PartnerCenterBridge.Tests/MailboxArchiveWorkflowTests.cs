@@ -113,6 +113,45 @@ public class MailboxArchiveWorkflowTests
         Assert.True(run.PostState!.Healthy);
     }
 
+    private static async Task<WorkflowRunResult> RemediateWithRetentionStep(string detail, string? policyOnReread)
+    {
+        var exo = new StubExo
+        {
+            RemediationResult = new ArchiveRemediationResult
+            {
+                Steps = { new ProvisioningStep("Connect", true, "contoso"), new ProvisioningStep("Assign retention policy", true, detail) },
+                State = State(policy: policyOnReread)
+            }
+        };
+        return await new MailboxArchiveWorkflow(exo).RemediateAsync(Tenant(), new Dictionary<string, string>
+        {
+            ["identity"] = "user@contoso.com", ["retentionPolicyName"] = "Custom MRM",
+            ["enableAutoExpandingArchive"] = "false", ["clearProcessingBlocks"] = "false", ["triggerProcessing"] = "false"
+        });
+    }
+
+    [Fact]
+    public async Task Assigned_retention_policy_must_be_the_requested_one_on_reread()
+    {
+        // Custom MRM was assigned, but the re-read shows a different policy: not verified.
+        var wrong = await RemediateWithRetentionStep("assigned: Custom MRM", "Default MRM Policy");
+        var check = Assert.Single(wrong.Verification!, v => v.Name == "Assign retention policy");
+        Assert.False(check.Passed);
+        Assert.Contains("not the requested 'Custom MRM'", check.Detail);
+
+        var right = await RemediateWithRetentionStep("assigned: Custom MRM", "custom mrm");
+        Assert.True(Assert.Single(right.Verification!, v => v.Name == "Assign retention policy").Passed);
+    }
+
+    [Fact]
+    public async Task Existing_retention_policy_is_reported_unchanged_not_as_a_verified_change()
+    {
+        var run = await RemediateWithRetentionStep("already assigned: Legacy Policy", "Legacy Policy");
+
+        Assert.Contains(1, run.UnchangedSteps);
+        Assert.DoesNotContain(run.Verification!, v => v.Name == "Assign retention policy");
+    }
+
     [Fact]
     public async Task Remediate_defaults_missing_flags_to_true()
     {

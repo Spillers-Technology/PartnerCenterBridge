@@ -5,98 +5,90 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Architecture - Partner Center Bridge docs</title>
 <meta name="description" content="How Partner Center Bridge is built: two auth planes, the module layout, the MCP surface, the contract model and the workflow engine.">
-<meta name="theme-color" content="#ffffff">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
 <link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/architecture.html">
 <meta property="og:type" content="article">
+<meta property="og:site_name" content="Partner Center Bridge">
 <meta property="og:title" content="Architecture - Partner Center Bridge docs">
 <meta property="og:description" content="How Partner Center Bridge is built: two auth planes, the module layout, the MCP surface, the contract model and the workflow engine.">
 <meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/architecture.html">
 <meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%230369a1'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.7' stroke-linecap='round'/%3E%3C/svg%3E">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="960">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
 <link rel="stylesheet" href="styles.css">
-<!-- OpenReplay Tracking Code (replay.spillerstech.us) -->
-<script>
-  var initOpts = {
-    projectKey: "vQsdaVKqB3x2jUBKW4xd",
-    ingestPoint: "https://replay.spillerstech.us/ingest",
-    defaultInputMode: 0,
-    obscureTextNumbers: false,
-    obscureTextEmails: false,
-  };
-  var startOpts = { userID: "" };
-  (function(A,s,a,y,e,r){
-    r=window.OpenReplay=[e,r,y,[s-1, e]];
-    s=document.createElement('script');s.src=A;s.async=!a;
-    document.getElementsByTagName('head')[0].appendChild(s);
-    r.start=function(v){r.push([0])};
-    r.stop=function(v){r.push([1])};
-    r.setUserID=function(id){r.push([2,id])};
-    r.setUserAnonymousID=function(id){r.push([3,id])};
-    r.setMetadata=function(k,v){r.push([4,k,v])};
-    r.event=function(k,p,i){r.push([5,k,p,i])};
-    r.issue=function(k,p){r.push([6,k,p])};
-    r.isActive=function(){return false};
-    r.getSessionToken=function(){};
-  })("//static.openreplay.com/18.0.17/openreplay-assist.js",1,0,initOpts,startOpts);
-  OpenReplay.start();
-  OpenReplay.setMetadata("project", "PartnerCenterBridge");
-</script>
 </head>
 <body>
-
 <a class="skip-link" href="#content">Skip to content</a>
+<!-- @header: shared across every page; keep in sync -->
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <span class="brand-name">Partner Center <b>Bridge</b></span><small class="brand-docs">Docs</small>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
     <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#features">Features</a>
       <a href="index.html#how-it-works">How it works</a>
-      <a href="index.html#screens">Screens</a>
-      <a href="index.html#status">Status</a>
-      <a href="getting-started.html" class="is-current">Docs</a>
+      <a href="index.html#security">Security</a>
+      <a href="getting-started.html" aria-current="page">Docs</a>
       <a href="index.html#faq">FAQ</a>
-      <a class="nav-cta" href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a class="nav-icon" href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+      <a class="nav-download" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>Download</span></a>
     </nav>
   </div>
 </header>
+<!-- /@header -->
 
 <div class="docs-shell">
+  <!-- @sidebar: generated from the shared page list; keep in sync -->
   <aside class="docs-sidebar" aria-label="Documentation">
-    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs:</span>Architecture</span><span class="chev" aria-hidden="true"></span></button>
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs</span>Architecture</span><span class="chev" aria-hidden="true"></span></button>
     <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
-      <p class="docs-nav-home"><a href="index.html">&larr; Product overview</a></p>
       <div class="docs-nav-group">
         <p class="docs-nav-title">Get started</p>
         <ul>
-          <li><a href="getting-started.html">Getting started</a></li>
-          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
-          <li><a href="deployment.html">Deployment</a></li>
+          <li><a href="getting-started.html">Get started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
         </ul>
       </div>
       <div class="docs-nav-group">
-        <p class="docs-nav-title">Concepts</p>
+        <p class="docs-nav-title">Guides</p>
         <ul>
-          <li><a href="architecture.html" aria-current="page">Architecture</a></li>
-          <li><a href="authentication.html">Authentication</a></li>
-        </ul>
-      </div>
-      <div class="docs-nav-group">
-        <p class="docs-nav-title">Features</p>
-        <ul>
+          <li><a href="operations.html">Operations</a></li>
           <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
         </ul>
       </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Reference</p>
+        <ul>
+          <li><a href="architecture.html" aria-current="page">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-download">
+        <p><strong>Partner Center Bridge for Windows</strong>Signed, self-contained, no server needed.</p>
+        <a class="btn btn-primary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download</a>
+      </div>
     </nav>
   </aside>
+  <!-- /@sidebar -->
 
   <main id="content" class="docs-main">
 <article class="doc">
-<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Concepts</span></p>
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Reference</span></p>
 <h1>Architecture</h1>
 
 <h2 id="two-independent-auth-planes">Two independent auth planes</h2>
@@ -152,10 +144,62 @@ completely separate:</p>
       <td>Controllers, operator auth (OIDC, Local, or Dev), the MCP server, DI wiring, deploy +
           provisioning orchestration, workflow dispatch + run recording.</td></tr>
   <tr><td><code>web/</code></td>
-      <td>React SPA: Dashboard, Find User, Tenants, Contracts, App Templates, Deploy, History,
-          New Hire, Offboard, Workflows, Approvals, Config Snapshots, and (in Local mode) Security.</td></tr>
+      <td>React SPA: Home, People, Tenants, Operations (Access Parity, onboard/offboard, deploy,
+          workflows, contracts, templates), Activity, Settings, plus sign-in, registration and
+          account security for Local mode. Routing/IA rework is in progress on this branch.</td></tr>
 </table>
 </div>
+
+<h2 id="hosting-profiles">Hosting profiles: Server vs. Local</h2>
+<p>
+  <code>Hosting:Profile</code> is <code>Server</code> (default; today's container deployment,
+  Postgres, nginx in front, configured auth) or <code>Local</code> (the single-user
+  <strong>Local Workbench</strong>: SQLite, loopback-only Kestrel, embedded SPA, self-registered
+  Local accounts). Local is selected by <code>--local</code> on the command line or baked into
+  the Local Workbench build's assembly metadata at publish time (the container build never gets
+  it); nothing else in the codebase branches on the profile directly -- it only changes what
+  <code>HostingExtensions.AddBridgeHosting</code> configures before the rest of startup runs:
+  the persistence provider, the auth mode default, the Data Protection key ring path, Kestrel's
+  bind address, and (Local only) a generated signing key and a background service that prints a
+  startup banner and opens the browser. See
+  <a href="local-workbench.html">Local Workbench</a> for the full CLI, data layout, and how
+  secrets are protected in that mode.
+</p>
+
+<h2 id="persistence-providers">Persistence: two providers, one model</h2>
+<p>
+  <code>Persistence:Provider</code> selects <code>Postgres</code> (default) or
+  <code>Sqlite</code> (Local Workbench). Both configure the same <code>BridgeDbContext</code>
+  model from <code>PartnerCenterBridge.Data</code>, but each provider owns its own EF Core
+  migrations project and design-time factory --
+  <code>PartnerCenterBridge.Data</code> for Postgres, <code>PartnerCenterBridge.Data.Sqlite</code>
+  for SQLite -- so a model change needs a migration generated for both. Migrations for whichever
+  provider is active apply automatically at startup. The SQLite provider sets
+  <code>PRAGMA journal_mode=WAL</code>, <code>synchronous=NORMAL</code>, <code>foreign_keys=ON</code>,
+  and a 5-second busy timeout on every connection, so a single-user desktop workload does not trip
+  <code>SQLITE_BUSY</code>.
+</p>
+
+<h2 id="operations-and-evidence-model">Operations and evidence model</h2>
+<p>
+  <code>IPlannedOperation</code> extends the existing <code>IWorkflow</code> contract with an
+  explicit two-step shape: <code>PlanAsync(tenant, inputs)</code> returns an
+  <code>OperationPlan</code> (every item considered, including ineligible ones with the reason,
+  plus preflight findings, warnings and limitations) for the operator to review, and
+  <code>ApplyAsync(tenant, inputs, selectedItemIds)</code> re-plans server-side, applies only the
+  still-eligible selected items, and re-queries to verify, returning an
+  <code>OperationEvidence</code>. Access Parity and offboarding are both implemented this way.
+  Every persisted <code>WorkflowRun</code> -- including runs from the older
+  diagnose/remediate workflows, adapted on read -- carries a nullable <code>Evidence</code> JSON
+  column: preflight, plan, changes, verification, warnings, limitations, failures, and a
+  server-generated <code>ticketNotes</code> narrative, plus a strict <code>outcome</code>
+  (<code>Succeeded</code>, <code>PartiallySucceeded</code>, <code>Failed</code>,
+  <code>NoChangeNeeded</code>, <code>VerificationFailed</code>, or <code>Planned</code>) --
+  success is only ever claimed for a change a post-apply re-read actually confirmed.
+  <code>GET /api/workflows/runs/{runId}/evidence</code> returns it as JSON, or as a downloadable
+  Markdown ticket note with <code>?format=markdown</code>. See
+  <a href="workflows.html">Workflows</a> for Access Parity and offboarding policy v2 specifically.
+</p>
 
 <h2 id="the-mcp-surface">The MCP surface</h2>
 <p>
@@ -213,8 +257,8 @@ completely separate:</p>
 </p>
 
 <nav class="doc-pager" aria-label="Previous and next page">
-  <a class="prev" href="deployment.html"><span>&larr; Previous</span>Deployment</a>
-  <a class="next" href="authentication.html"><span>Next &rarr;</span>Authentication</a>
+  <a class="prev" href="mcp-server.html"><span>&larr; Previous</span>MCP server</a>
+  <a class="next" href="deployment.html"><span>Next &rarr;</span>Run as a server</a>
 </nav>
 </article>
   </main>
@@ -224,54 +268,51 @@ completely separate:</p>
   </aside>
 </div>
 
+<!-- @footer: shared across every page; keep in sync -->
 <footer class="site-footer">
-  <div class="wrap stack-strip">
-    <span class="stack-strip-label">Built on</span>
-    <span>ASP.NET Core 8</span>
-    <span>React + Vite + TS</span>
-    <span>PostgreSQL</span>
-    <span>Microsoft Graph</span>
-    <span>Partner Center API</span>
-    <span>Exchange Online PowerShell V3</span>
-  </div>
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect width="24" height="24" rx="5" fill="#0369a1"/><path d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 17.5h12" stroke="#fff" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <span class="brand-name">Partner Center <b>Bridge</b></span>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="brand-name">Partner Center Bridge</span>
       </a>
-      <p>Self-hosted, open-source tooling for MSPs who work across many Microsoft 365 customer tenants.</p>
+      <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>
+      <p class="footer-release"><a class="btn btn-secondary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download for Windows</a></p>
     </div>
     <nav class="footer-col" aria-label="Product">
       <h2>Product</h2>
       <ul>
-        <li><a href="index.html#who-its-for">Who it's for</a></li>
+        <li><a href="index.html#features">Features</a></li>
         <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#security">Security</a></li>
+        <li><a href="index.html#status">Maturity</a></li>
         <li><a href="index.html#screens">Screens</a></li>
-        <li><a href="index.html#status">What's real today</a></li>
         <li><a href="index.html#faq">FAQ</a></li>
       </ul>
     </nav>
     <nav class="footer-col" aria-label="Documentation">
       <h2>Docs</h2>
       <ul>
-          <li><a href="getting-started.html">Getting started</a></li>
-          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
-          <li><a href="deployment.html">Deployment</a></li>
-          <li><a href="architecture.html">Architecture</a></li>
-          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="getting-started.html">Get started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+          <li><a href="operations.html">Operations</a></li>
           <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
       </ul>
     </nav>
     <nav class="footer-col" aria-label="Project">
       <h2>Project</h2>
       <ul>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" target="_blank" rel="noopener">GitHub repository</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a></li>
-        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" target="_blank" rel="noopener">Security policy</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">Releases</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" rel="noopener">Security policy</a></li>
         <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
       </ul>
     </nav>
@@ -281,6 +322,7 @@ completely separate:</p>
     <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
   </div>
 </footer>
+<!-- /@footer -->
 <script src="assets/site.js"></script>
 </body>
 </html>

@@ -62,11 +62,14 @@ internal sealed class PasswordResetWorkflow : IWorkflow
 
     public async Task<WorkflowRunResult> RemediateAsync(Tenant tenant, IReadOnlyDictionary<string, string> inputs, CancellationToken ct = default)
     {
-        var run = new WorkflowRunResult();
+        var run = new WorkflowRunResult { Verification = new() };
         var graph = await _graph.CreateAsync(tenant, ct);
 
         using var user = await graph.GetAsync($"/users/{Uri.EscapeDataString(inputs["userUpn"])}?$select=id", ct);
         var userId = user.RootElement.GetProperty("id").GetString()!;
+        // The sign-in cutoff before anything changes: the revoke is proven only by it moving forward.
+        var cutoffBefore = await WorkflowVerify.ReadSessionCutoffAsync(graph, userId, ct);
+        var startedAt = DateTimeOffset.UtcNow;
 
         var password = GeneratePassword();
         await WorkflowSteps.RunAsync(run.Steps, "Set temporary password", async () =>
@@ -77,6 +80,7 @@ internal sealed class PasswordResetWorkflow : IWorkflow
             }, ct);
             return "must change at next sign-in";
         });
+        var passwordStep = run.Steps.Count - 1;
 
         // Only hand the password out if it was actually set.
         if (run.Steps.All(s => s.Success))
@@ -87,6 +91,35 @@ internal sealed class PasswordResetWorkflow : IWorkflow
             await graph.PostAsync($"/users/{userId}/revokeSignInSessions", new { }, ct);
             return "revoked";
         });
+        var revokeStep = run.Steps.Count - 1;
+
+        // Desired-state verification of what Graph lets us read back. The password value itself is
+        // never readable, so that change stays acknowledged-but-unverifiable; the must-change flag
+        // and the session cut-off are checked.
+        if (run.Steps[passwordStep].Success)
+        {
+            run.CannotVerify(passwordStep, "Temporary password set",
+                "Graph does not expose password values; Microsoft acknowledged the change but it cannot be independently verified.");
+            try
+            {
+                using var after = await graph.GetAsync($"/users/{userId}?$select=id,passwordProfile", ct);
+                var force = after.RootElement.TryGetProperty("passwordProfile", out var pp) && pp.ValueKind == System.Text.Json.JsonValueKind.Object
+                            && pp.TryGetProperty("forceChangePasswordNextSignIn", out var f)
+                            && f.ValueKind is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False
+                    ? f.GetBoolean() : (bool?)null;
+                if (force is null)
+                    run.CannotVerify(passwordStep, "Must change password at next sign-in",
+                        "passwordProfile.forceChangePasswordNextSignIn was not returned on re-read.");
+                else
+                    run.Verify(passwordStep, "Must change password at next sign-in", force.Value,
+                        force.Value ? "forceChangePasswordNextSignIn is true on re-read." : "forceChangePasswordNextSignIn is false on re-read.");
+            }
+            catch (GraphRequestException ex)
+            {
+                run.Verify(passwordStep, "Must change password at next sign-in", false, $"Could not re-read the user: {ex.Message}");
+            }
+        }
+        await WorkflowVerify.SessionsRevokedAsync(graph, userId, cutoffBefore, startedAt, run, revokeStep, ct);
 
         run.PostState = await DiagnoseAsync(tenant, inputs, ct);
         return run;

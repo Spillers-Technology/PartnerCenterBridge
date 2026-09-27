@@ -1,0 +1,192 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Called by release.yml's verify job so a tagged release runs the exact same
+  # gate as every PR, instead of a separate copy that can drift from it.
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dotnet:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pcb
+          POSTGRES_PASSWORD: pcb
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pcb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # Read by tests/PartnerCenterBridge.Tests/PostgresAuthorizationConcurrencyTests.cs; the
+      # ordinary suite skips those tests unless this is set, so the release gate (this job) sets
+      # it to exercise them against the service container above. Tests create/drop their own
+      # scratch databases against this server.
+      PCB_TEST_POSTGRES: "Host=localhost;Port=5432;Username=pcb;Password=pcb;Database=postgres"
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore PartnerCenterBridge.sln
+
+      - name: Build
+        run: dotnet build PartnerCenterBridge.sln -c Release --no-restore
+
+      - name: Test
+        run: >
+          dotnet test PartnerCenterBridge.sln -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory ./TestResults
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: TestResults/**/*.trx
+          retention-days: 7
+          if-no-files-found: ignore
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Type check
+        working-directory: web
+        run: npx tsc -b
+
+      - name: Unit tests
+        working-directory: web
+        run: npx vitest run
+
+      - name: Build
+        working-directory: web
+        run: npm run build
+
+  local-workbench:
+    runs-on: windows-latest
+    needs: [dotnet, web]
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Publish Local Workbench
+        shell: pwsh
+        run: ./scripts/publish-local.ps1
+
+      - name: Smoke test the published exe
+        shell: pwsh
+        run: |
+          ./scripts/smoke-local.ps1 `
+            -DataDir (Join-Path $env:RUNNER_TEMP 'pcb-smoke') `
+            -LogDir $env:RUNNER_TEMP
+
+      - name: Run doctor (Exchange/SAM expected unconfigured in CI)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          $exe = Join-Path (Get-Location) 'artifacts/local/win-x64/PartnerCenterBridge.exe'
+          $dataDir = Join-Path $env:RUNNER_TEMP 'pcb-smoke'
+          & $exe doctor --data-dir $dataDir
+          Write-Host "doctor exit code: $LASTEXITCODE (informational only, not gating this job)"
+
+      - name: Upload smoke logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-workbench-smoke-logs
+          path: |
+            ${{ runner.temp }}/pcb-smoke-stdout.log
+            ${{ runner.temp }}/pcb-smoke-stderr.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload published exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: partnercenterbridge-win-x64
+          path: artifacts/local/win-x64/PartnerCenterBridge.exe
+          retention-days: 14
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/PartnerCenterBridge.Api/Dockerfile
+          push: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web

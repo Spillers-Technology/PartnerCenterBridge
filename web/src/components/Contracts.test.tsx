@@ -183,7 +183,7 @@ describe("Contracts", () => {
     await user.click(screen.getByRole("switch", { name: "Show templates without a package" }));
 
     expect(await screen.findByText("Zoom")).toBeInTheDocument();
-    expect(screen.getByText("So close! Attach a package to unlock →")).toBeInTheDocument();
+    expect(screen.getByText("Attach a package to enable →")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Zoom" })).toBeDisabled();
   });
 
@@ -412,7 +412,7 @@ describe("Contracts", () => {
     await user.click(screen.getByRole("switch", { name: "Show templates without a package" }));
     const input = screen.getByLabelText("Upload package for Zoom");
     const clickSpy = vi.spyOn(input, "click");
-    const chip = screen.getByRole("button", { name: "So close! Attach a package to unlock \u2192" });
+    const chip = screen.getByRole("button", { name: "Attach a package to enable \u2192" });
     chip.focus();
 
     await user.keyboard("{Enter}");

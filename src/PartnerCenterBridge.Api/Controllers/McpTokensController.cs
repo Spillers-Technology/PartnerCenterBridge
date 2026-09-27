@@ -60,7 +60,8 @@ public class McpTokensController : ControllerBase
         _db.McpTokens.Add(token);
         await _db.SaveChangesAsync(ct);
 
-        var jwt = _tokens.IssueMcpToken(user, token);
+        // The PAT inherits the epoch of the session that asked for it (stale if that session is).
+        var jwt = _tokens.IssueMcpToken(user, token, LocalTokenService.EpochOf(User) ?? -1);
         return Ok(new CreatedMcpTokenDto(token.Id, token.Name, jwt));
     }
 

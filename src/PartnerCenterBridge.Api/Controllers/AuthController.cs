@@ -29,17 +29,19 @@ public class AuthController : ControllerBase
     private readonly AuthModeInfo _mode;
     private readonly ChallengeCache _challenges;
     private readonly AuthResponseFactory _responses;
+    private readonly WorkbenchOwnerService _owner;
     private static readonly PasswordHasher<AppUser> Hasher = new();
 
     public AuthController(
         BridgeDbContext db, IOptions<LocalAuthOptions> options, AuthModeInfo mode,
-        ChallengeCache challenges, AuthResponseFactory responses)
+        ChallengeCache challenges, AuthResponseFactory responses, WorkbenchOwnerService owner)
     {
         _db = db;
         _options = options.Value;
         _mode = mode;
         _challenges = challenges;
         _responses = responses;
+        _owner = owner;
     }
 
     [HttpGet("mode")]
@@ -48,6 +50,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest req, CancellationToken ct)
     {
         if (!_mode.IsLocal) return BadRequest("Self-registration is not enabled on this deployment (Auth:Mode is not Local).");
@@ -62,10 +65,21 @@ public class AuthController : ControllerBase
         // Serialize bootstrap so concurrent first registrations cannot both observe an empty user
         // table and both become Administrator.
         await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        // Without an account the workbench is single-user by design: another account could never
+        // sign in (there is no sign-in page), so the owner protects it with an account first.
+        if (await _db.AppUsers.AnyAsync(u => u.IsWorkbenchOwner, ct))
+            return Conflict("This workbench is used without an account. Its owner must first choose 'Protect with an account' " +
+                            "in Settings > Account & security before other accounts can be created.");
         if (await _db.AppUsers.AnyAsync(u => u.Email == email, ct))
             return Conflict("An account with that email already exists.");
 
         var isFirstUser = !await _db.AppUsers.AnyAsync(ct);
+        // The first account becomes Administrator. In the Local Workbench, loopback is shared by
+        // every Windows user on the machine, so the first account needs the setup ticket that only
+        // this process hands out (its own browser launch, console, or a verified second launch).
+        // The Server profile relies on network controls for bootstrap instead (see the docs).
+        if (isFirstUser && _owner.Local is not null && !ConsumeSetupTicket(req.Ticket))
+            return SetupTicketRequired();
 
         var user = new AppUser
         {
@@ -101,9 +115,18 @@ public class AuthController : ControllerBase
         }
         await _db.SaveChangesAsync(ct);
         await authorizationLock.CommitAsync(ct);
+        if (isFirstUser) _owner.RevokeTickets(TicketPurpose.Setup);
 
         return Ok(await _responses.BuildAsync(user, ct));
     }
+
+    private bool ConsumeSetupTicket(string? ticket) =>
+        _owner.Consume(ticket, TicketPurpose.Setup, out _) == TicketCheck.Accepted;
+
+    private ObjectResult SetupTicketRequired() =>
+        StatusCode(StatusCodes.Status403Forbidden,
+            "To finish setting up this workbench, open Partner Center Bridge from PartnerCenterBridge.exe on this computer " +
+            "(setup links work once and expire; running the exe again opens a new one).");
 
     /// <summary>
     /// Password login. Returns <see cref="AuthResponse"/> directly, or -- if the account has TOTP
@@ -121,9 +144,10 @@ public class AuthController : ControllerBase
 
         // Same generic failure for "no such user" and "wrong password" -- don't let login responses
         // confirm which emails have accounts.
-        if (user is null)
+        // The no-account owner has no password (only the launch link signs it in).
+        if (user is null || user.IsWorkbenchOwner)
         {
-            await RecordLoginFailureAsync(null, email, ct);
+            await RecordLoginFailureAsync(user?.Id, email, ct);
             return Unauthorized("Invalid email or password.");
         }
 
@@ -165,6 +189,182 @@ public class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync(ct);
 
+        return Ok(await _responses.BuildAsync(user, ct));
+    }
+
+    /// <summary>
+    /// First run of a Local Workbench, the deliberate alternative to creating an administrator
+    /// account: creates the built-in workbench owner (named after the Windows user, all instance
+    /// administration, no tenant access until it adds tenants) and signs the caller in. Only while
+    /// no user exists, only in the Local profile, never with a non-loopback --listen address, and
+    /// only with the first-run setup ticket this process handed out.
+    /// </summary>
+    [HttpPost("setup/no-account")]
+    [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
+    public async Task<ActionResult<AuthResponse>> SetupNoAccount(NoAccountSetupRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal || _owner.Local is null) return NotFound();
+        if (_owner.UnavailableReason is { } reason) return StatusCode(StatusCodes.Status403Forbidden, reason);
+        if (!req.Confirm) return BadRequest("Confirm that this workbench should be used without an account.");
+
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        if (await _db.AppUsers.AnyAsync(ct))
+            return Conflict("This workbench already has an account, so it cannot switch to use without an account.");
+        if (!ConsumeSetupTicket(req.Ticket)) return SetupTicketRequired();
+
+        var user = new AppUser
+        {
+            Email = WorkbenchOwnerService.OwnerEmail,
+            DisplayName = WorkbenchOwnerService.OwnerDisplayName(),
+            PasswordHash = "",
+            // Administrator is the whole instance plane (it must be assigned alone). Tenant power still
+            // comes only from per-tenant grants: the owner gets Owner on tenants it adds or syncs.
+            InstanceRoles = InstanceRole.Administrator,
+            IsWorkbenchOwner = true,
+            LastLoginAt = DateTimeOffset.UtcNow
+        };
+        // A hash of a random value nobody keeps: there is no password, and login refuses the owner anyway.
+        user.PasswordHash = Hasher.HashPassword(user, Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
+        _db.AppUsers.Add(user);
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.WorkbenchOwnerCreated,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                choice = "use without an account",
+                windowsUser = Environment.UserName,
+                machine = Environment.MachineName
+            })
+        });
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.BootstrapAdministratorAssigned,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new { roles = new[] { nameof(InstanceRole.Administrator) } })
+        });
+        authorizationLock.State.Revision++;
+        await _db.SaveChangesAsync(ct);
+        await authorizationLock.CommitAsync(ct);
+        _owner.RevokeTickets(TicketPurpose.Setup);
+
+        // Later launches of the exe sign in with one-time tickets the running process mints.
+        return Ok(await _responses.BuildAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Launch-link sign-in for a workbench used without an account: the SPA posts the one-time
+    /// ticket it took from the URL fragment and gets the same <see cref="AuthResponse"/> as a
+    /// password login. The ticket is checked first, so wrong ones never block a valid one (see
+    /// <see cref="WorkbenchOwnerService.Consume"/>). The session is issued under the instance
+    /// authorization lock, which "Protect with an account" also holds, so a launch racing a
+    /// conversion either sees no owner or gets a token from before the conversion's epoch bump.
+    /// </summary>
+    [HttpPost("launch")]
+    [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
+    public async Task<IActionResult> Launch(LaunchRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal || _owner.Local is null) return NotFound();
+
+        switch (_owner.Consume(req.Ticket, TicketPurpose.SignIn, out var retryAfter))
+        {
+            case TicketCheck.Throttled:
+                Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    "This sign-in link is not valid. Open Partner Center Bridge from PartnerCenterBridge.exe again.");
+            case TicketCheck.Rejected:
+                var owner = await _db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
+                if (owner is not null) await RecordLoginFailureAsync(owner.Id, "launch link", ct);
+                return Unauthorized("This sign-in link is not valid: each link works once and only for a few minutes. " +
+                                    "Open Partner Center Bridge from PartnerCenterBridge.exe again.");
+        }
+
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        var current = await _db.AppUsers.FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
+        if (current is null || _owner.UnavailableReason is not null)
+            return Unauthorized("This workbench has accounts; sign in with yours.");
+
+        current.LastLoginAt = DateTimeOffset.UtcNow;
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.LoginSucceeded,
+            ActorUserId = current.Id,
+            ActorName = current.DisplayName,
+            Detail = "\"launch link (no account)\""
+        });
+        await _db.SaveChangesAsync(ct);
+        var response = await _responses.BuildAsync(current, ct);
+        await authorizationLock.CommitAsync(ct);
+        return Ok(response);
+    }
+
+    /// <summary>
+    /// Converts the no-account owner into an ordinary Local account: sets the email and password
+    /// (usual password rules) and clears <see cref="AppUser.IsWorkbenchOwner"/>, so launch tickets
+    /// stop working and password (then passkey / TOTP) sign-in applies. It also advances the
+    /// security epoch (every earlier session token stops working) and revokes the owner's MCP tokens,
+    /// then returns a fresh session for the caller.
+    /// </summary>
+    [HttpPost("owner/protect")]
+    [Authorize]
+    public async Task<ActionResult<AuthResponse>> ProtectOwner(ProtectOwnerRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal) return BadRequest("Local accounts are not enabled on this deployment (Auth:Mode is not Local).");
+        if (this.LocalUserId() is not { } userId) return BadRequest("Not a local account.");
+        var email = (req.Email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            return BadRequest("A valid email is required.");
+        if (email == WorkbenchOwnerService.OwnerEmail)
+            return BadRequest("Use your own email address.");
+        if ((req.Password ?? "").Length < _options.MinPasswordLength)
+            return BadRequest($"Password must be at least {_options.MinPasswordLength} characters.");
+
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        var user = await _db.AppUsers.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return NotFound();
+        if (!user.IsWorkbenchOwner) return Conflict("This account is already protected by a password.");
+        if (await _db.AppUsers.AnyAsync(u => u.Email == email && u.Id != userId, ct))
+            return Conflict("An account with that email already exists.");
+
+        user.Email = email;
+        if (!string.IsNullOrWhiteSpace(req.DisplayName)) user.DisplayName = req.DisplayName.Trim();
+        user.PasswordHash = Hasher.HashPassword(user, req.Password!);
+        user.IsWorkbenchOwner = false;
+        user.FailedLoginCount = 0;
+        user.LockedUntil = null;
+        // Everything issued before this point stops working on its next request: sessions opened
+        // through launch links (and any copy of them), and MCP tokens created without an account.
+        // The caller gets a fresh session below. A launch racing this conversion holds the same
+        // lock, so it either finishes first (and its token carries the old epoch) or finds no owner.
+        user.SessionEpoch++;
+        var now = DateTimeOffset.UtcNow;
+        var pats = await _db.McpTokens.Where(t => t.UserId == user.Id && t.RevokedAt == null).ToListAsync(ct);
+        foreach (var pat in pats) pat.RevokedAt = now;
+        _owner.RevokeTickets();
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.WorkbenchOwnerProtected,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                email, launchLink = "revoked", earlierSessions = "revoked", mcpTokensRevoked = pats.Count
+            })
+        });
+        await _db.SaveChangesAsync(ct);
+        await authorizationLock.CommitAsync(ct);
+
+        _owner.RevokeTickets(); // again: nothing minted while this committed survives it
         return Ok(await _responses.BuildAsync(user, ct));
     }
 

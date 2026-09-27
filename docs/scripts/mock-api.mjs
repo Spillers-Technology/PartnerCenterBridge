@@ -150,11 +150,12 @@ const mailboxDiagnosis = {
 };
 
 const runs = [
-  { id: "r1", workflowId: "mailbox-archive", workflowName: "Mailbox archive repair", tenantId: tenants[0].id, tenantName: "Contoso Ltd", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(40), durationMs: 5210 },
-  { id: "r2", workflowId: "mfa-reset", workflowName: "MFA / auth method reset", tenantId: tenants[2].id, tenantName: "Tailspin Toys", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(70), durationMs: 1890 },
-  { id: "r3", workflowId: "license-repair", workflowName: "License assignment repair", tenantId: tenants[2].id, tenantName: "Tailspin Toys", kind: "Remediate", operator: "amorgan", inputs: {}, findings: [], steps: [], succeeded: false, healthy: false, error: "usage location set, but SKU still in error state after reprocess", startedAt: minutesAgo(110), durationMs: 4400 },
-  { id: "r4", workflowId: "compromised-lockdown", workflowName: "Compromised account lockdown", tenantId: tenants[1].id, tenantName: "Fabrikam Inc", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(180), durationMs: 3120 },
-  { id: "r5", workflowId: "password-reset", workflowName: "Password reset + session revoke", tenantId: tenants[0].id, tenantName: "Contoso Ltd", kind: "Diagnose", operator: "amorgan", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(220), durationMs: 640 },
+  { id: "r6", workflowId: "access-parity", workflowName: "Access parity", tenantId: tenants[0].id, tenantName: "Contoso Ltd", kind: "Apply", operator: "jspillers", inputs: { sourceUserId: "priya.shah@contoso.com", targetUserId: "u1" }, findings: [], steps: [], succeeded: false, startedAt: minutesAgo(12), durationMs: 6120, outcome: "PartiallySucceeded", targetId: "u1", targetDisplayName: "Maya Chen" },
+  { id: "r1", workflowId: "mailbox-archive", workflowName: "Mailbox archive repair", tenantId: tenants[0].id, tenantName: "Contoso Ltd", kind: "Remediate", operator: "jspillers", inputs: { identity: "maya.chen@contoso.com" }, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(40), durationMs: 5210, outcome: "Succeeded", targetId: "u1", targetDisplayName: "Maya Chen" },
+  { id: "r2", workflowId: "mfa-reset", workflowName: "MFA / auth method reset", tenantId: tenants[2].id, tenantName: "Tailspin Toys", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(70), durationMs: 1890, outcome: "Succeeded", targetId: "u2", targetDisplayName: "Marco Chen" },
+  { id: "r3", workflowId: "license-repair", workflowName: "License assignment repair", tenantId: tenants[2].id, tenantName: "Tailspin Toys", kind: "Remediate", operator: "amorgan", inputs: {}, findings: [], steps: [], succeeded: false, healthy: false, error: "usage location set, but SKU still in error state after reprocess", startedAt: minutesAgo(110), durationMs: 4400, outcome: "VerificationFailed", targetId: "u2", targetDisplayName: "Marco Chen" },
+  { id: "r4", workflowId: "compromised-lockdown", workflowName: "Compromised account lockdown", tenantId: tenants[1].id, tenantName: "Fabrikam Inc", kind: "Remediate", operator: "jspillers", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(180), durationMs: 3120, outcome: "Succeeded" },
+  { id: "r5", workflowId: "password-reset", workflowName: "Password reset + session revoke", tenantId: tenants[0].id, tenantName: "Contoso Ltd", kind: "Diagnose", operator: "amorgan", inputs: {}, findings: [], steps: [], succeeded: true, healthy: true, startedAt: minutesAgo(220), durationMs: 640, outcome: "Planned" },
 ];
 
 const dashboard = {
@@ -209,6 +210,7 @@ const groups = [
 ];
 
 const directoryUsers = [
+  { id: "u1", displayName: "Maya Chen", userPrincipalName: "maya.chen@contoso.com" },
   { id: "u10", displayName: "Priya Shah", userPrincipalName: "priya.shah@contoso.com" },
   { id: "u11", displayName: "Sam Rivera", userPrincipalName: "sam.rivera@contoso.com" },
 ];
@@ -296,6 +298,200 @@ const snapshotDiff = [
   { sectionId: "device-compliance-policies", sectionName: "Device Compliance Policies", changes: [] },
 ];
 
+// Workbench status/diagnostics (0.9.0+). A realistic mix: most checks pass, Exchange isn't set up
+// yet -- so Home shows its setup checklist and Settings > Workbench shows quest-chip fixes.
+const diagnostics = {
+  checks: [
+    { id: "hosting", label: "Hosting", status: "Ok", detail: "Server profile, listening on http://localhost:5080", fix: null },
+    { id: "database", label: "Database", status: "Ok", detail: "PostgreSQL 16 at postgres.databases.svc, 42 migrations applied", fix: null },
+    { id: "data-protection", label: "Data protection keys", status: "Ok", detail: "Persisted to the database", fix: null },
+    { id: "auth", label: "Sign-in", status: "Ok", detail: "Local accounts, 4 users", fix: null },
+    { id: "sam", label: "Microsoft connection (SAM)", status: "Ok", detail: "Refresh token stored, last used 12 minutes ago", fix: null },
+    { id: "tenants", label: "Customer tenants", status: "Warning", detail: "1 of 5 tenants has no GDAP delegation", fix: { label: "Review tenants", command: null, route: "/tenants" } },
+    { id: "pwsh", label: "PowerShell 7", status: "Ok", detail: "pwsh 7.4.5", fix: null },
+    {
+      id: "exchange-module", label: "Exchange Online module", status: "NotConfigured",
+      detail: "pwsh found, ExchangeOnlineManagement not installed",
+      fix: { label: "Install module", command: "pwsh -c \"Install-Module ExchangeOnlineManagement -Scope CurrentUser\"", route: null },
+    },
+  ],
+  capabilities: { graph: true, exchange: false, partnerCenter: true },
+};
+
+const personWorkspace = {
+  tenantId: tenants[0].id,
+  userId: "u1",
+  profile: {
+    status: "Ok",
+    data: {
+      id: "u1", displayName: "Maya Chen", upn: "maya.chen@contoso.com", mail: "maya.chen@contoso.com", accountEnabled: true,
+      jobTitle: "Operations Analyst", department: "Operations", onPremisesSyncEnabled: false,
+      createdDateTime: minutesAgo(525600), lastSignIn: minutesAgo(42),
+    },
+  },
+  licenses: {
+    status: "Ok",
+    data: [
+      { skuPartNumber: "SPE_E3", skuId: "05e9a617-0261-4cee-bb44-138d3ef5d965" },
+      { skuPartNumber: "VISIOCLIENT", skuId: "c5928f49-12ba-48f7-ada3-0d743a3601d5" },
+    ],
+  },
+  groups: {
+    status: "Ok",
+    data: [
+      { id: "g1", displayName: "All Staff", category: "Microsoft365" },
+      { id: "g3", displayName: "Managed Workstations", category: "Security" },
+      { id: "g7", displayName: "Operations - All (dynamic)", category: "Dynamic" },
+      { id: "g8", displayName: "ops-announcements@contoso.com", category: "Distribution" },
+    ],
+  },
+  authMethods: { status: "Ok", data: ["password", "microsoftAuthenticator", "fido2"] },
+  mailbox: { status: "Unavailable", reason: "Exchange Online module (ExchangeOnlineManagement) is not installed on this workbench." },
+  devices: {
+    status: "Ok",
+    data: [
+      { id: "d1", deviceName: "CONTOSO-LT-0142", operatingSystem: "Windows", osVersion: "10.0.26100.2033", complianceState: "compliant", lastSyncDateTime: minutesAgo(95), managementAgent: "mdm" },
+      { id: "d2", deviceName: "Maya's iPhone", operatingSystem: "iOS", osVersion: "18.6", complianceState: "noncompliant", lastSyncDateTime: minutesAgo(2900), managementAgent: "mdm" },
+    ],
+  },
+  recentRuns: { status: "Ok", data: [runs[0], runs[1]] },
+};
+
+// --- Operations and evidence (0.9.0) -----------------------------------------------------------
+
+const parityLimitations = [
+  "SharePoint direct permissions, app role assignments, Exchange mailbox/calendar permissions and Teams-only private channels are not compared.",
+];
+
+function parityItem(id, name, category, eligible, reason = null) {
+  return { id: `group:${id}`, action: "AddMember", objectType: "group", objectId: id, objectName: name, destructive: false, eligible, category, reason };
+}
+
+const parityPlan = {
+  operationId: "access-parity",
+  operationName: "Access parity",
+  tenantId: tenants[0].id,
+  target: { kind: "user", id: "u1", displayName: "Maya Chen" },
+  preflight: [
+    { name: "Source user", status: "Ok", detail: "Priya Shah (priya.shah@contoso.com)" },
+    { name: "Target user", status: "Ok", detail: "Maya Chen (maya.chen@contoso.com)" },
+    { name: "Source memberships", status: "Info", detail: "9 direct memberships read" },
+  ],
+  items: [
+    parityItem("g11", "Finance - Reporting", "Security", true),
+    parityItem("g12", "Project Northwind", "Microsoft365", true),
+    parityItem("g13", "VPN Users", "Security", true),
+    parityItem("g14", "Power BI Pro Users", "Security", true),
+    parityItem("g15", "Finance - All (dynamic)", "Dynamic", false, "Dynamic membership rule; membership follows the user's attributes, not PCB."),
+    parityItem("g16", "Helpdesk Tier 2 Admins", "RoleAssignable", false, "Role-assignable group; PCB never grants privileged access by copying it."),
+    parityItem("g17", "finance-team@contoso.com", "Distribution", false, "Distribution list; manage its members in Exchange Online."),
+    parityItem("g1", "All Staff", "AlreadyMember", false, "Target is already a member."),
+    { id: "role:r1", action: "AssignRole", objectType: "directoryRole", objectId: "r1", objectName: "Reports Reader", destructive: false, eligible: false, category: "DirectoryRole", reason: "Directory roles are never copied; assign them deliberately." },
+  ],
+  warnings: ["Priya Shah holds 1 directory role; it is listed but not copied."],
+  limitations: parityLimitations,
+};
+
+function evidenceFor(run) {
+  const base = {
+    runId: run.id, operationId: run.workflowId, operationName: run.workflowName,
+    tenant: { id: run.tenantId, displayName: run.tenantName, tenantId: "aa11..." },
+    target: run.targetId ? { kind: "user", id: run.targetId, displayName: run.targetDisplayName ?? run.targetId } : null,
+    operator: run.operator, startedAt: run.startedAt,
+    completedAt: new Date(new Date(run.startedAt).getTime() + run.durationMs).toISOString(),
+    outcome: run.outcome ?? (run.succeeded ? "Succeeded" : "Failed"),
+    preflight: [], plan: [], changes: [], verification: [], warnings: [], limitations: [], failures: [],
+    ticketNotes: `${run.workflowName} for ${run.targetDisplayName ?? run.tenantName} - ${run.outcome ?? "recorded"}.`,
+  };
+  if (run.id === "r6") {
+    const eligible = parityPlan.items.filter((i) => i.eligible);
+    return {
+      ...base,
+      preflight: parityPlan.preflight,
+      plan: parityPlan.items,
+      changes: [
+        ...eligible.slice(0, 3).map((i) => ({ planItemId: i.id, action: i.action, objectName: i.objectName, attempted: true, succeeded: true, detail: "Added" })),
+        { planItemId: eligible[3].id, action: "AddMember", objectName: eligible[3].objectName, attempted: true, succeeded: false, detail: "Graph 403: Insufficient privileges to complete the operation." },
+        { planItemId: "group:g1", action: "AddMember", objectName: "All Staff", attempted: false, succeeded: true, detail: "Already a member" },
+      ],
+      verification: [
+        ...eligible.slice(0, 3).map((i) => ({ name: `Maya Chen is a member of ${i.objectName}`, passed: true, detail: "Re-read from Microsoft Graph" })),
+        { name: "Maya Chen is a member of Power BI Pro Users", passed: false, detail: "Not a member after apply" },
+      ],
+      warnings: parityPlan.warnings,
+      limitations: parityLimitations,
+      failures: ["Power BI Pro Users: Graph 403: Insufficient privileges to complete the operation."],
+      ticketNotes: [
+        "Mirrored access for Maya Chen from Priya Shah (Contoso Ltd).",
+        "Outcome: partially succeeded (3 of 4 groups added and verified).",
+        "Added and verified: Finance - Reporting, Project Northwind, VPN Users.",
+        "Not added: Power BI Pro Users (Graph 403, insufficient privileges).",
+        "Not copied by design: Finance - All (dynamic), Helpdesk Tier 2 Admins (role-assignable), finance-team@contoso.com (distribution list), Reports Reader (directory role).",
+        "Not compared: SharePoint direct permissions, app role assignments, mailbox/calendar permissions, Teams private channels.",
+        "Nothing was removed.",
+      ].join("\n"),
+    };
+  }
+  if (run.error) {
+    return {
+      ...base,
+      changes: [{ planItemId: "usage-location", action: "SetUsageLocation", objectName: "Usage location US", attempted: true, succeeded: true, detail: "Set" }],
+      verification: [{ name: "License SPE_E3 applied", passed: false, detail: run.error }],
+      failures: [run.error],
+    };
+  }
+  return base;
+}
+
+const offboardPlan = {
+  operationId: "offboarding",
+  operationName: "Offboarding",
+  tenantId: tenants[0].id,
+  target: { kind: "user", id: "u10", displayName: "Priya Shah" },
+  preflight: [
+    { name: "User", status: "Ok", detail: "Priya Shah (priya.shah@contoso.com)" },
+    { name: "Sign-in", status: "Info", detail: "enabled" },
+    { name: "Directory sync", status: "Ok", detail: "Cloud-only account." },
+    { name: "Exchange Online", status: "Warning", detail: "Exchange Online module (ExchangeOnlineManagement) is not installed on this workbench." },
+  ],
+  items: [
+    { id: "block-sign-in", action: "BlockSignIn", objectType: "user", objectId: "u10", objectName: "Priya Shah", destructive: false, eligible: true, category: "SignIn" },
+    { id: "revoke-sessions", action: "RevokeSessions", objectType: "user", objectId: "u10", objectName: "Priya Shah", destructive: false, eligible: true, category: "SignIn" },
+    { id: "convert-mailbox", action: "ConvertToShared", objectType: "mailbox", objectId: "priya.shah@contoso.com", objectName: "Priya Shah", destructive: false, eligible: false, category: "Mailbox", reason: "Exchange Online module (ExchangeOnlineManagement) is not installed on this workbench." },
+    { id: "hide-from-gal", action: "HideFromGal", objectType: "mailbox", objectId: "priya.shah@contoso.com", objectName: "Priya Shah", destructive: false, eligible: false, category: "Mailbox", reason: "Not executable yet: PCB has no Exchange operation for hiding from the address list. Do it in the Exchange admin center." },
+    { id: "group:g11", action: "RemoveMember", objectType: "group", objectId: "g11", objectName: "Finance - Reporting", destructive: true, eligible: true, category: "Group" },
+    { id: "group:g13", action: "RemoveMember", objectType: "group", objectId: "g13", objectName: "VPN Users", destructive: true, eligible: true, category: "Group" },
+    { id: "role:r1", action: "RemoveMember", objectType: "directoryRole", objectId: "r1", objectName: "Reports Reader", destructive: true, eligible: false, category: "DirectoryRole", reason: "Directory role; not removed by offboarding. Review the user's role assignments." },
+    { id: "license:sku-e3", action: "RemoveLicense", objectType: "license", objectId: "sku-e3", objectName: "SPE_E3", destructive: true, eligible: true, category: "License" },
+    { id: "follow-up", action: "FollowUpReminder", objectType: "user", objectId: "u10", objectName: "Priya Shah", destructive: false, eligible: false, category: "FollowUp", reason: "Recorded in the evidence; PCB does not schedule it." },
+  ],
+  warnings: ["Follow-up: review and delete Priya Shah on or after " + new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10) + " (30 days). Not scheduled by PCB."],
+  limitations: ["Mailbox conversion, forwarding and address-list changes need Exchange Online on this workbench."],
+};
+
+const offboardEvidence = {
+  runId: "r7", operationId: "offboarding", operationName: "Offboarding",
+  tenant: { id: tenants[0].id, displayName: "Contoso Ltd", tenantId: "aa11..." },
+  target: { kind: "user", id: "u10", displayName: "Priya Shah" },
+  operator: "jspillers", startedAt: minutesAgo(1), completedAt: minutesAgo(0),
+  outcome: "Succeeded",
+  preflight: offboardPlan.preflight, plan: offboardPlan.items,
+  changes: offboardPlan.items.map((i) => ({ planItemId: i.id, action: i.action, objectName: i.objectName, attempted: i.eligible, succeeded: i.eligible, detail: i.eligible ? "Done" : i.reason })),
+  verification: [
+    { name: "Sign-in blocked", passed: true, detail: "accountEnabled = false" },
+    { name: "Sessions revoked", passed: true, detail: "signInSessionsValidFromDateTime updated" },
+    { name: "Removed from 2 groups", passed: true },
+    { name: "License SPE_E3 removed", passed: true },
+  ],
+  warnings: offboardPlan.warnings, limitations: offboardPlan.limitations, failures: [],
+  ticketNotes: "Offboarded Priya Shah (Contoso Ltd).\nSign-in blocked and sessions revoked (verified).\nRemoved from Finance - Reporting, VPN Users; SPE_E3 license removed (verified).\nLeft for a human: mailbox conversion (Exchange not configured), hide from address list, Reports Reader role.",
+};
+
+const offboardingPolicies = {
+  c1: { blockSignIn: true, revokeSessions: true, groupCleanup: "RemoveAssignable", convertMailboxToShared: true, removeLicenses: true, hideFromGal: true, forwardTo: "it-leavers@contoso.com", managerAccess: "None", wipeDevices: "Retire", followUpDays: 30 },
+};
+const defaultPolicy = { blockSignIn: true, revokeSessions: true, groupCleanup: "RemoveAll", convertMailboxToShared: false, removeLicenses: true, hideFromGal: false, forwardTo: null, managerAccess: "None", wipeDevices: "None", followUpDays: 0 };
+
 function json(route, body, status = 200) {
   return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
 }
@@ -307,7 +503,7 @@ export function getUnmatchedRouteCount() {
   return unmatchedRouteCount;
 }
 
-export function installApiMock(page, { authenticated = true, authModeOverride = null } = {}) {
+export function installApiMock(page, { authenticated = true, authModeOverride = null, needsFirstUser = false } = {}) {
   async function handleApi(route) {
   const request = route.request();
   const url = new URL(request.url());
@@ -316,6 +512,11 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   if (debugCapture) console.log(`API ${method} ${apiPath}`);
 
   if (method === "GET" && apiPath === "/dashboard") return json(route, dashboard);
+  if (method === "GET" && apiPath === "/system/status") {
+    return json(route, { profile: "Server", version: "0.9.0", authMode: authModeOverride || "Dev", needsFirstUser });
+  }
+  if (method === "GET" && apiPath === "/system/diagnostics") return json(route, diagnostics);
+  if (method === "GET" && apiPath === "/admin/sam/status") return json(route, { bootstrapped: true });
   if (method === "GET" && apiPath === "/tenants") return json(route, tenants);
   if (method === "POST" && apiPath === "/tenants/sync") return json(route, tenants);
   if (method === "GET" && apiPath === "/contracts") return json(route, contracts);
@@ -346,7 +547,33 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   if (method === "GET" && apiPath === "/pending-actions") return json(route, pendingActions);
 
   if (method === "GET" && apiPath === "/workflows") return json(route, workflows);
-  if (method === "GET" && apiPath === "/workflows/runs") return json(route, runs);
+  if (method === "GET" && apiPath === "/workflows/runs") {
+    const take = Number(url.searchParams.get("take")) || runs.length;
+    const targetId = url.searchParams.get("targetId");
+    return json(route, runs.filter((r) => !targetId || r.targetId === targetId).slice(0, take));
+  }
+  let evidenceMatch = apiPath.match(/^\/workflows\/runs\/([^/]+)\/evidence$/);
+  if (method === "GET" && evidenceMatch) {
+    const run = runs.find((r) => r.id === evidenceMatch[1]);
+    return run ? json(route, evidenceFor(run)) : json(route, "Run not found.", 404);
+  }
+
+  if (method === "POST" && /^\/tenants\/[^/]+\/operations\/access-parity\/plan$/.test(apiPath)) return json(route, parityPlan);
+  if (method === "POST" && /^\/tenants\/[^/]+\/operations\/access-parity\/apply$/.test(apiPath)) return json(route, evidenceFor(runs[0]));
+  if (method === "POST" && apiPath === "/provisioning/terminate/plan") return json(route, offboardPlan);
+  if (method === "POST" && apiPath === "/provisioning/terminate") {
+    return json(route, {
+      userId: "u10", userPrincipalName: "priya.shah@contoso.com", succeeded: true,
+      steps: offboardEvidence.changes.map((c) => ({ name: c.action, success: c.succeeded, detail: c.detail })),
+      evidence: offboardEvidence, policy: offboardingPolicies.c1,
+    });
+  }
+  evidenceMatch = apiPath.match(/^\/contracts\/([^/]+)\/offboarding-policy$/);
+  if (evidenceMatch && method === "GET") return json(route, offboardingPolicies[evidenceMatch[1]] ?? defaultPolicy);
+  if (evidenceMatch && method === "PUT") {
+    offboardingPolicies[evidenceMatch[1]] = request.postDataJSON?.() ?? defaultPolicy;
+    return json(route, offboardingPolicies[evidenceMatch[1]]);
+  }
 
   let match = apiPath.match(/^\/workflows\/([^/]+)\/diagnose$/);
   if (method === "POST" && match) return json(route, mailboxDiagnosis);
@@ -372,7 +599,10 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
   match = apiPath.match(/^\/directory\/([^/]+)\/groups$/);
   if (method === "GET" && match) return json(route, groups);
   match = apiPath.match(/^\/directory\/([^/]+)\/users$/);
-  if (method === "GET" && match) return json(route, directoryUsers);
+  if (method === "GET" && match) {
+    const q = (url.searchParams.get("search") ?? "").toLowerCase();
+    return json(route, directoryUsers.filter((u) => !q || u.displayName.toLowerCase().includes(q) || u.userPrincipalName.toLowerCase().includes(q)));
+  }
 
   match = apiPath.match(/^\/contracts\/([^/]+)\/provisioning-template$/);
   if (method === "GET" && match) return json(route, provisioningTemplate);
@@ -408,6 +638,16 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
     return json(route, { challengeKey: "mock-challenge-key", options: {} });
   if (method === "GET" && apiPath === "/mcp-tokens") return json(route, mcpTokens);
   if (method === "GET" && apiPath === "/config-sections") return json(route, configSections);
+
+  match = apiPath.match(/^\/tenants\/([^/]+)\/people\/([^/]+)$/);
+  if (method === "GET" && match) return json(route, personWorkspace);
+  match = apiPath.match(/^\/tenants\/([^/]+)\/access$/);
+  if (method === "GET" && match) {
+    return json(route, [
+      { userId: "u1", email: "jspillers@example.com", role: "Owner", grantedAt: minutesAgo(43200) },
+      { userId: "u2", email: "maya.chen@example.com", role: "Operator", grantedAt: minutesAgo(20160) },
+    ]);
+  }
 
   match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots$/);
   if (method === "GET" && match) return json(route, snapshotRuns);

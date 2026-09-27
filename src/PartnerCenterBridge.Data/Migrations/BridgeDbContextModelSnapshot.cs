@@ -110,6 +110,9 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsWorkbenchOwner")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -119,6 +122,9 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasColumnType("text");
+
+                    b.Property<int>("SessionEpoch")
+                        .HasColumnType("integer");
 
                     b.Property<bool>("TotpEnabled")
                         .HasColumnType("boolean");
@@ -530,6 +536,12 @@ namespace PartnerCenterBridge.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("ExchangeOrganization")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("ExchangeOrganizationVerifiedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("GdapRelationshipId")
                         .HasColumnType("text");
 
@@ -602,6 +614,9 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Property<string>("Error")
                         .HasColumnType("text");
 
+                    b.Property<string>("Evidence")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("Findings")
                         .IsRequired()
                         .HasColumnType("jsonb");
@@ -620,6 +635,9 @@ namespace PartnerCenterBridge.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("Outcome")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -629,6 +647,12 @@ namespace PartnerCenterBridge.Data.Migrations
 
                     b.Property<bool>("Succeeded")
                         .HasColumnType("boolean");
+
+                    b.Property<string>("TargetDisplayName")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TargetId")
+                        .HasColumnType("text");
 
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
@@ -646,6 +670,8 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.HasIndex("StartedAt");
 
                     b.HasIndex("TenantId", "StartedAt");
+
+                    b.HasIndex("TenantId", "TargetId", "StartedAt");
 
                     b.ToTable("WorkflowRuns");
                 });
@@ -851,6 +877,56 @@ namespace PartnerCenterBridge.Data.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Contract", b =>
+                {
+                    b.OwnsOne("PartnerCenterBridge.Core.Entities.OffboardingPolicy", "OffboardingPolicy", b1 =>
+                        {
+                            b1.Property<Guid>("ContractId")
+                                .HasColumnType("uuid");
+
+                            b1.Property<bool>("BlockSignIn")
+                                .HasColumnType("boolean");
+
+                            b1.Property<bool>("ConvertMailboxToShared")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("FollowUpDays")
+                                .HasColumnType("integer");
+
+                            b1.Property<string>("ForwardTo")
+                                .HasColumnType("text");
+
+                            b1.Property<int>("GroupCleanup")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool>("HideFromGal")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("ManagerAccess")
+                                .HasColumnType("integer");
+
+                            b1.Property<bool>("RemoveLicenses")
+                                .HasColumnType("boolean");
+
+                            b1.Property<bool>("RevokeSessions")
+                                .HasColumnType("boolean");
+
+                            b1.Property<int>("WipeDevices")
+                                .HasColumnType("integer");
+
+                            b1.HasKey("ContractId");
+
+                            b1.ToTable("Contracts");
+
+                            b1.ToJson("OffboardingPolicy");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContractId");
+                        });
+
+                    b.Navigation("OffboardingPolicy");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.Deployment", b =>

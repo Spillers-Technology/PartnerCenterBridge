@@ -94,3 +94,14 @@ public interface IExchangeOnlineService
     /// </summary>
     Task<ArchiveRemediationResult> NudgeArchiveAsync(Tenant tenant, string identity, CancellationToken ct = default);
 }
+
+/// <summary>
+/// Exchange Online authenticated into a directory other than the tenant the operation was for. The
+/// script checks this right after connecting and performs no operation, so nothing was changed.
+/// </summary>
+public sealed class ExchangeTenantMismatchException : InvalidOperationException
+{
+    public ExchangeTenantMismatchException(string tenantName, string? detail)
+        : base($"Exchange Online connected to a different organization than {tenantName}; nothing was changed."
+               + (string.IsNullOrWhiteSpace(detail) ? "" : " " + detail)) { }
+}

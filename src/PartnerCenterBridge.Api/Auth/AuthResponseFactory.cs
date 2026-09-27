@@ -19,10 +19,13 @@ public class AuthResponseFactory
 
     public async Task<AuthResponse> BuildAsync(AppUser user, CancellationToken ct)
     {
+        // Evaluated here and sent as a parameter: SQLite (Local Workbench) cannot translate
+        // DateTimeOffset.UtcNow inside a query, and the result is the same on Postgres.
+        var now = DateTimeOffset.UtcNow;
         var access = await _db.TenantAccessGrants.AsNoTracking()
             .Include(g => g.Tenant)
             .Where(g => g.UserId == user.Id
-                     && (g.ExpiresAt == null || g.ExpiresAt > DateTimeOffset.UtcNow))
+                     && (g.ExpiresAt == null || g.ExpiresAt > now))
             .Select(g => new TenantAccessDto(g.TenantId, g.Tenant!.DisplayName, g.Role))
             .ToListAsync(ct);
         var roles = InstanceRolePermissions.Expand(user.InstanceRoles);
@@ -31,7 +34,8 @@ public class AuthResponseFactory
             user.InstanceRoles.HasFlag(Core.InstanceRole.Administrator),
             user.TotpEnabled, access, roles,
             InstanceRolePermissions.PermissionNames(user.InstanceRoles),
-            user.AuthorizationVersion);
+            user.AuthorizationVersion,
+            user.IsWorkbenchOwner);
         return new AuthResponse(_tokens.IssueAccessToken(user), me);
     }
 }

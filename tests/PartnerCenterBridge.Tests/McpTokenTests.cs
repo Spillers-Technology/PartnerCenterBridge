@@ -17,12 +17,13 @@ public class McpTokenTests
         var user = new AppUser { Email = "a@b.com", DisplayName = "A B", PasswordHash = "x" };
         var token = new McpToken { UserId = user.Id, Name = "laptop", User = user };
 
-        var jwt = NewService().IssueMcpToken(user, token);
+        var jwt = NewService().IssueMcpToken(user, token, user.SessionEpoch);
         var parsed = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(jwt);
 
         Assert.Equal(token.Id.ToString(), parsed.Claims.First(c => c.Type == "jti").Value);
         Assert.Equal(user.Id.ToString(), parsed.Claims.First(c => c.Type == LocalTokenService.UserIdClaim).Value);
         Assert.DoesNotContain(parsed.Claims, claim => claim.Type == LocalTokenService.SystemAdminClaim);
+        Assert.Equal("0", parsed.Claims.First(c => c.Type == LocalTokenService.EpochClaim).Value);
     }
 
     [Fact]
@@ -118,5 +119,30 @@ public class McpTokenTests
         var valid = await McpTokenValidator.ValidateAsync(principal, db.Context);
 
         Assert.False(valid);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_rejects_a_token_from_an_earlier_security_epoch()
+    {
+        using var db = new TestDb();
+        var user = new AppUser { Email = "a@b.com", DisplayName = "A B", PasswordHash = "x" };
+        db.Context.AppUsers.Add(user);
+        await db.Context.SaveChangesAsync();
+        ClaimsPrincipal Principal(string? epoch) => new(new ClaimsIdentity(
+            epoch is null
+                ? [new Claim(LocalTokenService.UserIdClaim, user.Id.ToString())]
+                : [new Claim(LocalTokenService.UserIdClaim, user.Id.ToString()), new Claim(LocalTokenService.EpochClaim, epoch)],
+            "test"));
+
+        // Tokens issued before the claim existed count as epoch 0.
+        Assert.True(await McpTokenValidator.ValidateAsync(Principal(null), db.Context));
+        Assert.True(await McpTokenValidator.ValidateAsync(Principal("0"), db.Context));
+        Assert.False(await McpTokenValidator.ValidateAsync(Principal("garbage"), db.Context));
+
+        user.SessionEpoch++;
+        await db.Context.SaveChangesAsync();
+        Assert.False(await McpTokenValidator.ValidateAsync(Principal(null), db.Context));
+        Assert.False(await McpTokenValidator.ValidateAsync(Principal("0"), db.Context));
+        Assert.True(await McpTokenValidator.ValidateAsync(Principal("1"), db.Context));
     }
 }

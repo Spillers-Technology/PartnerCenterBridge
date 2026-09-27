@@ -40,7 +40,11 @@ public enum DetectionRuleType
 public enum WorkflowRunKind
 {
     Diagnose,
-    Remediate
+    Remediate,
+    /// <summary>A planned operation's read-only plan (e.g. Access Parity plan). Nothing applied.</summary>
+    Plan,
+    /// <summary>A planned operation's apply: re-plan, change, verify (e.g. Access Parity apply, offboarding).</summary>
+    Apply
 }
 
 /// <summary>Per-(template, tenant) deployment state, tracked so updates can fan out.</summary>
@@ -140,5 +144,9 @@ public enum AuditEventType
     BootstrapAdministratorAssigned,
     InstanceRolesChanged,
     SamCredentialRotated,
-    McpApprovalModeChanged
+    McpApprovalModeChanged,
+    /// <summary>First run chose "use without an account": the built-in workbench owner was created.</summary>
+    WorkbenchOwnerCreated,
+    /// <summary>The workbench owner added an email and password; launch-link sign-in is off from then on.</summary>
+    WorkbenchOwnerProtected
 }

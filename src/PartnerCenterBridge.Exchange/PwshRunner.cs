@@ -9,8 +9,10 @@ public record PwshResult(int ExitCode, string Stdout, string Stderr);
 public interface IPwshRunner
 {
     /// <summary>
-    /// Invoke <paramref name="scriptPath"/> with the given JSON payload written to a temp file and
-    /// passed as <c>-PayloadPath</c>. Returns exit code + captured stdout/stderr.
+    /// Invoke <paramref name="scriptPath"/> and write <paramref name="payloadJson"/> (UTF-8) to its
+    /// standard input, then close it; the script reads the payload from stdin. The payload may carry
+    /// secrets, so it is never written to disk or put on the command line. Returns exit code +
+    /// captured stdout/stderr.
     /// </summary>
     Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default);
 }
@@ -21,6 +23,8 @@ public interface IPwshRunner
 /// </summary>
 public class PwshRunner : IPwshRunner
 {
+    private static readonly UTF8Encoding Utf8NoBom = new(encoderShouldEmitUTF8Identifier: false);
+
     private readonly string _pwshPath;
     private readonly int _timeoutSeconds;
 
@@ -32,52 +36,62 @@ public class PwshRunner : IPwshRunner
 
     public async Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
     {
-        var payloadPath = Path.Combine(Path.GetTempPath(), $"exo-{Guid.NewGuid():N}.json");
-        await File.WriteAllTextAsync(payloadPath, payloadJson, ct);
+        var psi = new ProcessStartInfo
+        {
+            FileName = _pwshPath,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-NonInteractive");
+        psi.ArgumentList.Add("-File");
+        psi.ArgumentList.Add(scriptPath);
+
+        using var proc = new Process { StartInfo = psi };
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        proc.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
+        proc.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+
+        proc.Start();
+        proc.BeginOutputReadLine();
+        proc.BeginErrorReadLine();
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds));
         try
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = _pwshPath,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
-            psi.ArgumentList.Add("-NoProfile");
-            psi.ArgumentList.Add("-NonInteractive");
-            psi.ArgumentList.Add("-File");
-            psi.ArgumentList.Add(scriptPath);
-            psi.ArgumentList.Add("-PayloadPath");
-            psi.ArgumentList.Add(payloadPath);
-
-            using var proc = new Process { StartInfo = psi };
-            var stdout = new StringBuilder();
-            var stderr = new StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
-            proc.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
-
-            proc.Start();
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
-
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds));
+            // Hand the payload over the pipe and close it so the script's read sees end-of-input.
+            // Raw UTF-8 bytes: independent of the console input code page on either side.
+            var stdin = proc.StandardInput.BaseStream;
             try
             {
-                await proc.WaitForExitAsync(timeout.Token);
+                await stdin.WriteAsync(Utf8NoBom.GetBytes(payloadJson), timeout.Token);
+                await stdin.FlushAsync(timeout.Token);
             }
-            catch (OperationCanceledException)
+            catch (IOException)
             {
-                try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
-                throw new TimeoutException($"pwsh script '{Path.GetFileName(scriptPath)}' timed out after {_timeoutSeconds}s.");
+                // pwsh exited before reading its input (e.g. it could not start the script); its
+                // exit code and stderr below say why.
+            }
+            finally
+            {
+                try { proc.StandardInput.Close(); } catch (IOException) { }
             }
 
-            return new PwshResult(proc.ExitCode, stdout.ToString(), stderr.ToString());
+            await proc.WaitForExitAsync(timeout.Token);
         }
-        finally
+        catch (OperationCanceledException)
         {
-            try { File.Delete(payloadPath); } catch { /* best effort */ }
+            try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            // Reap the killed process so it does not linger as a zombie/handle.
+            try { proc.WaitForExit(5000); } catch { /* best effort */ }
+            throw new TimeoutException($"pwsh script '{Path.GetFileName(scriptPath)}' timed out after {_timeoutSeconds}s.");
         }
+
+        return new PwshResult(proc.ExitCode, stdout.ToString(), stderr.ToString());
     }
 }

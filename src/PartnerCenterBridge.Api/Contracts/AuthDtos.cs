@@ -3,7 +3,11 @@ using Fido2NetLib;
 
 namespace PartnerCenterBridge.Api.Contracts;
 
-public record RegisterRequest(string Email, string Password, string DisplayName);
+/// <summary>
+/// Body of <c>POST /api/auth/register</c>. <paramref name="Ticket"/> is the first-run setup ticket a
+/// Local Workbench requires while it has no user (see <c>WorkbenchOwnerService</c>); ignored otherwise.
+/// </summary>
+public record RegisterRequest(string Email, string Password, string DisplayName, string? Ticket = null);
 public record LoginRequest(string Email, string Password);
 
 public record TenantAccessDto(Guid TenantId, string TenantName, TenantRole Role);
@@ -17,9 +21,22 @@ public record MeDto(
     IReadOnlyList<TenantAccessDto> TenantAccess,
     IReadOnlyList<InstanceRole> InstanceRoles,
     IReadOnlyList<string> InstancePermissions,
-    long AuthorizationVersion);
+    long AuthorizationVersion,
+    bool IsWorkbenchOwner = false);
 
 public record AuthResponse(string AccessToken, MeDto User);
+
+// --- Local Workbench without an account ----------------------------------------------------
+/// <summary>
+/// Body of <c>POST /api/auth/setup/no-account</c>. A JSON body (not an empty POST) so a web page
+/// on another origin cannot trigger the choice: a cross-origin JSON POST needs a CORS preflight
+/// the Local profile never grants. It also carries the first-run setup ticket.
+/// </summary>
+public record NoAccountSetupRequest(bool Confirm, string? Ticket = null);
+/// <summary>Body of <c>POST /api/auth/launch</c>: the one-time sign-in ticket from the URL fragment.</summary>
+public record LaunchRequest(string? Ticket);
+/// <summary>Body of <c>POST /api/auth/owner/protect</c>: the email and password that replace launch-link sign-in.</summary>
+public record ProtectOwnerRequest(string Email, string Password, string? DisplayName);
 
 /// <summary>Returned from <c>/api/auth/login</c> instead of <see cref="AuthResponse"/> when the account has TOTP enabled -- the password was correct but a second factor is still required.</summary>
 public record MfaChallengeResponse(string MfaTicket);

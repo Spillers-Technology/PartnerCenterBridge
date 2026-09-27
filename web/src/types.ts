@@ -93,6 +93,8 @@ export interface WorkflowRunResult {
   /** Show-once secrets (e.g. a temporary password) - never persisted to run history. */
   ephemeral?: Record<string, string>;
   succeeded: boolean;
+  /** 0.9.0+: native evidence from a planned operation run through remediate; null for classic workflows. */
+  evidence?: OperationEvidence | null;
 }
 
 export interface GlobalUserHit {
@@ -136,7 +138,7 @@ export interface Dashboard {
   recentRuns: WorkflowRunRecord[];
 }
 
-export type WorkflowRunKind = "Diagnose" | "Remediate";
+export type WorkflowRunKind = "Diagnose" | "Remediate" | "Plan" | "Apply";
 export interface WorkflowRunRecord {
   id: string;
   workflowId: string;
@@ -149,10 +151,15 @@ export interface WorkflowRunRecord {
   findings: Finding[];
   steps: ProvisioningStep[];
   succeeded: boolean;
-  healthy?: boolean;
-  error?: string;
+  healthy?: boolean | null;
+  error?: string | null;
   startedAt: string;
   durationMs: number;
+  /** 0.9.0+: structured outcome from the evidence model; absent on older servers. */
+  outcome?: Outcome;
+  /** 0.9.0+: the user the run was about (normalized object id or UPN), when known. */
+  targetId?: string | null;
+  targetDisplayName?: string | null;
 }
 
 export interface WorkflowInput { key: string; label: string; placeholder?: string; required: boolean; default?: string; type: "text" | "bool" }
@@ -204,6 +211,8 @@ export interface MeProfile {
   instanceRoles?: InstanceRole[];
   instancePermissions?: InstancePermission[];
   authorizationVersion?: number;
+  /** The built-in no-account owner of a Local Workbench (no password until protected). */
+  isWorkbenchOwner?: boolean;
 }
 
 export interface InstanceUser {
@@ -250,3 +259,185 @@ export interface SectionDiff { sectionId: string; sectionName: string; changes: 
 
 export interface ConfigWorkbookSection { sectionId: string; sectionName: string; contentJson: string }
 export interface ConfigWorkbook { tenantDisplayName: string; capturedAt: string; operator: string; sections: ConfigWorkbookSection[] }
+
+// --- Ops workbench (0.9.0): system status + diagnostics (spec section A) ------------------------
+export type HostingProfile = "Server" | "Local";
+/** GET /api/system/status -- anonymous, nothing sensitive. */
+export interface SystemStatus {
+  profile: HostingProfile;
+  version: string;
+  authMode: AuthMode;
+  needsFirstUser: boolean;
+  /** Local Workbench used without an account: sign-in only through the one-time link the exe opens. */
+  accountless?: boolean;
+  /** First run may offer "Skip -- use without an account" (Local profile, loopback only). */
+  canSkipAccount?: boolean;
+  /** The Windows user the workbench runs as; only sent when one of the two flags above is true. */
+  windowsUser?: string | null;
+  /** Local Workbench first run: creating the first account (or choosing no account) needs the exe's one-time setup link. */
+  setupTicketRequired?: boolean;
+}
+
+export type DiagnosticStatus = "Ok" | "Warning" | "Error" | "NotConfigured";
+/** A concrete fix for a failing check: a command to run and/or an SPA route to open. */
+export interface DiagnosticFix { label: string; command?: string | null; route?: string | null }
+export interface DiagnosticCheck {
+  id: string;
+  label: string;
+  status: DiagnosticStatus;
+  detail?: string | null;
+  fix?: DiagnosticFix | null;
+}
+export interface SystemCapabilities { graph: boolean; exchange: boolean; partnerCenter: boolean }
+/** GET /api/system/diagnostics -- details only for instance Administrators; others get capabilities. */
+export interface SystemDiagnostics {
+  checks?: DiagnosticCheck[] | null;
+  capabilities: SystemCapabilities;
+}
+
+/** GET /api/admin/sam/status */
+export interface SamStatus { bootstrapped: boolean }
+
+// --- Ops workbench (0.9.0): operation and evidence model (spec section B) -----------------------
+export type Outcome =
+  | "Succeeded" | "PartiallySucceeded" | "Failed" | "NoChangeNeeded"
+  | "VerificationFailed" | "Planned"
+  /** Microsoft accepted the requested changes, but PCB could not confirm their effect (yet). */
+  | "CompletedUnverified";
+
+export interface OperationTarget { kind: string; id: string; displayName: string }
+
+export interface PlanItem {
+  id: string;
+  action: string;
+  objectType: string;
+  objectId: string;
+  objectName: string;
+  destructive: boolean;
+  eligible: boolean;
+  category: string;
+  /** Why the item is ineligible / why it was skipped. */
+  reason?: string | null;
+}
+
+export interface OperationPlan {
+  operationId: string;
+  operationName: string;
+  tenantId: string;
+  target: OperationTarget;
+  preflight: Finding[];
+  items: PlanItem[];
+  warnings: string[];
+  limitations: string[];
+}
+
+export interface ChangeResult {
+  planItemId: string;
+  action: string;
+  objectName: string;
+  attempted: boolean;
+  succeeded: boolean;
+  detail?: string | null;
+}
+
+export interface VerificationCheck { name: string; passed: boolean; detail?: string | null }
+
+export interface OperationEvidence {
+  runId: string;
+  operationId: string;
+  operationName: string;
+  tenant: { id: string; displayName: string; tenantId: string };
+  target: OperationTarget | null;
+  operator: string;
+  startedAt: string;
+  completedAt: string;
+  outcome: Outcome;
+  preflight: Finding[];
+  plan: PlanItem[];
+  changes: ChangeResult[];
+  verification: VerificationCheck[];
+  warnings: string[];
+  limitations: string[];
+  failures: string[];
+  ticketNotes: string;
+}
+
+/** Access Parity group categories; only Security and Microsoft365 cloud groups are eligible. */
+export type GroupCategory =
+  | "Security" | "Microsoft365" | "MailEnabledSecurity" | "Distribution" | "Dynamic"
+  | "RoleAssignable" | "OnPremSynced" | "DirectoryRole" | "AlreadyMember" | "Other";
+
+// --- Ops workbench (0.9.0): person workspace ----------------------------------------------------
+export type SectionStatus = "Ok" | "Unavailable" | "Error";
+/** Each workspace section loads independently; Unavailable/Error carry the reason. */
+export interface WorkspaceSection<T> { status: SectionStatus; reason?: string | null; data?: T | null }
+
+export interface PersonProfile {
+  id: string;
+  displayName: string;
+  upn?: string | null;
+  mail?: string | null;
+  /** Null when Graph did not return it. */
+  accountEnabled?: boolean | null;
+  jobTitle?: string | null;
+  department?: string | null;
+  onPremisesSyncEnabled?: boolean | null;
+  createdDateTime?: string | null;
+  lastSignIn?: string | null;
+}
+export interface PersonLicense { skuPartNumber: string; skuId: string }
+export interface PersonGroup { id: string; displayName: string; category: GroupCategory | string }
+export interface PersonDevice {
+  id: string;
+  deviceName?: string | null;
+  operatingSystem?: string | null;
+  osVersion?: string | null;
+  complianceState?: string | null;
+  lastSyncDateTime?: string | null;
+  managementAgent?: string | null;
+}
+/** Exchange Online mailbox summary (MailboxInfo on the server). */
+export interface PersonMailbox {
+  userPrincipalName: string;
+  displayName: string;
+  recipientTypeDetails: string;
+  forwardingSmtpAddress?: string | null;
+  deliverToMailboxAndForward: boolean;
+}
+
+/** GET /api/tenants/{tenantId}/people/{userId} */
+export interface PersonWorkspace {
+  /** PCB tenant id (registry GUID). */
+  tenantId: string;
+  /** The user's resolved object id (the request may have used a UPN). */
+  userId: string;
+  profile: WorkspaceSection<PersonProfile>;
+  licenses: WorkspaceSection<PersonLicense[]>;
+  groups: WorkspaceSection<PersonGroup[]>;
+  authMethods: WorkspaceSection<string[]>;
+  /** Ok with null data (plus a reason) when Exchange returned no mailbox. */
+  mailbox: WorkspaceSection<PersonMailbox>;
+  devices: WorkspaceSection<PersonDevice[]>;
+  recentRuns: WorkspaceSection<WorkflowRunRecord[]>;
+}
+
+// --- Ops workbench (0.9.0): offboarding policy v2 -----------------------------------------------
+export interface OffboardingPolicy {
+  blockSignIn: boolean;
+  revokeSessions: boolean;
+  groupCleanup: "None" | "RemoveAssignable" | "RemoveAll";
+  convertMailboxToShared: boolean;
+  removeLicenses: boolean;
+  hideFromGal: boolean;
+  forwardTo?: string | null;
+  managerAccess: "None" | "FullAccess";
+  wipeDevices: "None" | "Retire";
+  /** Days after offboarding to revisit/delete the account; 0 = no follow-up. */
+  followUpDays: number;
+}
+
+/** POST /api/provisioning/terminate: the original fields plus evidence and the policy applied (0.9.0+). */
+export interface TerminateResult extends ProvisioningResult {
+  evidence?: OperationEvidence | null;
+  policy?: OffboardingPolicy | null;
+}

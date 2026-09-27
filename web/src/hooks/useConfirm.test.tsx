@@ -198,4 +198,29 @@ describe("useConfirm / ConfirmDialogProvider", () => {
     await user.click(screen.getByRole("button", { name: "Ask" }));
     expect(await screen.findByRole("button", { name: "Confirm" })).toHaveFocus();
   });
+
+  it("autofocuses Cancel for a mutating (non-destructive) dialog without styling it as destructive", async () => {
+    const user = userEvent.setup();
+
+    function MutatingHarness() {
+      const confirm = useConfirm();
+      return (
+        <button onClick={() => void confirm({ title: "Add to 3 groups?", message: "Nothing is removed.", mutating: true })}>
+          Ask
+        </button>
+      );
+    }
+
+    render(
+      <ThemeProvider theme={theme}>
+        <ConfirmDialogProvider>
+          <MutatingHarness />
+        </ConfirmDialogProvider>
+      </ThemeProvider>
+    );
+
+    await user.click(screen.getByRole("button", { name: "Ask" }));
+    expect(await screen.findByRole("button", { name: "Cancel" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Confirm" })).not.toHaveClass("MuiButton-colorError");
+  });
 });

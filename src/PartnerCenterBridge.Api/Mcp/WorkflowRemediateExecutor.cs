@@ -4,6 +4,7 @@ using PartnerCenterBridge.Api.Services;
 using PartnerCenterBridge.Core;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
+using PartnerCenterBridge.Core.Operations;
 using PartnerCenterBridge.Core.Workflows;
 using PartnerCenterBridge.Data;
 
@@ -60,20 +61,19 @@ public class WorkflowRemediateExecutor : IPendingActionExecutor
         try
         {
             result = await workflow.RemediateAsync(tenant, payload.Inputs, ct);
-            run.Steps = result.Steps;
-            run.Findings = result.PostState?.Findings ?? new();
-            run.Healthy = result.PostState?.Healthy;
-            run.Succeeded = result.Succeeded;
+            WorkflowEvidenceAdapter.ApplyRemediation(run, result);
         }
         catch (Exception ex)
         {
             run.Succeeded = false;
             run.Error = ex.Message;
+            if (ex is PartnerCenterBridge.Core.Operations.OperationInterruptedException interrupted) run.Evidence = interrupted.Partial; // keep completed changes
             throw;
         }
         finally
         {
             run.DurationMs = sw.ElapsedMilliseconds;
+            WorkflowEvidenceAdapter.Finalize(run);
             _db.WorkflowRuns.Add(run);
             await _db.SaveChangesAsync(CancellationToken.None);
             await _notifier.NotifyAsync(run, CancellationToken.None);

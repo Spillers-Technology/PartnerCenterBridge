@@ -28,6 +28,8 @@ import type { DiagnosisResult, Finding, Tenant, WorkflowRunRecord, WorkflowRunRe
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
 import { useToast } from "../hooks/useToast";
+import { EvidencePanel } from "./EvidencePanel";
+import { RunResultChips } from "./operationUi";
 import { StepList } from "./StepList";
 import type { WorkflowLaunch } from "./UserSearch";
 
@@ -75,7 +77,28 @@ function Findings({ result, title }: { result: DiagnosisResult; title: string })
   );
 }
 
-export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
+/**
+ * Which of a workflow's inputs names the target user: the conventional keys first, then the
+ * first required text input (every shipped workflow's first input is its target).
+ */
+export function userInputKey(w: WorkflowSummary): string | undefined {
+  const text = w.inputs.filter((i) => i.type !== "bool");
+  return (
+    text.find((i) => i.key === "userUpn")?.key ??
+    text.find((i) => i.key === "identity")?.key ??
+    text.find((i) => /user|upn|identity/i.test(i.key))?.key ??
+    text.find((i) => i.required)?.key
+  );
+}
+
+export function Workflows({
+  prefill,
+  onSelectWorkflow
+}: {
+  prefill?: WorkflowLaunch | null;
+  /** Called when the user picks a workflow from the list, so a route can reflect it in the URL. */
+  onSelectWorkflow?: (workflowId: string) => void;
+}) {
   const [catalog, setCatalog] = useState<WorkflowSummary[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
@@ -110,15 +133,31 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   // needs to check it.
   const currentContextRef = useRef("");
   currentContextRef.current = JSON.stringify({ selectedId, tenantId, inputs });
+  const selectedIdRef = useRef("");
+  selectedIdRef.current = selectedId;
 
-  // Arriving from Find User: select the workflow, tenant, and inputs in one go.
+  // Arriving from a person, a deep link or Find User: select the workflow, tenant, and inputs in
+  // one go. A prefill that only names the workflow already on screen (the URL catching up with a
+  // pick from the list) changes nothing, so it must not wipe what the user has typed.
   useEffect(() => {
     if (!prefill || catalog.length === 0) return;
     const w = catalog.find((x) => x.id === prefill.workflowId);
-    if (!w) return;
+    if (!w) {
+      // No workflow named (e.g. "run a fix for this tenant"): just pre-select the tenant, which
+      // carries over to whichever workflow gets picked next.
+      if (!prefill.workflowId && prefill.tenantId) setTenantId(prefill.tenantId);
+      return;
+    }
+    const hasContext = Boolean(prefill.tenantId || prefill.user || Object.keys(prefill.inputs).length > 0);
+    if (w.id === selectedIdRef.current && !hasContext) return;
     setSelectedId(w.id);
-    setTenantId(prefill.tenantId);
-    setInputs({ ...Object.fromEntries(w.inputs.map((i) => [i.key, i.default ?? ""])), ...prefill.inputs });
+    if (prefill.tenantId) setTenantId(prefill.tenantId);
+    const userKey = prefill.user ? userInputKey(w) : undefined;
+    setInputs({
+      ...Object.fromEntries(w.inputs.map((i) => [i.key, i.default ?? ""])),
+      ...(userKey ? { [userKey]: prefill.user! } : {}),
+      ...prefill.inputs
+    });
     setDiagnosis(null); setRun(null);
   }, [prefill, catalog]);
 
@@ -127,7 +166,9 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
   const clearOutput = () => { setDiagnosis(null); setRun(null); };
 
   const pick = (id: string) => {
+    selectedIdRef.current = id;
     setSelectedId(id);
+    onSelectWorkflow?.(id);
     clearOutput();
     const w = catalog.find((x) => x.id === id);
     setInputs(Object.fromEntries((w?.inputs ?? []).map((i) => [i.key, i.default ?? ""])));
@@ -305,7 +346,10 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
 
               {actionError && <Alert severity="error">{actionError}</Alert>}
               {diagnosis && <Findings result={diagnosis} title="Diagnosis" />}
-              {run && (
+              {run?.evidence ? (
+                // Planned operations bring structured evidence; show it the same way Activity does.
+                <EvidencePanel evidence={run.evidence} title={selected.name} />
+              ) : run && (
                 <Box sx={{ overflowX: "auto" }}>
                   <StepList result={{ steps: run.steps, succeeded: run.succeeded }} />
                 </Box>
@@ -357,12 +401,7 @@ export function Workflows({ prefill }: { prefill?: WorkflowLaunch | null }) {
                     <TableCell>{r.kind}</TableCell>
                     <TableCell>{r.operator}</TableCell>
                     <TableCell>
-                      <Stack direction="row" spacing={0.5} useFlexGap sx={{ flexWrap: "wrap" }}>
-                        <Chip size="small" label={r.succeeded ? "ok" : "failed"} color={r.succeeded ? "success" : "error"} />
-                        {r.healthy !== null && r.healthy !== undefined && (
-                          <Chip size="small" label={r.healthy ? "healthy" : "needs fixing"} color={r.healthy ? "success" : "warning"} />
-                        )}
-                      </Stack>
+                      <RunResultChips run={r} />
                     </TableCell>
                   </TableRow>
                 ))}

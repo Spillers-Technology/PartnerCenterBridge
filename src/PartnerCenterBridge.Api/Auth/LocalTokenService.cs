@@ -20,6 +20,19 @@ public class LocalTokenService
     public const string UserIdClaim = "pcb:userid";
     /// <summary>Legacy compatibility constant. New tokens do not emit it and authorization ignores it.</summary>
     public const string SystemAdminClaim = "pcb:sysadmin";
+    /// <summary>Claim carrying <see cref="AppUser.SessionEpoch"/> at issue time; checked on every request.</summary>
+    public const string EpochClaim = "pcb:epoch";
+
+    /// <summary>The security epoch a principal's token was issued under; tokens without the claim count as 0.</summary>
+    public static int? EpochOf(ClaimsPrincipal? principal)
+    {
+        var value = principal?.FindFirstValue(EpochClaim);
+        if (value is null) return 0;
+        return int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var epoch)
+            ? epoch
+            : null;
+    }
+
     public const string Issuer = "partnercenterbridge-local";
     public const string Audience = "partnercenterbridge";
 
@@ -37,7 +50,8 @@ public class LocalTokenService
             new Claim(ClaimTypes.Name, user.DisplayName),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
-            new Claim(UserIdClaim, user.Id.ToString())
+            new Claim(UserIdClaim, user.Id.ToString()),
+            new Claim(EpochClaim, user.SessionEpoch.ToString(System.Globalization.CultureInfo.InvariantCulture), ClaimValueTypes.Integer32)
         };
 
         var credentials = new SigningCredentials(SigningKey, SecurityAlgorithms.HmacSha256);
@@ -56,7 +70,12 @@ public class LocalTokenService
     /// every existing [Authorize]/ITenantAccessService check treats it identically to a normal
     /// login token -- the only addition is "jti", checked against McpToken.RevokedAt on validation.
     /// </summary>
-    public string IssueMcpToken(AppUser user, McpToken token)
+    /// <param name="epoch">
+    /// The security epoch of the credential that asked for the PAT (see <see cref="EpochOf"/>), not the
+    /// user's current one: a PAT requested by a session that a concurrent "Protect with an account"
+    /// just invalidated is born stale.
+    /// </param>
+    public string IssueMcpToken(AppUser user, McpToken token, int epoch)
     {
         var claims = new[]
         {
@@ -64,6 +83,7 @@ public class LocalTokenService
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(UserIdClaim, user.Id.ToString()),
+            new Claim(EpochClaim, epoch.ToString(System.Globalization.CultureInfo.InvariantCulture), ClaimValueTypes.Integer32),
             new Claim(JwtRegisteredClaimNames.Jti, token.Id.ToString())
         };
 
