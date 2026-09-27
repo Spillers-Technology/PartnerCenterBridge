@@ -105,7 +105,7 @@
   <tr><th></th><th>Windows program (Local Workbench)</th><th>Server (Docker / Kubernetes)</th></tr>
   <tr><td>Best for</td><td>One technician on their own machine</td><td>A team sharing one instance and one audit trail</td></tr>
   <tr><td>Database</td><td>SQLite in <code>%LOCALAPPDATA%\PartnerCenterBridge</code></td><td>PostgreSQL</td></tr>
-  <tr><td>Sign-in</td><td>Local accounts (passkeys, password, TOTP)</td><td>Your OIDC provider, or Local accounts (<code>Auth:Mode=Local</code>)</td></tr>
+  <tr><td>Sign-in</td><td>Local accounts (passkeys, password, TOTP), or no account on an already-secured PC</td><td>Your OIDC provider, or Local accounts (<code>Auth:Mode=Local</code>)</td></tr>
   <tr><td>Network</td><td>Loopback only by default</td><td>Behind your ingress / reverse proxy</td></tr>
   <tr><td>Install</td><td>Download, unzip, run</td><td>Published images on <code>ghcr.io</code>, or build from source</td></tr>
 </table>

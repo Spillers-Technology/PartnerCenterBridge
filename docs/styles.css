@@ -538,6 +538,8 @@ p { text-wrap: pretty; }
   .hero-shot .lightbox-trigger { overflow: hidden; }
   .hero-shot .frame img { width: 170%; max-width: none; }
   .step pre { white-space: pre-wrap; word-break: break-all; }
+  .copy-btn { padding: 4px 8px; }
+  .copy-btn span { display: none; }
   .frame-bar { height: 26px; padding: 0 10px; gap: 5px; }
   .frame-bar i { width: 8px; height: 8px; }
   .frame-url { font-size: 0.66rem; margin-left: 6px; }

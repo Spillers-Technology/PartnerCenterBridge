@@ -251,7 +251,8 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
   }
 }</code></pre>
 <p>
-  This file is plain JSON inside a folder only your Windows account can read. If you would rather not
+  This file is plain JSON in your per-user data folder, which the program restricts to your Windows
+  account where it can. If you would rather not
   keep the secret in a file, set it as an environment variable (<code>Partner__ClientSecret</code>)
   or pass it on the command line (<code>--Partner:ClientSecret=...</code>). Both take precedence over
   <code>pcb.local.json</code>.
