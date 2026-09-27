@@ -28,6 +28,8 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(PcbLocalWorkbench)' == 'true'">
+    <!-- Public publisher identity, not a secret. Overrides support private/custom distributions. -->
+    <PcbMicrosoftClientId Condition="'$(PcbMicrosoftClientId)' == ''">065d8cdd-4146-4d2b-bb5f-377ed8f659cc</PcbMicrosoftClientId>
     <AssemblyName Condition="'$(PcbDesktop)' != 'true'">PartnerCenterBridge</AssemblyName>
     <!-- EF Core and the reflection-heavy libraries here are not trim-safe. -->
     <PublishTrimmed>false</PublishTrimmed>

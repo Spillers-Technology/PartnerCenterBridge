@@ -110,8 +110,8 @@ The intended distributor model is one publisher-owned multitenant public client,
 PowerShell's Microsoft-owned default registration. `publish-local.ps1 -MicrosoftClientId` embeds
 the public ID as API assembly metadata. The release workflow requires the release variable
 `MICROSOFT_SIGN_IN_CLIENT_ID`. Technicians sign in and consent per customer; they do not create
-an application per customer. This preview still has no real publisher registration, and cannot
-complete Microsoft OAuth until one is supplied.
+an application per customer. The publisher registration has now been created and bundled;
+see `docs/microsoft-publisher.md` for its public identity and permission inventory.
 
 For optional custom deployments, an in-app setup endpoint saves a protected application ID and
 applies it immediately. Setup requires local loopback hosting and the instance credentials role.
@@ -122,4 +122,4 @@ caches exist. No password, client secret, or raw Microsoft token enters the setu
 Follow-up validation: 21 direct-auth/local-host tests, 54 targeted web regression tests plus two
 new onboarding/settings tests, TypeScript/Vite build, desktop and CLI publish smokes, and website
 image/overflow checks passed. Refreshed tenant/connection screenshots passed 390px overflow and
-default-hidden recovery checks. Live Microsoft sign-in still needs external registration/consent.
+default-hidden recovery checks. Live Microsoft sign-in/consent still needs operator validation.

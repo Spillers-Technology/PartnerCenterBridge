@@ -134,6 +134,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/smoke-local.ps1 `
+            -RequireMicrosoftSignIn `
             -DataDir (Join-Path $env:RUNNER_TEMP 'pcb-smoke') `
             -LogDir $env:RUNNER_TEMP
 
