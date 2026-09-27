@@ -1,0 +1,40 @@
+name: Deploy docs site
+
+# Redeploys the docs/ site on its own, for a doc-only fix that doesn't warrant a full release
+# (release.yml's pages job deploys the same way, from the same script, whenever a real release
+# publishes). Manual only: nothing about the public site should redeploy on every push to docs/.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  pages:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build site
+        run: ./scripts/build-site.sh site-out
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-out
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
