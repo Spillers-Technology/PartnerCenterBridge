@@ -141,8 +141,12 @@ controllers use the same <code>[Authorize]</code> attribute and the same
   stored encrypted with the same Data Protection key ring as the SAM token. The first account
   registered becomes the instance Administrator. Everything below about Local accounts, sharing,
   TOTP and passkeys applies exactly the same way in that mode. On a machine that is already
-  secured you can instead choose to use it without an account, through a one-time launch link tied
-  to your Windows user; that option is Local Workbench only and off with <code>--listen</code>. See
+  secured you can instead choose to use it without an account, through a launch link tied to your
+  Windows user that keeps working (not one-time) until you protect the workbench with an account --
+  self-registration, password login, passkeys and TOTP are all blocked for that account until then,
+  though MCP access tokens still work. That option is Local Workbench only, gets instance
+  Administrator and no tenant access until it adds a tenant, and first run refuses to offer it with
+  a non-loopback <code>--listen</code> address. See
   <a href="local-workbench.html#using-it-without-an-account">Using it without an account</a>.
 </div>
 

@@ -571,10 +571,14 @@
           <p>No. Creating an administrator account is recommended, but on first launch the Windows
             program also offers <strong>Skip &mdash; use without an account on this computer</strong>,
             for a machine that is already secured (screen lock, disk encryption, no shared Windows
-            account). It then opens with a one-time launch link tied to your Windows user, so other
-            Windows users and web pages cannot use it. You can add a password later in Settings.</p>
-          <p>This option is not available in server or Docker mode, or when the program is exposed
-            to the network with <code>--listen</code>.
+            account). It then opens with a launch link tied to your Windows user (other Windows
+            users and web pages cannot use it) that keeps working, not just once, until you add a
+            password from Settings &gt; Account &amp; security &gt; Protect with an account --
+            registering a password, a passkey or TOTP is blocked for that account until then, though
+            MCP access tokens still work.</p>
+          <p>This option grants instance Administrator and no tenant access until it adds one. It is
+            not available in server or Docker mode, and first run refuses to offer it when the
+            program is exposed to the network with <code>--listen</code>.
             <a href="local-workbench.html#using-it-without-an-account">More detail</a>.</p>
         </div>
       </details>

@@ -201,7 +201,9 @@ Options:
   --port <N>          Port to listen on (default 5080).
   --data-dir <path>   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
   --listen <address>  Bind to another address instead of 127.0.0.1 (exposes the app to the network).
-  --no-browser        Do not open the browser after startup.
+  --no-browser        Do not open the browser after startup. A workbench used without an
+                      account prints its sign-in link instead: that link grants full
+                      access to this workbench, so do not share it.
   --version           Print the version and exit.
   -h, --help          Print help and exit.
 ```
@@ -212,6 +214,15 @@ Options:
 - **Auth**: `Auth:Mode=Local` by default; the profile refuses to start with `Auth:Mode=Dev` (that
   would let anyone who can reach the port act as administrator). The **first account registered
   becomes the instance Administrator**.
+- **First run without an account**: on a machine that's already secured (screen lock, disk
+  encryption, no shared Windows account), first run can instead skip registration and create a
+  built-in workbench owner (instance Administrator, no tenant access until it adds one), signed in
+  through a launch link tied to your Windows user. That link is not one-time — it keeps working,
+  across restarts, until the owner runs **Protect with an account** from Settings > Account &
+  security, which sets a password and turns it into an ordinary account. Until then,
+  self-registration, password login, passkeys and TOTP are all blocked for that account (MCP
+  access tokens are not). Never offered outside the Local Workbench, and refused outright — not
+  just hidden — when `--listen` binds a non-loopback address.
 - **Network**: Kestrel binds `127.0.0.1` only by default. The canonical origin is
   `http://localhost:<port>` — a request addressed to the loopback IP literal (`127.0.0.1` or
   `[::1]`) is redirected (GET/HEAD) or rejected with 421 (everything else) so passkeys, which are
@@ -371,14 +382,25 @@ Full detail: [Config Snapshots](https://spillerstech.us/PartnerCenterBridge/conf
 Mailbox operations (mailbox archive repair, offboarding's mailbox conversion/forwarding) need
 three things: `pwsh` (PowerShell 7) on PATH or at `Exchange:PwshPath`, the
 `ExchangeOnlineManagement` module installed for it, and an app-only certificate configured
-(`Exchange:AppId` + `Exchange:CertificatePath`). None of it is required to run the app. When any
-piece is missing, the affected section reports `Unavailable` with the specific reason (never a
-silent no-op or a fake success) — the person workspace's `mailbox` section, and any offboarding
-item that needs Exchange (`convert-mailbox`, `set-forwarding`). `doctor` (or
-`GET /api/system/diagnostics` for an instance Administrator) probes `pwsh` and the module
-out-of-process (cached 60 seconds) and the app-only cert (checked fresh every time), and prints
-the exact fix for whichever piece is missing first, in the order you'd fix them: install
-PowerShell 7, then the module, then configure the app registration and certificate.
+(`Exchange:AppId` plus either `Exchange:CertificateThumbprint` — preferred on Windows: a
+certificate with its private key already in `Cert:\CurrentUser\My`, or failing that
+`Cert:\LocalMachine\My`, so no certificate secret is handled by the app at all — or
+`Exchange:CertificatePath` [+ `Exchange:CertificatePassword` if the PFX is protected; that
+password reaches `pwsh` only over standard input, never a temporary file or the command line]).
+None of it is required to run the app. When any piece is missing, the affected section reports
+`Unavailable` with the specific reason (never a silent no-op or a fake success) — the person
+workspace's `mailbox` section, and any offboarding item that needs Exchange (`convert-mailbox`,
+`set-forwarding`). `doctor` (or `GET /api/system/diagnostics` for an instance Administrator)
+probes `pwsh` and the module out-of-process (cached 60 seconds) and the app-only cert (checked
+fresh every time), and prints the exact fix for whichever piece is missing first, in the order
+you'd fix them: install PowerShell 7, then the module, then configure the app registration and
+certificate.
+
+The Exchange organization to connect to is read from Microsoft Graph for each tenant (its
+verified initial `*.onmicrosoft.com` domain, cross-checked against the tenant's own Entra id) the
+first time an Exchange operation runs against it, then cached on the tenant —
+`Tenant.DefaultDomain` is never consulted. If the connection ever reports a different
+organization than expected, the operation refuses to run and nothing is changed.
 
 ## Access Parity
 
