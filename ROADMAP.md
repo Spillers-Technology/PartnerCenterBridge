@@ -2,6 +2,38 @@
 
 Things we want to come back to. Not scheduled, not sequenced -- just tracked so they don't get lost.
 
+## Next (0.9.1)
+
+- **Dependency installer.** Offer to install PowerShell 7 and the `ExchangeOnlineManagement`
+  module from Settings and from first launch, instead of only reporting them missing. Runs through
+  an allowlisted set of commands (no arbitrary shell-out), shows a loud, persistent blocked state
+  when the operator declines rather than quietly leaving Exchange features disabled, and turns the
+  dependent features on automatically once the probe next reports them present -- no restart or
+  manual re-check needed.
+- **Onboarding policy.** A contract-defined new-user plan, mirroring offboarding policy v2's
+  plan -> apply -> verify loop with structured evidence, instead of the current one-shot
+  provisioning templates. Today a new hire isn't recorded as a run anywhere PCB tracks history --
+  there's no plan preview, no verification against what Microsoft actually reports back, and
+  nothing in Activity or a person's History tab to show for it.
+- **Tenant sign-in, Phase 1** (see `docs/specs/tenant-sign-in-review.md`): truthful per-tenant
+  connection state instead of one green tenant badge, safe (generation-checked) SAM token
+  rotation so a concurrent re-seed can't be overwritten by a stale acquisition, a **Reconnect
+  partner account** action in Settings that goes through the system browser instead of the CLI
+  device-code flow, and a branded **Sign in with Microsoft** button that follows Microsoft's
+  official branding guidelines for that control.
+- **"Edit person" planned operation.** Job title, department, manager, and phone number as a
+  planned change with a diff preview and post-apply verification, the same shape as other planned
+  operations -- not a fire-and-forget PATCH.
+
+## Tenant sign-in: later phases
+
+Phases 2-4 of `docs/specs/tenant-sign-in-review.md`'s phased design, after Phase 1 above lands:
+GDAP customers arriving with actionable state and one-click remediation (verify access, grant
+consent, request a missing role, complete group assignment, configure Exchange); direct-customer
+application connections (app-only, certificate-based, independent of the partner SAM connection);
+and WAM as a separate desktop token provider for delegated connections, kept apart from the
+existing SAM refresh-token extractor and server automation.
+
 ## Mobile UX testing
 
 The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all current
@@ -17,15 +49,6 @@ are only reviewed by a human, not asserted against a baseline.
 
 Current Config Snapshots (section/whole-tenant diff, workbooks, git sync) works but is limited.
 No specifics yet -- revisit once there's a concrete pain point driving the next iteration.
-
-## AppShell: route history / deep links -- landed on `feat/ops-workbench`
-
-Done. Tabs are real routes now (`/people`, `/people/:tenantId/:userId`, `/tenants`, `/operations/*`,
-`/activity`, `/settings/*`, ...), wired through the router rather than component-swap state, so
-browser history, deep links, and refresh/back/bookmark all work. The six-area navigation
-(Home/People/Tenants/Operations/Activity/Settings) replaces the previous tab set. Some screens
-still need their local state fully reconciled with URL params (e.g. in-progress drafts across a
-refresh) -- revisit if that turns out to still lose work in practice.
 
 ## Design language: "quest-driven" playful nudges
 
