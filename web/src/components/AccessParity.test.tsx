@@ -108,7 +108,9 @@ describe("AccessParity", () => {
 
     await waitFor(() => expect(api.accessParity.apply).toHaveBeenCalledWith("t1", "u1", "u2", ["group:g1"]));
     expect(await screen.findByTestId("evidence-outcome")).toHaveTextContent("Succeeded");
-    expect(screen.getByRole("button", { name: "Copy ticket notes" })).toBeInTheDocument();
+    // MUI keeps the confirmation dialog mounted during its exit transition; the page is
+    // inaccessible until that transition finishes, even though the evidence already rendered.
+    expect(await screen.findByRole("button", { name: "Copy ticket notes" })).toBeInTheDocument();
   });
 
   it("cancelling the confirmation applies nothing", async () => {

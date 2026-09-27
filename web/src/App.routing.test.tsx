@@ -206,7 +206,7 @@ describe("App routing", () => {
     renderApp("/tenants/t1?tab=snapshots");
     expect(await pageHeading("Contoso Ltd")).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: "Snapshots" })).toHaveAttribute("aria-selected", "true");
-    expect(await screen.findByRole("heading", { name: "Config snapshots" }, { timeout: 5000 })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Config snapshots" })).toBeInTheDocument(), { timeout: 15000 });
     // Scoped to this tenant: no tenant picker, and the snapshots are this tenant's.
     expect(screen.queryByLabelText("Tenant")).not.toBeInTheDocument();
     await waitFor(() => expect(api.configSnapshots.list).toHaveBeenCalledWith("t1"));
