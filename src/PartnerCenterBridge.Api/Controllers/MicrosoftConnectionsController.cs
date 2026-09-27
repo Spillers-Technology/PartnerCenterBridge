@@ -17,11 +17,22 @@ public sealed class MicrosoftConnectionsController(DirectTenantConnection connec
     public async Task<IActionResult> List(CancellationToken ct) => Ok(new
     {
         available = connections.Available,
-        configured = connections.Configured,
+        configured = await connections.GetClientIdAsync(ct) is not null,
+        canConfigure = connections.Available && await instanceAccess.HasPermissionAsync(InstancePermission.ManageSam, ct),
         connections = await connections.ListAsync(ct)
     });
 
     public sealed record ConnectRequest(Guid? TenantId);
+    public sealed record SetupRequest(string ClientId);
+
+    [HttpPut("setup")]
+    public async Task<IActionResult> Setup(SetupRequest request, CancellationToken ct)
+    {
+        if (!connections.Available) return BadRequest("Microsoft sign-in setup requires a loopback-only Local Workbench.");
+        try { await connections.ConfigureAsync(request.ClientId, ct); return NoContent(); }
+        catch (UnauthorizedAccessException) { return Forbid(); }
+        catch (InvalidOperationException ex) { return BadRequest(ex.Message); }
+    }
 
     [HttpPost]
     public async Task<IActionResult> Connect(ConnectRequest request, CancellationToken ct)

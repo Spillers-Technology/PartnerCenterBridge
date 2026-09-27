@@ -21,11 +21,12 @@ a terminal. These modes use the same data folder and application services.
 
 Microsoft tenant sign-in
 ------------------------
-Tenants -> Add tenant with Microsoft connects a tenant with its own admin
-account. Configure MicrosoftSignIn:ClientId once in pcb.local.json using
-a multitenant desktop app registration and http://localhost redirect.
-The app needs delegated Graph permissions (including Organization.Read.All)
-and tenant consent. No client secret is used. See the documentation for setup.
+Settings -> Microsoft connections -> Add tenant with Microsoft connects any
+Microsoft 365 organization with its own admin account. Microsoft handles the
+username, password, MFA and consent. Repeat to connect more tenants.
+Release builds include PCB's public application ID; technicians do not need
+to register an application in every customer tenant. No client secret is used.
+The optional Partner Center/GDAP integration is separate from direct sign-in.
 
 Tokens are encrypted per local operator and tenant and renewed silently.
 If Microsoft requires another sign-in, use Reconnect beside the remembered

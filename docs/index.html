@@ -507,16 +507,8 @@
         <figcaption><strong>Ctrl+K palette</strong>Jump to any page, person, tenant, fix or recent run.</figcaption>
       </figure></li>
       <li><figure>
-        <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-login.jpg" width="1440" height="960" loading="lazy" alt="Sign-in screen with a Sign in with a passkey button above a password form."></button></div>
-        <figcaption><strong>Passkey-first sign-in</strong>Passkeys first, with password and TOTP as fallbacks. <a href="authentication.html">Authentication</a></figcaption>
-      </figure></li>
-      <li><figure>
-        <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-security.jpg" width="1440" height="960" loading="lazy" alt="Account security screen listing a registered passkey, TOTP enabled and an MCP access token."></button></div>
-        <figcaption><strong>Account security</strong>Passkeys, TOTP and revocable MCP access tokens.</figcaption>
-      </figure></li>
-      <li><figure>
-        <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-register.jpg" width="1440" height="960" loading="lazy" alt="Create an account screen with email, display name and password fields."></button></div>
-        <figcaption><strong>First run</strong>The first account becomes the Administrator. <a href="local-workbench.html#first-run-walkthrough">First run</a></figcaption>
+        <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-microsoft-connections.jpg" width="1440" height="960" loading="lazy" alt="Microsoft connections with Add tenant with Microsoft and a remembered tenant admin account."></button></div>
+        <figcaption><strong>Your tenants, their admin accounts</strong>Connect each Microsoft 365 organization through Microsoft sign-in. Partner integration is optional.</figcaption>
       </figure></li>
     </ul>
   </div>
@@ -534,13 +526,13 @@
       <details>
         <summary>What do I need to run it?</summary>
         <div class="answer">
-          <p>64-bit Windows and a current browser. The download is self-contained, so there is no
+          <p>64-bit Windows with Microsoft Edge WebView2 Runtime. The download is self-contained, so there is no
             .NET, database or web server to install. Only a <code>win-x64</code> build is published;
             on other platforms, <a href="deployment.html">run it as a server</a> with Docker.</p>
-          <p>To work in customer tenants you also need a CSP partner tenant, a multi-tenant Entra app
-            registration, a GDAP relationship with each customer, and a one-time
-            <a href="sam-bootstrap.html">SAM bootstrap</a>. See
-            <a href="getting-started.html#connect-microsoft">Connect Microsoft</a>.</p>
+          <p>Connect Microsoft 365 tenants with their own admin accounts using
+            <a href="local-workbench.html#direct-microsoft-sign-in">Add tenant with Microsoft</a>.
+            Microsoft handles sign-in, MFA and tenant consent. For MSPs, Partner Center/GDAP is
+            a separate optional connection.</p>
         </div>
       </details>
       <details>
@@ -557,7 +549,7 @@
       <details>
         <summary>Is it safe to point at customer tenants?</summary>
         <div class="answer">
-          <p>It can only do what your GDAP roles and the app's consented permissions allow, and it
+          <p>It can only do what your signed-in admin role or GDAP delegation and the app's consented permissions allow, and it
             installs nothing in customer tenants. Changes are planned and shown first, applied in a
             safe order, and verified by reading them back. Mirror access is additive only. Every
             run is recorded with who ran it.</p>
@@ -574,9 +566,7 @@
             for a machine that is already secured (screen lock, disk encryption, no shared Windows
             account). It then opens with a single-use launch link from the running exe. The link
             expires after two minutes; run the exe again for a fresh one. You can add a
-            password from Settings &gt; Account &amp; security &gt; Protect with an account --
-            registering a password, a passkey or TOTP is blocked for that account until then, though
-            MCP access tokens still work.</p>
+            password later from Settings &gt; Account &amp; security &gt; Protect with an account.</p>
           <p>This option grants instance Administrator and no tenant access until it adds one. It is
             not available in server or Docker mode, and first run refuses to offer it when the
             program is exposed to the network with <code>--listen</code>.

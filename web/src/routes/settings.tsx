@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link as RouterLink } from "react-router";
 import Alert from "@mui/material/Alert";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
@@ -18,7 +22,7 @@ import { api, isApiStatus } from "../api";
 import { AccessNotice } from "../components/AccessNotice";
 import { DiagnosticsList } from "../components/DiagnosticsList";
 import { BackLink, PageHeader } from "../components/PageHeader";
-import { QuestChip } from "../components/QuestChip";
+import { MicrosoftConnections } from "../components/MicrosoftConnections";
 import { Security } from "../components/Security";
 import { useAsyncAction } from "../hooks/useAsyncAction";
 import { useConfirm } from "../hooks/useConfirm";
@@ -53,7 +57,7 @@ export function SettingsOverview() {
       <PageHeader title="Settings" />
       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" }, gap: 1.5, mb: 3 }}>
         <SettingsCard to="/settings/security" icon={<LockOutlined />} title="Account & security" detail="Passkeys, two-factor, MCP tokens and who administers this workbench." />
-        <SettingsCard to="/settings/microsoft" icon={<CloudOutlined />} title="Microsoft connection" detail="The Secure Application Model credential PCB uses to reach customer tenants." />
+        <SettingsCard to="/settings/microsoft" icon={<CloudOutlined />} title="Microsoft connections" detail="Add Microsoft 365 tenants with their own admin accounts, or manage a partner connection." />
         <SettingsCard to="/settings/workbench" icon={<MonitorHeartOutlined />} title="Workbench health" detail="Database, sign-in, PowerShell and Exchange checks, with fixes." />
       </Box>
       <Typography variant="body2" color="text.secondary">
@@ -91,10 +95,8 @@ export function SecuritySettingsPage() {
   );
 }
 
-const SAM_BOOTSTRAP_COMMAND = "dotnet run --project src/PartnerCenterBridge.Api -- bootstrap-sam";
-
 export function MicrosoftSettingsPage() {
-  const { me } = useWorkbench();
+  const { me, refreshMe } = useWorkbench();
   const confirm = useConfirm();
   const toast = useToast();
   const allowed = hasInstancePermission(me, "instance.sam.manage");
@@ -124,9 +126,9 @@ export function MicrosoftSettingsPage() {
 
   const header = (
     <PageHeader
-      title="Microsoft connection"
+      title="Microsoft connections"
       parent={BACK}
-      subtitle="PCB reaches every customer tenant through one Secure Application Model (SAM) refresh token."
+      subtitle="Connect Microsoft 365 tenants with their own admin accounts. Partner connections are available for MSPs managing customers through GDAP."
     />
   );
 
@@ -134,10 +136,14 @@ export function MicrosoftSettingsPage() {
     return (
       <Box>
         {header}
-        <AccessNotice title="Needs the SAM credentials role">
-          Viewing or rotating the Microsoft connection requires the instance SAM credentials role (or
-          Administrator). An Administrator can grant it from Settings, Account & security, Instance access.
-        </AccessNotice>
+        <MicrosoftConnections canConnect={hasInstancePermission(me, "instance.tenant-registry.manage")} onConnected={() => { void refreshMe(); }} />
+        <Accordion>
+          <AccordionSummary expandIcon={<ExpandMore />}><Typography>Partner Center / GDAP connection (advanced)</Typography></AccordionSummary>
+          <AccordionDetails><AccessNotice title="Partner connection access">
+            This optional MSP integration requires the partner credentials role or Administrator.
+            You can add Microsoft tenant accounts above when your workbench administrator grants tenant connection permissions.
+          </AccessNotice></AccordionDetails>
+        </Accordion>
       </Box>
     );
   }
@@ -145,6 +151,13 @@ export function MicrosoftSettingsPage() {
   return (
     <Box>
       {header}
+      <MicrosoftConnections canConnect={hasInstancePermission(me, "instance.tenant-registry.manage")} onConnected={() => { void refreshMe(); }} />
+      <Accordion defaultExpanded={false}>
+      <AccordionSummary expandIcon={<ExpandMore />}><Typography>Partner Center / GDAP connection (advanced)</Typography></AccordionSummary>
+      <AccordionDetails>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        This separate partner connection is for MSPs using Partner Center and GDAP. You do not need it to add tenants with their own Microsoft admin accounts above.
+      </Typography>
       <Card variant="outlined" sx={{ mb: 2 }}>
         <CardContent>
           <Stack direction="row" spacing={1} sx={{ alignItems: "center", mb: 1 }}>
@@ -167,20 +180,22 @@ export function MicrosoftSettingsPage() {
           {sam && !sam.bootstrapped && (
             <Stack spacing={1}>
               <Typography variant="body2">
-                No refresh token yet, so PCB can't reach any customer tenant. Run the interactive bootstrap
-                on the server (it signs in with a device code and stores the token):
+                No partner account is connected. Direct Microsoft tenant connections above work independently.
+                To configure the optional MSP partner connection, follow the partner setup guide.
               </Typography>
-              <QuestChip fix={{ label: "Bootstrap SAM", command: SAM_BOOTSTRAP_COMMAND }} />
+              <Button component="a" href="https://spillerstech.us/PartnerCenterBridge/sam-bootstrap.html" target="_blank" rel="noopener noreferrer">Partner setup guide</Button>
             </Stack>
           )}
         </CardContent>
       </Card>
 
-      <Card variant="outlined">
+      <Accordion>
+      <AccordionSummary expandIcon={<ExpandMore />}><Typography>Advanced recovery: replace a partner token</Typography></AccordionSummary>
+      <AccordionDetails><Card variant="outlined">
         <CardContent>
-          <Typography variant="h6" component="h3" gutterBottom>Paste a refresh token</Typography>
+          <Typography variant="h6" component="h3" gutterBottom>Replace partner refresh token</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            For a token captured out-of-band, or to recover after rotation. Prefer the bootstrap command above.
+            For an existing partner integration, or to recover after rotation. This is not needed for direct Microsoft tenant sign-in.
             The token is stored encrypted and never shown again.
           </Typography>
           <Stack
@@ -216,6 +231,10 @@ export function MicrosoftSettingsPage() {
           </Stack>
         </CardContent>
       </Card>
+      </AccordionDetails>
+      </Accordion>
+      </AccordionDetails>
+      </Accordion>
     </Box>
   );
 }

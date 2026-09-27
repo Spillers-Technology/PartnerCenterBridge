@@ -149,7 +149,13 @@ jobs:
 
       - name: Publish Local Workbench
         shell: pwsh
-        run: ./scripts/publish-local.ps1
+        env:
+          PCB_MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_SIGN_IN_CLIENT_ID }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PCB_MICROSOFT_CLIENT_ID)) {
+            throw 'Set release environment variable MICROSOFT_SIGN_IN_CLIENT_ID to the publisher-owned multitenant public-client registration. Released builds must let technicians sign in without registering their own app.'
+          }
+          ./scripts/publish-local.ps1
 
       - name: Stage exe for signing
         shell: pwsh

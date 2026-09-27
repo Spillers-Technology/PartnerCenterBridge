@@ -11,7 +11,7 @@ public enum SystemCheckStatus { Ok, Warning, Error, NotConfigured }
 /// <summary>How to fix a non-Ok check: a shell command to run and/or an SPA route to open.</summary>
 public sealed record SystemCheckFix(string Label, string? Command, string? Route, string? InstallId = null);
 
-public sealed record SystemCheck(string Id, string Label, SystemCheckStatus Status, string Detail, SystemCheckFix? Fix);
+public sealed record SystemCheck(string Id, string Label, SystemCheckStatus Status, string Detail, SystemCheckFix? Fix, bool Optional = false);
 
 public sealed record SystemCapabilities(bool Graph, bool Exchange, bool PartnerCenter);
 
@@ -70,12 +70,12 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
             try
             {
                 var connections = await _direct.ListAsync(ct);
-                directReady = _direct.Configured && connections.Any(c => !c.ReconnectRequired);
+                directReady = await _direct.GetClientIdAsync(ct) is not null && connections.Any(c => !c.ReconnectRequired);
                 checks.Add(new("microsoft-sign-in", "Microsoft tenant sign-in",
                     directReady ? SystemCheckStatus.Ok : SystemCheckStatus.NotConfigured,
                     directReady ? $"{connections.Count(c => !c.ReconnectRequired)} tenant connection(s) available for this operator"
                         : "Add a Microsoft admin connection or reconnect your account in Tenants",
-                    new SystemCheckFix("Manage Microsoft connections", null, "/tenants")));
+                    new SystemCheckFix("Add tenant with Microsoft", null, "/settings/microsoft")));
             }
             catch (System.Security.Cryptography.CryptographicException)
             {
@@ -85,6 +85,10 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         }
         if (directReady && !samReady)
             samCheck = samCheck with { Detail = samCheck.Detail + ". SAM is optional for directly connected Graph tenants; it is still required for Partner Center." };
+        if (_hosting.Local is not null && !samReady && samCheck.Status == SystemCheckStatus.NotConfigured)
+            samCheck = samCheck with { Label = "Partner Center / GDAP (optional)", Optional = true,
+                Detail = "No partner connection configured. Add Microsoft 365 tenants with their own admin accounts in Microsoft connections, or configure this optional MSP integration.",
+                Fix = new SystemCheckFix("Partner connection settings", null, MicrosoftSettingsRoute) };
         checks.Add(samCheck);
         checks.Add(await TenantsAsync(databaseUsable, ct));
 

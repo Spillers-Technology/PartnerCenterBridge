@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Reflection;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Client;
@@ -24,7 +25,43 @@ public sealed class DirectTenantConnection(BridgeDbContext db, IDataProtectionPr
     private static readonly SemaphoreSlim SignInGate = new(1, 1);
     private readonly IDataProtector protector = protection.CreateProtector("PartnerCenterBridge.DirectTenant.v1");
     public bool Available => hosting.Local is { IsLoopbackOnly: true } && access.CurrentUserId is not null;
-    public bool Configured => Guid.TryParse(config["MicrosoftSignIn:ClientId"], out _);
+    private const string ClientIdKey = "direct-client-id";
+    public async Task<string?> GetClientIdAsync(CancellationToken ct)
+    {
+        var saved = await db.Secrets.AsNoTracking().SingleOrDefaultAsync(s => s.Name == ClientIdKey, ct);
+        var value = saved is null ? config["MicrosoftSignIn:ClientId"]
+            ?? typeof(DirectTenantConnection).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+                .FirstOrDefault(a => a.Key == "PcbMicrosoftClientId")?.Value
+            : protector.Unprotect(saved.ProtectedValue);
+        return Guid.TryParse(value, out var id) && id != Guid.Empty ? id.ToString() : null;
+    }
+
+    public async Task ConfigureAsync(string clientId, CancellationToken ct)
+    {
+        if (!Available || !await instanceAccess.HasPermissionAsync(InstancePermission.ManageSam, ct))
+            throw new UnauthorizedAccessException();
+        if (!Guid.TryParse(clientId, out var id) || id == Guid.Empty)
+            throw new InvalidOperationException("Enter the Application (client) ID from your Microsoft app registration.");
+        if (!await SignInGate.WaitAsync(0, ct))
+            throw new InvalidOperationException("Finish the current Microsoft sign-in before changing setup.");
+        try
+        {
+            await Gate.WaitAsync(ct);
+            try
+            {
+                var current = await GetClientIdAsync(ct);
+                if (current != id.ToString() && await db.Secrets.AnyAsync(s => s.Name.StartsWith("direct:"), ct))
+                    throw new InvalidOperationException("The application ID cannot be changed while Microsoft account connections exist.");
+                var record = await db.Secrets.SingleOrDefaultAsync(s => s.Name == ClientIdKey, ct);
+                if (record is null) db.Secrets.Add(record = new SecretRecord { Name = ClientIdKey, ProtectedValue = "" });
+                record.ProtectedValue = protector.Protect(id.ToString());
+                record.UpdatedAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
+            finally { Gate.Release(); }
+        }
+        finally { SignInGate.Release(); }
+    }
     private string Key(string tenantId) => $"direct:{access.CurrentUserId}:{(Guid.TryParse(tenantId, out var id) ? id.ToString() : tenantId)}";
     private static string Marker(string tenantId) => $"direct-mode:{tenantId}";
     private static readonly string[] Scopes = ["https://graph.microsoft.com/.default"];
@@ -35,10 +72,11 @@ public sealed class DirectTenantConnection(BridgeDbContext db, IDataProtectionPr
         public string? Cache { get; set; } = cache;
     }
 
-    private Session CreateApp(string tenantId, DirectConnectionState? state)
+    private async Task<Session> CreateAppAsync(string tenantId, DirectConnectionState? state, CancellationToken ct)
     {
-        if (!Available || !Configured) throw new InvalidOperationException("Configure MicrosoftSignIn:ClientId in pcb.local.json for local Microsoft sign-in.");
-        var app = PublicClientApplicationBuilder.Create(config["MicrosoftSignIn:ClientId"])
+        var clientId = await GetClientIdAsync(ct);
+        if (!Available || clientId is null) throw new InvalidOperationException("Complete Microsoft sign-in setup in Settings > Microsoft connections first.");
+        var app = PublicClientApplicationBuilder.Create(clientId)
             .WithAuthority($"https://login.microsoftonline.com/{tenantId}")
             .WithRedirectUri("http://localhost").Build();
         var session = new Session(app, state?.Cache);
@@ -92,7 +130,7 @@ public sealed class DirectTenantConnection(BridgeDbContext db, IDataProtectionPr
             var authority = existing?.TenantId ?? "organizations";
             SecretRecord? previous = existing is null ? null : await db.Secrets.SingleOrDefaultAsync(s => s.Name == Key(existing.TenantId), ct);
             var state = previous is null ? null : Read(previous);
-            var session = CreateApp(authority, state);
+            var session = await CreateAppAsync(authority, state, ct);
             var app = session.App;
             var request = app.AcquireTokenInteractive(Scopes).WithUseEmbeddedWebView(false);
             if (state is null) request = request.WithPrompt(Prompt.SelectAccount);
@@ -197,7 +235,7 @@ public sealed class DirectTenantConnection(BridgeDbContext db, IDataProtectionPr
                 if (tenant is null || !await access.HasRoleAsync(tenant.Id, TenantRole.Viewer, ct))
                     throw new UnauthorizedAccessException("Your workbench access to this tenant has been revoked.");
                 var state = Read(record);
-                var session = CreateApp(tenantId, state);
+                var session = await CreateAppAsync(tenantId, state, ct);
                 var app = session.App;
                 try
                 {

@@ -116,6 +116,7 @@ public sealed class LocalWorkbenchHostTests : IDisposable
             Assert.Contains("SQLite", database.GetProperty("detail").GetString());
             var sam = json.RootElement.GetProperty("checks").EnumerateArray().Single(c => c.GetProperty("id").GetString() == "sam");
             Assert.Equal("NotConfigured", sam.GetProperty("status").GetString());
+            Assert.True(sam.GetProperty("optional").GetBoolean());
             Assert.Equal(SystemDiagnostics.MicrosoftSettingsRoute, sam.GetProperty("fix").GetProperty("route").GetString());
             Assert.False(json.RootElement.GetProperty("capabilities").GetProperty("graph").GetBoolean());
         }

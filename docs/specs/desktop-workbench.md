@@ -97,3 +97,29 @@ installation, passkeys, exports/download dialogs, clipboard interaction, and liv
 tenant sign-in still need external/manual validation. Live tenant testing requires a configured
 multitenant public-client app ID and tenant consent. The local preview is unsigned; no push,
 merge, tag, or release publication has been performed.
+
+## Microsoft connection UX follow-up
+
+Microsoft connections is now the primary direct-tenant entry in Settings and at the top of
+Tenants. The old source-checkout bootstrap command is removed from the app. Partner Center/GDAP,
+manual tenant registration, and manual partner token recovery are collapsed optional controls.
+Unconfigured optional partner credentials no longer appear as mandatory Home onboarding. The
+landing page focuses its gallery on administration rather than account authentication features.
+
+The intended distributor model is one publisher-owned multitenant public client, like Graph
+PowerShell's Microsoft-owned default registration. `publish-local.ps1 -MicrosoftClientId` embeds
+the public ID as API assembly metadata. The release workflow requires the release variable
+`MICROSOFT_SIGN_IN_CLIENT_ID`. Technicians sign in and consent per customer; they do not create
+an application per customer. This preview still has no real publisher registration, and cannot
+complete Microsoft OAuth until one is supplied.
+
+For optional custom deployments, an in-app setup endpoint saves a protected application ID and
+applies it immediately. Setup requires local loopback hosting and the instance credentials role.
+The saved setting overrides configuration, which overrides the bundled publisher ID. Changes are
+serialized with account acquisition/cache writes and cannot switch client IDs while account
+caches exist. No password, client secret, or raw Microsoft token enters the setup form.
+
+Follow-up validation: 21 direct-auth/local-host tests, 54 targeted web regression tests plus two
+new onboarding/settings tests, TypeScript/Vite build, desktop and CLI publish smokes, and website
+image/overflow checks passed. Refreshed tenant/connection screenshots passed 390px overflow and
+default-hidden recovery checks. Live Microsoft sign-in still needs external registration/consent.

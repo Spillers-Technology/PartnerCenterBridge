@@ -195,25 +195,30 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
 
 <h2 id="direct-microsoft-sign-in">Add tenants with Microsoft sign-in</h2>
 <p>In a loopback-only Local Workbench, an operator with tenant registry permission can choose
-  <strong>Tenants &gt; Add tenant with Microsoft</strong>. The system browser opens Microsoft's account
+  <strong>Settings &gt; Microsoft connections &gt; Add tenant with Microsoft</strong> (also available
+  on Tenants). The system browser opens Microsoft's account
   picker. Sign in with an administrator of the organization, complete MFA and consent, and the tenant
   appears using its directory name and verified domains. Repeat for each tenant. Existing tenants
   require Owner access in the workbench before an admin connection can be attached.</p>
-<p>One-time application setup: register an application in Microsoft Entra with accounts in any
+<p>Technicians do not need to register an application in every customer tenant. Production builds
+  include PartnerCenterBridge's publisher-owned public client ID; each customer tenant decides
+  whether to grant consent. This is the same principle used by Microsoft Graph PowerShell's
+  <a href="https://learn.microsoft.com/powershell/microsoftgraph/authentication-commands">default application registration</a>.
+  This preview cannot open Microsoft sign-in until a publisher registration is supplied.</p>
+<p><strong>Publisher setup (once):</strong> register an application in Microsoft Entra with accounts in any
   organizational directory. Add the <strong>Mobile and desktop applications</strong> platform with
   <code>http://localhost</code> as a redirect URI. Configure delegated Microsoft Graph permissions:
   <code>Organization.Read.All</code> is required to discover the tenant; add only the delegated
   permissions needed by your chosen operations and obtain tenant admin consent. The desktop flow
-  uses authorization code with PKCE and requires no client secret. In your data directory's
-  <code>pcb.local.json</code>, merge this section and restart:</p>
-<pre><code>{
-  "MicrosoftSignIn": {
-    "ClientId": "YOUR-MULTITENANT-APPLICATION-ID"
-  }
-}</code></pre>
-<p>A distributor can register one application and supply its public application ID to all workbench
-  installations. Customers consent to that application in their own tenants; they do not each
-  need to register another app. No application ID is bundled until a production registration is selected.</p>
+  uses authorization code with PKCE and requires no client secret. Supply the public ID with
+  <code>./scripts/publish-local.ps1 -MicrosoftClientId YOUR-APPLICATION-ID</code>, or set
+  <code>PCB_MICROSOFT_CLIENT_ID</code> for local builds. For releases, set the release environment
+  variable <code>MICROSOFT_SIGN_IN_CLIENT_ID</code>. Release packaging requires it.</p>
+<p>An Administrator may optionally supply a custom app under <strong>Advanced: use your own Microsoft
+  application</strong> in Microsoft connections. It is saved to protected local storage and takes
+  effect immediately. Existing <code>MicrosoftSignIn:ClientId</code> configuration remains supported.
+  The app ID cannot be switched while account connections exist, because their OAuth caches belong
+  to the original app.</p>
 <p>The application requests the registration's Graph <code>.default</code> permissions. A successful
   sign-in does not grant roles or bypass tenant policy: Graph actions require both the delegated
   permission and the signed-in administrator's appropriate role. Guest administration should

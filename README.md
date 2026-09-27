@@ -72,8 +72,9 @@ Two independent auth planes:
   SAM refresh token for a per-tenant Graph token on demand.
   The loopback-only Local Workbench also supports **Tenants > Add tenant with Microsoft**:
   each operator/tenant pair gets its own encrypted MSAL cache, silent renewal, and **Reconnect**
-  for the remembered username when interaction is required. Configure `MicrosoftSignIn:ClientId`
-  once; see [direct sign-in setup](https://spillerstech.us/PartnerCenterBridge/local-workbench.html#direct-microsoft-sign-in).
+  for the remembered username when interaction is required. The publisher supplies one multitenant
+  public client ID with release builds; technicians do not register an app per customer tenant.
+  See [direct sign-in and publisher setup](https://spillerstech.us/PartnerCenterBridge/local-workbench.html#direct-microsoft-sign-in).
   Direct sign-in covers Graph; Partner Center and Exchange retain their separate credentials.
 
 ```

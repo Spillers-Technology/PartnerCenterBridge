@@ -19,7 +19,8 @@
 #>
 param(
     [string]$Runtime = "win-x64",
-    [switch]$SkipSpaBuild
+    [switch]$SkipSpaBuild,
+    [string]$MicrosoftClientId = $env:PCB_MICROSOFT_CLIENT_ID
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +41,13 @@ $publishArgs = @(
     "-o", $out
 )
 if ($SkipSpaBuild) { $publishArgs += "-p:PcbBuildSpa=false" }
+if ($MicrosoftClientId) {
+    $clientId = [guid]::Empty
+    if (-not [guid]::TryParse($MicrosoftClientId, [ref]$clientId) -or $clientId -eq [guid]::Empty) {
+        throw 'MicrosoftClientId must be the publisher application client ID (a non-empty GUID).'
+    }
+    $publishArgs += "-p:PcbMicrosoftClientId=$clientId"
+}
 
 & dotnet @publishArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

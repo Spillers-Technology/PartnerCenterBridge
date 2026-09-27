@@ -37,6 +37,7 @@
 
   <ItemGroup Condition="'$(PcbLocalWorkbench)' == 'true'">
     <AssemblyMetadata Include="PcbHostingProfile" Value="Local" />
+    <AssemblyMetadata Include="PcbMicrosoftClientId" Value="$(PcbMicrosoftClientId)" Condition="'$(PcbMicrosoftClientId)' != ''" />
     <!-- appsettings*.json describe the container deployment; the Local profile has its own defaults
          (Hosting/HostingExtensions.cs) plus the optional pcb.local.json in the data directory. -->
     <Content Update="appsettings*.json" CopyToPublishDirectory="Never" />
