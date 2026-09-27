@@ -224,9 +224,25 @@ cd web &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
 <h3>Exchange Online certificate</h3>
 <p>
   Mailbox workflows shell out to the EXO PowerShell V3 module with app-only certificate auth.
-  Mount the PFX and set the <code>Exchange</code> section (<code>AppId</code>,
-  <code>CertificatePath</code>, <code>CertificatePassword</code>). The API container image
-  already includes PowerShell and the ExchangeOnlineManagement module.
+  Set the <code>Exchange</code> section's <code>AppId</code>, then choose one of two ways to give
+  it the certificate:
+</p>
+<ul>
+  <li><strong><code>Exchange:CertificateThumbprint</code></strong> (preferred on Windows) -- a
+      certificate already imported, with its private key, into <code>Cert:\CurrentUser\My</code>
+      of the account the container/service runs as (or, failing that,
+      <code>Cert:\LocalMachine\My</code>). No certificate secret is handled by the app at all.</li>
+  <li><strong><code>CertificatePath</code></strong> (+ <code>CertificatePassword</code> if the PFX
+      is protected) -- mount the PFX and set the path. The password reaches <code>pwsh</code> only
+      over standard input, never written to a temporary file or passed on the command line.</li>
+</ul>
+<p>
+  The API container image already includes PowerShell and the ExchangeOnlineManagement module.
+  The Exchange organization to connect to is read from Microsoft Graph for each tenant (its
+  verified initial <code>*.onmicrosoft.com</code> domain, checked against the tenant's own Entra
+  id) the first time an Exchange operation runs against it, then cached; the Graph connection has
+  to work for that tenant. If the connection ever answers for a different organization than
+  expected, the operation is refused and nothing is changed.
 </p>
 
 <h2 id="upgrades">Upgrades</h2>
