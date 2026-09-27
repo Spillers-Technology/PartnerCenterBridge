@@ -368,6 +368,151 @@ public class ExchangeOnlineServiceTests
         });
     }
 
+    /// <summary>
+    /// End to end over stdin with a PFX password: the script receives the password intact (non-ASCII
+    /// included) while no temp file written during the run contains it.
+    /// </summary>
+    [Fact]
+    public async Task Script_gets_the_pfx_password_over_stdin_and_no_temp_file_holds_it()
+    {
+        if (!PwshAvailable()) return;
+        var secret = "pfx-" + Guid.NewGuid().ToString("N") + "-" + (char)0xE4 + (char)0x20AC;   // non-ASCII: a-umlaut, euro sign
+        var options = new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx", CertificatePassword = secret };
+        await WithFakeExchangeAsync("contoso.onmicrosoft.com", async (service, tenant, calls) =>
+        {
+            var result = await service.ConvertToSharedAsync(tenant, "ada@contoso.com", null, false);
+
+            Assert.True(result.Succeeded, string.Join("; ", result.Steps.Select(s => $"{s.Name}: {s.Detail}")));
+            var connect = Assert.Single(calls(), c => c.StartsWith("Connect-ExchangeOnline"));
+            Assert.EndsWith($"file=/certs/exo.pfx thumb= pwd={secret}", connect);
+            Assert.DoesNotContain(calls(), c => c.StartsWith("LEAK"));
+        }, options);
+    }
+
+    [Fact]
+    public async Task Script_connects_by_thumbprint_without_any_password()
+    {
+        if (!PwshAvailable()) return;
+        var options = new ExchangeOptions
+        {
+            AppId = "app-1", CertificateThumbprint = "83213AEAC56D61C97AEE5C1528F4AC5EBA7321C1",
+            CertificatePath = "/certs/exo.pfx", CertificatePassword = "ignored-secret"
+        };
+        await WithFakeExchangeAsync("contoso.onmicrosoft.com", async (service, tenant, calls) =>
+        {
+            Assert.True((await service.ConvertToSharedAsync(tenant, "ada@contoso.com", null, false)).Succeeded);
+            var connect = Assert.Single(calls(), c => c.StartsWith("Connect-ExchangeOnline"));
+            Assert.EndsWith("file= thumb=83213AEAC56D61C97AEE5C1528F4AC5EBA7321C1 pwd=", connect);
+        }, options);
+    }
+
+    [Fact]
+    public async Task Thumbprint_option_sends_no_password_or_pfx_path()
+    {
+        var runner = new FakeRunner(new PwshResult(0, """{"success":true,"steps":[]}""", ""));
+        var service = new ExchangeOnlineService(runner, new FixedOrganization("contoso.onmicrosoft.com"),
+            Options.Create(new ExchangeOptions
+            {
+                AppId = "app-1", CertificateThumbprint = " 83213AEAC56D61C97AEE5C1528F4AC5EBA7321C1 ",
+                CertificatePath = "/certs/exo.pfx", CertificatePassword = "do-not-send"
+            }),
+            NullLogger<ExchangeOnlineService>.Instance);
+
+        await service.ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false);
+
+        using var payload = JsonDocument.Parse(runner.LastPayload!);
+        var connect = payload.RootElement.GetProperty("connect");
+        Assert.Equal("83213AEAC56D61C97AEE5C1528F4AC5EBA7321C1", connect.GetProperty("certificateThumbprint").GetString());
+        Assert.False(connect.TryGetProperty("certificatePassword", out _));
+        Assert.False(connect.TryGetProperty("certificatePath", out _));
+        Assert.DoesNotContain("do-not-send", runner.LastPayload!);
+    }
+
+    /// <summary>
+    /// The script pwsh runs is a fresh, unpredictably named copy that matches the embedded resource,
+    /// holds no secret, cannot be rewritten while in use (Windows), and is gone afterwards.
+    /// </summary>
+    [Fact]
+    public async Task Each_run_uses_a_private_verified_script_copy_that_is_deleted_afterwards()
+    {
+        var embedded = EmbeddedScriptText();
+        var seen = new List<string>();
+        var runner = new InspectingRunner(path =>
+        {
+            seen.Add(path);
+            Assert.True(File.Exists(path));
+            Assert.NotEqual(Path.Combine(Path.GetTempPath(), "pcb-exo-op.ps1"), path);
+            Assert.Equal(embedded, File.ReadAllText(path));
+            Assert.DoesNotContain("pfx-secret", File.ReadAllText(path));
+            if (OperatingSystem.IsWindows())
+                Assert.ThrowsAny<IOException>(() => File.WriteAllText(path, "Set-Mailbox -Identity everyone"));
+        });
+        var service = new ExchangeOnlineService(runner, new FixedOrganization("contoso.onmicrosoft.com"),
+            Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx", CertificatePassword = "pfx-secret" }),
+            NullLogger<ExchangeOnlineService>.Instance);
+
+        await service.ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false);
+        await service.ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false);
+
+        Assert.Equal(2, seen.Distinct().Count());
+        Assert.All(seen, p => Assert.False(File.Exists(p)));
+        Assert.Contains("pfx-secret", runner.LastPayload!);   // the password travels only in the stdin payload
+    }
+
+    [Fact]
+    public void Extraction_refuses_a_copy_that_does_not_match_the_expected_hash()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "pcb-extract-test-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var content = System.Text.Encoding.UTF8.GetBytes("'hello'");
+            var wrongHash = System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes("'tampered'"));
+
+            Assert.Throws<InvalidOperationException>(() => ExtractedScript.Extract(content, wrongHash, dir));
+            Assert.Empty(Directory.GetFiles(dir));
+
+            using (var ok = ExtractedScript.Extract(content, System.Security.Cryptography.SHA256.HashData(content), dir))
+                Assert.Equal("'hello'", File.ReadAllText(ok.Path));
+            Assert.Empty(Directory.GetFiles(dir));
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(true, true, true)]     // Windows, certificate in the store: available without any PFX file
+    [InlineData(true, false, false)]   // Windows, thumbprint not in the store
+    [InlineData(false, true, false)]   // not Windows: the EXO module only supports thumbprints on Windows
+    public void Capability_accepts_a_store_thumbprint_instead_of_a_pfx(bool windows, bool inStore, bool available)
+    {
+        var options = Options.Create(new ExchangeOptions
+        {
+            AppId = "app-1", CertificateThumbprint = "83213AEAC56D61C97AEE5C1528F4AC5EBA7321C1", PwshPath = "/bin/pwsh"
+        });
+        var status = new ExchangeCapability(options, p => p == "/bin/pwsh", () => "/bin", _ => inStore, windows).Check();
+
+        Assert.Equal(available, status.Available);
+    }
+
+    private static string EmbeddedScriptText()
+    {
+        using var stream = typeof(ExchangeOnlineService).Assembly
+            .GetManifestResourceStream("PartnerCenterBridge.Exchange.Scripts.exo-op.ps1")!;
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+
+    private sealed class InspectingRunner(Action<string> inspect) : IPwshRunner
+    {
+        public string? LastPayload { get; private set; }
+        public Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
+        {
+            inspect(scriptPath);
+            LastPayload = payloadJson;
+            return Task.FromResult(new PwshResult(0, """{"success":true,"steps":[]}""", ""));
+        }
+    }
+
     // A stand-in ExchangeOnlineManagement module for running the real exo-op.ps1 without Exchange.
     // Every cmdlet appends a line to $env:PCB_FAKE_EXO_LOG so tests can assert what ran. The
     // connection reports the Contoso tenant id unless the organization is fabrikam.
@@ -378,6 +523,11 @@ public class ExchangeOnlineServiceTests
         function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword, $CertificateThumbprint)
             $secret = if ($CertificatePassword) { [Net.NetworkCredential]::new('', $CertificatePassword).Password } else { '' }
             Write-Call "Connect-ExchangeOnline org=$Organization file=$CertificateFilePath thumb=$CertificateThumbprint pwd=$secret"
+            # While pwsh holds the password, no recently written temp file may contain it.
+            if ($secret) {
+                Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Length -lt 1MB -and $_.LastWriteTime -gt (Get-Date).AddMinutes(-10) } |
+                    ForEach-Object { try { if ((Get-Content -Raw -LiteralPath $_.FullName -ErrorAction Stop) -like "*$secret*") { Write-Call "LEAK $($_.Name)" } } catch { } } }
             if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." }
             $script:Org = $Organization }
         function Get-ConnectionInformation {
@@ -448,11 +598,11 @@ public class ExchangeOnlineServiceTests
         public async Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
         {
             var wrapper = Path.Combine(workDir, $"wrapper-{Guid.NewGuid():N}.ps1");
+            // The payload still reaches the real script on the process's stdin (PwshRunner writes it).
             await File.WriteAllTextAsync(wrapper,
-                "param([string]$PayloadPath)\n" +
                 $"$env:PCB_FAKE_EXO_LOG = '{callLog.Replace("'", "''")}'\n" +
                 $"$env:PSModulePath = '{modulePath.Replace("'", "''")}' + [IO.Path]::PathSeparator + $env:PSModulePath\n" +
-                $"& '{scriptPath.Replace("'", "''")}' -PayloadPath $PayloadPath\n", ct);
+                $"& '{scriptPath.Replace("'", "''")}'\n", ct);
             return await new PwshRunner("pwsh", timeoutSeconds: 120).RunAsync(wrapper, payloadJson, ct);
         }
     }

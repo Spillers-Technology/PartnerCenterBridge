@@ -1,12 +1,14 @@
 #requires -Version 7.0
 <#
   Runs a single Exchange Online operation using app-only certificate auth and emits a JSON result
-  object on stdout: { success, steps: [{name,success,detail}], data, notFound }. notFound is true
+  object on stdout: { success, steps: [{name,success,detail}], data, notFound, tenantMismatch }. notFound is true
   only when the mailbox lookup itself reported that no such mailbox exists (getMailbox); every
   other failure (module, connect, auth, throttling) is a failed step with notFound false.
-  Invoked as:  pwsh -NoProfile -NonInteractive -File exo-op.ps1 -PayloadPath <json-file>
+  Invoked as:  pwsh -NoProfile -NonInteractive -File exo-op.ps1   with the JSON payload written to
+  standard input (UTF-8) and stdin then closed. The payload is never passed as a file or argument.
+  Before any operation it checks that the connection's tenant id equals payload.expectedTenantId.
 #>
-param([Parameter(Mandatory)][string]$PayloadPath)
+param()
 
 $ErrorActionPreference = 'Stop'
 $steps = [System.Collections.Generic.List[object]]::new()
@@ -83,7 +85,15 @@ function Get-ArchiveStateData($id) {
 }
 
 try {
-    $payload = Get-Content -Raw -Path $PayloadPath | ConvertFrom-Json
+    # The payload (which can hold the PFX password) arrives on stdin as UTF-8 and is never on disk.
+    $stdin = [Console]::OpenStandardInput()
+    $buffer = [System.IO.MemoryStream]::new()
+    $stdin.CopyTo($buffer)
+    $raw = [System.Text.Encoding]::UTF8.GetString($buffer.ToArray())
+    $buffer.Dispose()
+    if ([string]::IsNullOrWhiteSpace($raw)) { throw 'No payload was supplied on standard input.' }
+    $payload = $raw | ConvertFrom-Json
+    $raw = $null
     $c = $payload.connect
     $p = $payload.params
     $id = $p.identity
@@ -91,7 +101,11 @@ try {
     Import-Module ExchangeOnlineManagement -ErrorAction Stop
 
     $connectArgs = @{ AppId = $c.appId; Organization = $c.organization; ShowBanner = $false }
-    if ($c.certificatePath) {
+    if ($c.certificateThumbprint) {
+        # Windows certificate store: no certificate secret involved.
+        $connectArgs.CertificateThumbprint = $c.certificateThumbprint
+    }
+    elseif ($c.certificatePath) {
         $connectArgs.CertificateFilePath = $c.certificatePath
         if ($c.certificatePassword) {
             $connectArgs.CertificatePassword = (ConvertTo-SecureString $c.certificatePassword -AsPlainText -Force)

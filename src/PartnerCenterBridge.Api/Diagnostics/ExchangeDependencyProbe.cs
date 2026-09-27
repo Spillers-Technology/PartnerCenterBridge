@@ -57,12 +57,17 @@ public sealed class ExchangeDependencyProbe : IExchangeDependencyProbe
         var options = _options.CurrentValue;
         var command = string.IsNullOrWhiteSpace(options.PwshPath) ? "pwsh" : options.PwshPath;
         var runtime = await GetRuntimeAsync(command, ct);
-        var certificatePath = options.CertificatePath ?? "";
+        // A certificate-store thumbprint (Windows) takes precedence over the PFX path, as in exo-op.ps1.
+        var thumbprint = options.CertificateThumbprint?.Trim();
+        var useStore = !string.IsNullOrWhiteSpace(thumbprint);
+        var certificatePath = useStore ? $"Cert:\\CurrentUser\\My\\{thumbprint}" : options.CertificatePath ?? "";
         return new ExchangeDependencyState(
             command, runtime.PwshPath, runtime.PwshVersion, runtime.PwshError, runtime.ModuleVersion, runtime.ModuleError,
             !string.IsNullOrWhiteSpace(options.AppId),
             certificatePath,
-            !string.IsNullOrWhiteSpace(certificatePath) && File.Exists(certificatePath));
+            useStore
+                ? CertificateStoreLookup.Contains(thumbprint!)
+                : !string.IsNullOrWhiteSpace(certificatePath) && File.Exists(certificatePath));
     }
 
     private async Task<RuntimeProbe> GetRuntimeAsync(string command, CancellationToken ct)

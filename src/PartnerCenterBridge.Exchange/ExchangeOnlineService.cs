@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -24,7 +23,6 @@ public class ExchangeOnlineService : IExchangeOnlineService
     private readonly ITenantExchangeOrganizationProvider _organizations;
     private readonly ExchangeOptions _opts;
     private readonly ILogger<ExchangeOnlineService> _log;
-    private readonly Lazy<string> _scriptPath;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -40,7 +38,6 @@ public class ExchangeOnlineService : IExchangeOnlineService
         _organizations = organizations;
         _opts = opts.Value;
         _log = log;
-        _scriptPath = new Lazy<string>(ExtractScript);
     }
 
     public async Task<MailboxInfo?> GetMailboxAsync(Tenant tenant, string identity, CancellationToken ct = default)
@@ -134,6 +131,7 @@ public class ExchangeOnlineService : IExchangeOnlineService
         // The organization comes from Microsoft Graph for this tenant id (persisted, or resolved
         // now); DefaultDomain is a display value and never selects the Exchange organization.
         var organization = await _organizations.GetOrganizationAsync(tenant, ct);
+        var thumbprint = string.IsNullOrWhiteSpace(_opts.CertificateThumbprint) ? null : _opts.CertificateThumbprint.Trim();
 
         var payload = JsonSerializer.Serialize(new
         {
@@ -145,13 +143,18 @@ public class ExchangeOnlineService : IExchangeOnlineService
             {
                 appId = _opts.AppId,
                 organization,
-                certificatePath = _opts.CertificatePath,
-                certificatePassword = _opts.CertificatePassword
+                // Certificate-store auth (Windows) needs no secret at all; otherwise the PFX password
+                // travels only inside this payload, which the runner hands to pwsh on stdin.
+                certificateThumbprint = thumbprint,
+                certificatePath = thumbprint is null ? _opts.CertificatePath : null,
+                certificatePassword = thumbprint is null ? _opts.CertificatePassword : null
             },
             @params = parameters
         }, Json);
 
-        var result = await _runner.RunAsync(_scriptPath.Value, payload, ct);
+        PwshResult result;
+        using (var script = ExtractedScript.FromEmbeddedResource(EmbeddedScript, "exo-op"))
+            result = await _runner.RunAsync(script.Path, payload, ct);
         var json = ExtractJson(result.Stdout);
         if (json is null)
         {
@@ -197,17 +200,6 @@ public class ExchangeOnlineService : IExchangeOnlineService
         e.TryGetProperty("recipientTypeDetails", out var rt) ? rt.GetString() ?? "" : "",
         e.TryGetProperty("forwardingSmtpAddress", out var fwd) ? fwd.GetString() : null,
         e.TryGetProperty("deliverToMailboxAndForward", out var d) && d.ValueKind == JsonValueKind.True);
-
-    private static string ExtractScript()
-    {
-        var asm = Assembly.GetExecutingAssembly();
-        using var stream = asm.GetManifestResourceStream(EmbeddedScript)
-            ?? throw new InvalidOperationException($"Embedded script {EmbeddedScript} not found.");
-        var path = Path.Combine(Path.GetTempPath(), "pcb-exo-op.ps1");
-        using (var file = File.Create(path))
-            stream.CopyTo(file);
-        return path;
-    }
 
     private sealed class ExoScriptResult
     {
