@@ -1,17 +1,20 @@
 #requires -Version 7.0
 <#
   Runs a single Exchange Online operation using app-only certificate auth and emits a JSON result
-  object on stdout: { success, steps: [{name,success,detail}], data, notFound }. notFound is true
+  object on stdout: { success, steps: [{name,success,detail}], data, notFound, tenantMismatch }. notFound is true
   only when the mailbox lookup itself reported that no such mailbox exists (getMailbox); every
   other failure (module, connect, auth, throttling) is a failed step with notFound false.
-  Invoked as:  pwsh -NoProfile -NonInteractive -File exo-op.ps1 -PayloadPath <json-file>
+  Invoked as:  pwsh -NoProfile -NonInteractive -File exo-op.ps1   with the JSON payload written to
+  standard input (UTF-8) and stdin then closed. The payload is never passed as a file or argument.
+  Before any operation it checks that the connection's tenant id equals payload.expectedTenantId.
 #>
-param([Parameter(Mandatory)][string]$PayloadPath)
+param()
 
 $ErrorActionPreference = 'Stop'
 $steps = [System.Collections.Generic.List[object]]::new()
 $data = $null
 $notFound = $false
+$tenantMismatch = $false
 function Add-Step($name, $ok, $detail) { $steps.Add([ordered]@{ name = $name; success = $ok; detail = $detail }) }
 
 # Run one remediation action, recording success/failure without aborting the remaining steps.
@@ -21,6 +24,26 @@ function Invoke-Step($name, [scriptblock]$action) {
 }
 
 $EmptyGuid = '00000000-0000-0000-0000-000000000000'
+
+# Tenant id(s) of the live Exchange connection. EXO V3 reports it as Get-ConnectionInformation's
+# TenantID (checked against ExchangeOnlineManagement 3.10.1); Get-OrganizationConfig's
+# ExternalDirectoryOrganizationId is the fallback if no connection reports one.
+function Get-ConnectedTenantIds {
+    $ids = @()
+    if (Get-Command Get-ConnectionInformation -ErrorAction SilentlyContinue) {
+        $ids = @(Get-ConnectionInformation | ForEach-Object { "$($_.TenantID)" } | Where-Object { $_ })
+    }
+    if ($ids.Count -eq 0 -and (Get-Command Get-OrganizationConfig -ErrorAction SilentlyContinue)) {
+        $ids = @("$((Get-OrganizationConfig).ExternalDirectoryOrganizationId)" | Where-Object { $_ })
+    }
+    return $ids
+}
+
+function Test-SameTenant($a, $b) {
+    $ga = [guid]::Empty; $gb = [guid]::Empty
+    if ([guid]::TryParse("$a", [ref]$ga) -and [guid]::TryParse("$b", [ref]$gb)) { return $ga -eq $gb }
+    return ("$a" -ieq "$b") -and "$a" -ne ""
+}
 
 # True when an error record from a recipient lookup means "no such object". Checked structurally
 # first (error category, exception type anywhere in the chain, error id); the message fallback is
@@ -62,7 +85,15 @@ function Get-ArchiveStateData($id) {
 }
 
 try {
-    $payload = Get-Content -Raw -Path $PayloadPath | ConvertFrom-Json
+    # The payload (which can hold the PFX password) arrives on stdin as UTF-8 and is never on disk.
+    $stdin = [Console]::OpenStandardInput()
+    $buffer = [System.IO.MemoryStream]::new()
+    $stdin.CopyTo($buffer)
+    $raw = [System.Text.Encoding]::UTF8.GetString($buffer.ToArray())
+    $buffer.Dispose()
+    if ([string]::IsNullOrWhiteSpace($raw)) { throw 'No payload was supplied on standard input.' }
+    $payload = $raw | ConvertFrom-Json
+    $raw = $null
     $c = $payload.connect
     $p = $payload.params
     $id = $p.identity
@@ -70,7 +101,11 @@ try {
     Import-Module ExchangeOnlineManagement -ErrorAction Stop
 
     $connectArgs = @{ AppId = $c.appId; Organization = $c.organization; ShowBanner = $false }
-    if ($c.certificatePath) {
+    if ($c.certificateThumbprint) {
+        # Windows certificate store: no certificate secret involved.
+        $connectArgs.CertificateThumbprint = $c.certificateThumbprint
+    }
+    elseif ($c.certificatePath) {
         $connectArgs.CertificateFilePath = $c.certificatePath
         if ($c.certificatePassword) {
             $connectArgs.CertificatePassword = (ConvertTo-SecureString $c.certificatePassword -AsPlainText -Force)
@@ -78,6 +113,22 @@ try {
     }
     Connect-ExchangeOnline @connectArgs | Out-Null
     Add-Step 'Connect' $true $c.organization
+
+    # Bind the connection to the Entra tenant before touching anything: an organization name that
+    # resolves to some other directory the shared app can reach must not receive this operation.
+    $expected = "$($payload.expectedTenantId)"
+    $connected = @(Get-ConnectedTenantIds)
+    $mismatch = if (-not $expected) { 'no expected tenant id was supplied' }
+        elseif ($connected.Count -eq 0) { 'the connected tenant id could not be determined' }
+        elseif (@($connected | Where-Object { -not (Test-SameTenant $_ $expected) }).Count -gt 0) {
+            "connected to tenant $($connected -join ', '), expected $expected" }
+        else { $null }
+    if ($mismatch) {
+        $tenantMismatch = $true
+        Add-Step 'Tenant check' $false $mismatch
+        throw "Tenant check failed: $mismatch"
+    }
+    Add-Step 'Tenant check' $true $expected
 
     switch ($payload.operation) {
         'getMailbox' {
@@ -172,7 +223,8 @@ try {
     }
 }
 catch {
-    Add-Step 'Error' $false $_.Exception.Message
+    # A failed tenant check already recorded why; nothing ran after it.
+    if (-not $tenantMismatch) { Add-Step 'Error' $false $_.Exception.Message }
 }
 finally {
     try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {}
@@ -183,5 +235,6 @@ $result = [ordered]@{
     steps   = $steps
     data    = $data
     notFound = [bool]$notFound
+    tenantMismatch = [bool]$tenantMismatch
 }
 $result | ConvertTo-Json -Depth 6 -Compress

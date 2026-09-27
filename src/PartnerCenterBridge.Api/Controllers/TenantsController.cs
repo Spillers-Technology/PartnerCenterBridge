@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Api.Contracts;
 using PartnerCenterBridge.Core;
+using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
 using PartnerCenterBridge.Data;
 using PartnerCenterBridge.PartnerCenter;
@@ -18,13 +19,18 @@ public class TenantsController : ControllerBase
     private readonly BridgeDbContext _db;
     private readonly ITenantAccessService _access;
     private readonly IInstanceAccessService _instanceAccess;
+    private readonly IExchangeOrganizationResolver? _exchangeOrganizations;
+    private readonly ILogger<TenantsController>? _log;
 
     public TenantsController(
-        BridgeDbContext db, ITenantAccessService access, IInstanceAccessService instanceAccess)
+        BridgeDbContext db, ITenantAccessService access, IInstanceAccessService instanceAccess,
+        IExchangeOrganizationResolver? exchangeOrganizations = null, ILogger<TenantsController>? log = null)
     {
         _db = db;
         _access = access;
         _instanceAccess = instanceAccess;
+        _exchangeOrganizations = exchangeOrganizations;
+        _log = log;
     }
 
     /// <summary>
@@ -66,6 +72,9 @@ public class TenantsController : ControllerBase
             DefaultDomain = req.DefaultDomain?.Trim(),
             LastSeenAt = DateTimeOffset.UtcNow
         };
+        // DefaultDomain above is caller-supplied display text; the Exchange organization comes from
+        // Microsoft Graph for this tenant id (or lazily on first Exchange use if Graph is not reachable yet).
+        await ResolveExchangeOrganizationsAsync(new[] { tenant }, ct);
         _db.Tenants.Add(tenant);
         GrantOwnerIfLocal(tenant.Id);
         await _db.SaveChangesAsync(ct);
@@ -108,8 +117,36 @@ public class TenantsController : ControllerBase
                 existing.LastSeenAt = DateTimeOffset.UtcNow;
             }
         }
+        await ResolveExchangeOrganizationsAsync(
+            _db.ChangeTracker.Entries<Tenant>().Select(e => e.Entity).Where(t => t.ExchangeOrganization is null).ToList(), ct);
         await _db.SaveChangesAsync(ct);
         return Ok(await List(ct));
+    }
+
+    /// <summary>
+    /// Best-effort: read each tenant's Exchange organization (initial onmicrosoft.com domain) from
+    /// Microsoft Graph. A failure leaves it unset; the first Exchange operation resolves it again and
+    /// reports a clear error if it still cannot.
+    /// </summary>
+    private async Task ResolveExchangeOrganizationsAsync(IReadOnlyList<Tenant> tenants, CancellationToken ct)
+    {
+        if (_exchangeOrganizations is null || tenants.Count == 0) return;
+        var resolved = new System.Collections.Concurrent.ConcurrentDictionary<Tenant, string>();
+        await Parallel.ForEachAsync(tenants, new ParallelOptions { MaxDegreeOfParallelism = 4, CancellationToken = ct },
+            async (tenant, token) =>
+            {
+                try { resolved[tenant] = await _exchangeOrganizations.ResolveAsync(tenant.TenantId, token); }
+                catch (Exception e) when (e is not OperationCanceledException)
+                {
+                    _log?.LogWarning("Could not resolve the Exchange organization of tenant {TenantId}: {Error}", tenant.TenantId, e.Message);
+                }
+            });
+        var now = DateTimeOffset.UtcNow;
+        foreach (var (tenant, organization) in resolved)
+        {
+            tenant.ExchangeOrganization = organization;
+            tenant.ExchangeOrganizationVerifiedAt = now;
+        }
     }
 
     /// <summary>OIDC/dev-auth callers have no AppUser to own anything -- their unrestricted access already covers every tenant, so there's nothing to grant.</summary>

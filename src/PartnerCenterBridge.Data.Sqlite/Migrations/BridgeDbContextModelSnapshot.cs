@@ -528,6 +528,12 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ExchangeOrganization")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("ExchangeOrganizationVerifiedAt")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("GdapRelationshipId")
                         .HasColumnType("TEXT");
 

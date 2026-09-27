@@ -76,6 +76,9 @@ builder.Services.AddSingleton<IIntuneWinPackageReader, IntuneWinPackageReader>()
 // registered by AddBridgeDiagnostics, guarded so a missing dependency fails fast with its reason.
 builder.Services.Configure<ExchangeOptions>(cfg.GetSection(ExchangeOptions.SectionName));
 builder.Services.AddScoped<IExchangeOnlineService, ExchangeOnlineService>();
+// The Exchange organization is read from Graph for the tenant id, never taken from DefaultDomain.
+builder.Services.AddScoped<IExchangeOrganizationResolver, GraphExchangeOrganizationResolver>();
+builder.Services.AddScoped<ITenantExchangeOrganizationProvider, PartnerCenterBridge.Data.TenantExchangeOrganizationProvider>();
 builder.Services.AddBridgeDiagnostics();
 
 // Known-fix workflow library (catalog + Graph-backed workflows). Runs are persisted and

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
@@ -12,15 +11,18 @@ namespace PartnerCenterBridge.Exchange;
 /// Exchange Online operations backed by the EXO PowerShell V3 module, invoked out-of-process via
 /// <see cref="IPwshRunner"/>. Each call connects app-only (certificate) scoped to the customer
 /// tenant, runs one operation, and returns the parsed per-step result.
+/// The organization connected to is the tenant's Graph-verified initial domain
+/// (<see cref="ITenantExchangeOrganizationProvider"/>), never <see cref="Tenant.DefaultDomain"/>, and
+/// the script refuses to run anything unless the connection reports the tenant's own Entra id.
 /// </summary>
 public class ExchangeOnlineService : IExchangeOnlineService
 {
     private const string EmbeddedScript = "PartnerCenterBridge.Exchange.Scripts.exo-op.ps1";
 
     private readonly IPwshRunner _runner;
+    private readonly ITenantExchangeOrganizationProvider _organizations;
     private readonly ExchangeOptions _opts;
     private readonly ILogger<ExchangeOnlineService> _log;
-    private readonly Lazy<string> _scriptPath;
 
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -28,12 +30,14 @@ public class ExchangeOnlineService : IExchangeOnlineService
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
 
-    public ExchangeOnlineService(IPwshRunner runner, IOptions<ExchangeOptions> opts, ILogger<ExchangeOnlineService> log)
+    public ExchangeOnlineService(
+        IPwshRunner runner, ITenantExchangeOrganizationProvider organizations,
+        IOptions<ExchangeOptions> opts, ILogger<ExchangeOnlineService> log)
     {
         _runner = runner;
+        _organizations = organizations;
         _opts = opts.Value;
         _log = log;
-        _scriptPath = new Lazy<string>(ExtractScript);
     }
 
     public async Task<MailboxInfo?> GetMailboxAsync(Tenant tenant, string identity, CancellationToken ct = default)
@@ -124,20 +128,33 @@ public class ExchangeOnlineService : IExchangeOnlineService
 
     private async Task<ExoScriptResult> RunAsync(Tenant tenant, string operation, object parameters, CancellationToken ct)
     {
+        // The organization comes from Microsoft Graph for this tenant id (persisted, or resolved
+        // now); DefaultDomain is a display value and never selects the Exchange organization.
+        var organization = await _organizations.GetOrganizationAsync(tenant, ct);
+        var thumbprint = string.IsNullOrWhiteSpace(_opts.CertificateThumbprint) ? null : _opts.CertificateThumbprint.Trim();
+
         var payload = JsonSerializer.Serialize(new
         {
             operation,
+            // The script compares the tenant id of the Exchange connection against this and runs
+            // nothing when they differ.
+            expectedTenantId = tenant.TenantId,
             connect = new
             {
                 appId = _opts.AppId,
-                organization = tenant.DefaultDomain ?? tenant.TenantId,
-                certificatePath = _opts.CertificatePath,
-                certificatePassword = _opts.CertificatePassword
+                organization,
+                // Certificate-store auth (Windows) needs no secret at all; otherwise the PFX password
+                // travels only inside this payload, which the runner hands to pwsh on stdin.
+                certificateThumbprint = thumbprint,
+                certificatePath = thumbprint is null ? _opts.CertificatePath : null,
+                certificatePassword = thumbprint is null ? _opts.CertificatePassword : null
             },
             @params = parameters
         }, Json);
 
-        var result = await _runner.RunAsync(_scriptPath.Value, payload, ct);
+        PwshResult result;
+        using (var script = ExtractedScript.FromEmbeddedResource(EmbeddedScript, "exo-op"))
+            result = await _runner.RunAsync(script.Path, payload, ct);
         var json = ExtractJson(result.Stdout);
         if (json is null)
         {
@@ -148,8 +165,19 @@ public class ExchangeOnlineService : IExchangeOnlineService
                     string.IsNullOrWhiteSpace(result.Stderr) ? "No output from EXO script." : result.Stderr.Trim()) }
             };
         }
-        return JsonSerializer.Deserialize<ExoScriptResult>(json, Json) ?? new ExoScriptResult();
+        var parsed = JsonSerializer.Deserialize<ExoScriptResult>(json, Json) ?? new ExoScriptResult();
+        var tenantCheck = parsed.Steps.FirstOrDefault(s => s.Name == TenantCheckStep && !s.Success);
+        if (parsed.TenantMismatch || tenantCheck is not null)
+        {
+            _log.LogError("EXO tenant check failed for tenant {TenantId} ({Organization}): {Detail}",
+                tenant.TenantId, organization, tenantCheck?.Detail);
+            throw new ExchangeTenantMismatchException(tenant.DisplayName, tenantCheck?.Detail);
+        }
+        return parsed;
     }
+
+    /// <summary>Step the script records after connecting, before any operation runs.</summary>
+    internal const string TenantCheckStep = "Tenant check";
 
     /// <summary>Pull the JSON result object out of stdout (the script emits it as the final line).</summary>
     internal static string? ExtractJson(string stdout)
@@ -173,17 +201,6 @@ public class ExchangeOnlineService : IExchangeOnlineService
         e.TryGetProperty("forwardingSmtpAddress", out var fwd) ? fwd.GetString() : null,
         e.TryGetProperty("deliverToMailboxAndForward", out var d) && d.ValueKind == JsonValueKind.True);
 
-    private static string ExtractScript()
-    {
-        var asm = Assembly.GetExecutingAssembly();
-        using var stream = asm.GetManifestResourceStream(EmbeddedScript)
-            ?? throw new InvalidOperationException($"Embedded script {EmbeddedScript} not found.");
-        var path = Path.Combine(Path.GetTempPath(), "pcb-exo-op.ps1");
-        using (var file = File.Create(path))
-            stream.CopyTo(file);
-        return path;
-    }
-
     private sealed class ExoScriptResult
     {
         [JsonPropertyName("success")] public bool Success { get; set; }
@@ -191,5 +208,7 @@ public class ExchangeOnlineService : IExchangeOnlineService
         [JsonPropertyName("data")] public JsonElement? Data { get; set; }
         /// <summary>Set by getMailbox only when the lookup itself reported that no such mailbox exists.</summary>
         [JsonPropertyName("notFound")] public bool NotFound { get; set; }
+        /// <summary>Set when the connected tenant id did not match the expected one; no operation ran.</summary>
+        [JsonPropertyName("tenantMismatch")] public bool TenantMismatch { get; set; }
     }
 }
