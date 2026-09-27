@@ -34,6 +34,7 @@ public sealed record ExchangeDependencyState(
 public interface IExchangeDependencyProbe
 {
     Task<ExchangeDependencyState> GetAsync(CancellationToken ct);
+    Task InvalidateAsync(CancellationToken ct);
 }
 
 /// <summary>
@@ -49,6 +50,13 @@ public sealed class ExchangeDependencyProbe : IExchangeDependencyProbe
     private (DateTimeOffset At, string Command, RuntimeProbe Result)? _cached;
 
     public ExchangeDependencyProbe(IOptionsMonitor<ExchangeOptions> options) => _options = options;
+
+    public async Task InvalidateAsync(CancellationToken ct)
+    {
+        await _gate.WaitAsync(ct);
+        try { _cached = null; }
+        finally { _gate.Release(); }
+    }
 
     private sealed record RuntimeProbe(string? PwshPath, string? PwshVersion, string? PwshError, string? ModuleVersion, string? ModuleError);
 
@@ -187,6 +195,19 @@ public static class ExecutableLocator
                 catch (ArgumentException) { continue; }
                 if (File.Exists(candidate)) return candidate;
             }
+        }
+        // A WinGet/MSIX install can add the pwsh app alias after this process inherited PATH.
+        // The runner uses the resolved path, so no workbench restart is needed.
+        if (OperatingSystem.IsWindows() && (command is "pwsh" or "pwsh.exe"))
+        {
+            var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            foreach (var candidate in new[]
+            {
+                Path.Combine(local, "Microsoft", "WindowsApps", "pwsh.exe"),
+                Path.Combine(programFiles, "PowerShell", "7", "pwsh.exe")
+            })
+                if (File.Exists(candidate)) return candidate;
         }
         return null;
     }

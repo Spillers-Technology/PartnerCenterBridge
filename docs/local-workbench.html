@@ -127,7 +127,10 @@
 <p>
   Each open check links straight to the screen that fixes it -- <a href="#diagnostics">the same
   checks</a> <code>doctor</code> and <code>/settings/workbench</code> report -- or, for the Exchange
-  Online module, gives you the exact <code>Install-Module</code> command to copy and run. Nothing
+  Online module, offers an Install action on Windows and keeps the exact command available to copy.
+  Installation requires an instance Administrator's confirmation. If you choose Not now, the check
+  remains visibly blocked across restarts; a successful install refreshes the dependency check and
+  makes Exchange features available without restarting the app. Nothing
   here is guessed at: a missing GDAP relationship, an unbootstrapped SAM connection, or a missing
   PowerShell module all show up by name, with their fix, instead of a generic "not configured."
 </p>
@@ -291,7 +294,8 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
 <h2 id="exchange-online-as-an-optional-dependency">Exchange Online as an optional dependency</h2>
 <p>
   Mailbox operations (mailbox archive repair, offboarding's mailbox conversion and forwarding)
-  need three things that nothing else in the app requires: <code>pwsh</code> on PATH, the
+  need three things that nothing else in the app requires: <code>pwsh</code> on PATH or at a standard
+  Windows installation location, the
   <code>ExchangeOnlineManagement</code> module installed for it, and an app-only certificate. On
   Windows, prefer <code>Exchange:CertificateThumbprint</code>: a certificate already imported into
   <code>Cert:\CurrentUser\My</code> (or, failing that, <code>Cert:\LocalMachine\My</code>) with its

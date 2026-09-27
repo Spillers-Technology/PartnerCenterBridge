@@ -49,7 +49,7 @@ function SetupChecklist() {
   const open = (diagnostics.data.checks ?? []).filter(needsAttention);
   if (open.length === 0) return null;
   return (
-    <Card variant="outlined" sx={{ mb: 3, borderColor: "warning.main" }} component="section" aria-labelledby="setup-heading">
+    <Card variant="outlined" sx={{ mb: 3, borderColor: open.some((check) => check.status === "Error") ? "error.main" : "warning.main" }} component="section" aria-labelledby="setup-heading">
       <CardContent>
         <Stack direction="row" sx={{ alignItems: "baseline", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
           <Typography id="setup-heading" variant="h6" component="h3">
@@ -63,7 +63,7 @@ function SetupChecklist() {
           {open.length === 1 ? "One thing still needs" : `${open.length} things still need`} attention before
           everything in the workbench can work.
         </Typography>
-        <DiagnosticsList checks={open} />
+        <DiagnosticsList checks={open} onChanged={diagnostics.reload} />
       </CardContent>
     </Card>
   );

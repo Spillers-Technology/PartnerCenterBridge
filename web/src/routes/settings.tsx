@@ -284,7 +284,7 @@ export function WorkbenchSettingsPage() {
                 <CapabilityChip label="Partner Center" on={diagnostics.data.capabilities.partnerCenter} />
               </Stack>
               {(diagnostics.data.checks ?? []).length > 0 ? (
-                <DiagnosticsList checks={diagnostics.data.checks!} />
+                <DiagnosticsList checks={diagnostics.data.checks!} onChanged={diagnostics.reload} />
               ) : (
                 <Typography variant="body2" color="text.secondary">
                   Detailed checks are visible to instance Administrators.

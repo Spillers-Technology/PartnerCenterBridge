@@ -129,6 +129,49 @@ public sealed class LocalWorkbenchHostTests : IDisposable
     }
 
     [Fact]
+    public async Task Dependency_decision_requires_admin_and_survives_restart()
+    {
+        const string missingPwsh = "pcb-definitely-missing-pwsh";
+        var factory = Host(("Exchange:PwshPath", missingPwsh));
+        var client = factory.CreateClient();
+        var adminToken = await RegisterAsync(client, "admin@example.com", SetupTicket(factory));
+        var userToken = await RegisterAsync(client, "user@example.com");
+        var url = "/api/system/dependencies/pwsh/decision";
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PutAsJsonAsync(url, new { declined = true })).StatusCode);
+        using (var user = new HttpRequestMessage(HttpMethod.Put, url) { Content = JsonContent.Create(new { declined = true }) })
+        {
+            user.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userToken);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(user)).StatusCode);
+        }
+        using (var invalid = new HttpRequestMessage(HttpMethod.Post, "/api/system/dependencies/arbitrary/install"))
+        {
+            invalid.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(invalid)).StatusCode);
+        }
+        using (var admin = new HttpRequestMessage(HttpMethod.Put, url) { Content = JsonContent.Create(new { declined = true }) })
+        {
+            admin.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.SendAsync(admin)).StatusCode);
+        }
+
+        var report = await client.SendAsync(Get("/api/system/diagnostics", adminToken));
+        report.EnsureSuccessStatusCode();
+        using (var json = JsonDocument.Parse(await report.Content.ReadAsStringAsync()))
+        {
+            var pwsh = json.RootElement.GetProperty("checks").EnumerateArray()
+                .Single(c => c.GetProperty("id").GetString() == "pwsh");
+            Assert.Equal("Error", pwsh.GetProperty("status").GetString());
+            Assert.Contains("declined", pwsh.GetProperty("detail").GetString());
+            Assert.Contains("pcb.local.json", pwsh.GetProperty("fix").GetProperty("label").GetString());
+        }
+
+        Assert.Contains("pwsh", File.ReadAllText(Path.Combine(_dataDir, "dependency-decisions.json")));
+        var restarted = Host(("Exchange:PwshPath", missingPwsh));
+        Assert.True(restarted.Services.GetRequiredService<IDependencySetupService>().IsDeclined("pwsh"));
+    }
+
+    [Fact]
     public async Task Loopback_ip_requests_are_redirected_to_the_canonical_origin()
     {
         var client = Host().CreateClient(new WebApplicationFactoryClientOptions

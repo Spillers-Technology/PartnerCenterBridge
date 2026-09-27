@@ -4,12 +4,6 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
 
 ## Next (0.9.1)
 
-- **Dependency installer.** Offer to install PowerShell 7 and the `ExchangeOnlineManagement`
-  module from Settings and from first launch, instead of only reporting them missing. Runs through
-  an allowlisted set of commands (no arbitrary shell-out), shows a loud, persistent blocked state
-  when the operator declines rather than quietly leaving Exchange features disabled, and turns the
-  dependent features on automatically once the probe next reports them present -- no restart or
-  manual re-check needed.
 - **Onboarding policy.** A contract-defined new-user plan, mirroring offboarding policy v2's
   plan -> apply -> verify loop with structured evidence, instead of the current one-shot
   provisioning templates. Today a new hire isn't recorded as a run anywhere PCB tracks history --

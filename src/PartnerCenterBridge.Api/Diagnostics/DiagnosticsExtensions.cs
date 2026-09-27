@@ -12,11 +12,13 @@ public static class DiagnosticsExtensions
     public static IServiceCollection AddBridgeDiagnostics(this IServiceCollection services)
     {
         services.AddSingleton<IExchangeDependencyProbe, ExchangeDependencyProbe>();
+        services.AddSingleton<IDependencySetupService, DependencySetupService>();
         services.AddSingleton<IPwshRunner>(sp =>
         {
             var o = sp.GetRequiredService<IOptions<ExchangeOptions>>().Value;
             return new GuardedPwshRunner(new PwshRunner(o.PwshPath, o.TimeoutSeconds),
-                sp.GetRequiredService<IExchangeDependencyProbe>());
+                sp.GetRequiredService<IExchangeDependencyProbe>(),
+                path => new PwshRunner(path, o.TimeoutSeconds));
         });
         services.AddScoped<ISamStatusService, SamStatusService>();
         services.AddScoped<ISystemDiagnostics, SystemDiagnostics>();

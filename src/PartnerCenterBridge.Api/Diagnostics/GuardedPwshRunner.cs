@@ -19,17 +19,19 @@ public sealed class GuardedPwshRunner : IPwshRunner
 {
     private readonly IPwshRunner _inner;
     private readonly IExchangeDependencyProbe _probe;
+    private readonly Func<string, IPwshRunner>? _runnerForPath;
 
-    public GuardedPwshRunner(IPwshRunner inner, IExchangeDependencyProbe probe)
+    public GuardedPwshRunner(IPwshRunner inner, IExchangeDependencyProbe probe, Func<string, IPwshRunner>? runnerForPath = null)
     {
         _inner = inner;
         _probe = probe;
+        _runnerForPath = runnerForPath;
     }
 
     public async Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
     {
         var state = await _probe.GetAsync(ct);
         if (state.MissingReason is { } reason) throw new ExchangeDependencyException(reason);
-        return await _inner.RunAsync(scriptPath, payloadJson, ct);
+        return await (_runnerForPath?.Invoke(state.PwshPath!) ?? _inner).RunAsync(scriptPath, payloadJson, ct);
     }
 }

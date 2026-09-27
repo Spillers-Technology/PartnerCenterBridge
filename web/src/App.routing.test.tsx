@@ -18,7 +18,7 @@ vi.mock("./api", async (importOriginal) => {
       auth: { mode: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn(), launch: vi.fn(), setupNoAccount: vi.fn(), protectOwner: vi.fn() },
       totp: { challenge: vi.fn() },
       passkey: { loginOptions: vi.fn(), loginVerify: vi.fn() },
-      system: { status: vi.fn(), diagnostics: vi.fn() },
+      system: { status: vi.fn(), diagnostics: vi.fn(), installDependency: vi.fn(), declineDependency: vi.fn() },
       sam: { status: vi.fn(), seed: vi.fn() },
       people: { get: vi.fn() },
       dashboard: vi.fn(),
@@ -333,6 +333,23 @@ describe("App routing", () => {
     expect(within(list).getByText("Not configured")).toBeInTheDocument();
     expect(within(list).getByRole("button", { name: "Copy command: Install module" })).toBeInTheDocument();
     expect(within(list).getByRole("link", { name: "Connect Microsoft" })).toHaveAttribute("href", "/settings/microsoft");
+  });
+
+  it("offers a confirmed local dependency install and refreshes diagnostics", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.system.diagnostics).mockResolvedValueOnce({
+      checks: [{ id: "exchange-module", label: "Exchange Online module", status: "NotConfigured",
+        fix: { label: "Install module", command: "pwsh -c Install-Module", installId: "exchange-module" } }],
+      capabilities: { graph: true, exchange: false, partnerCenter: true }
+    }).mockResolvedValue({ checks: [], capabilities: { graph: true, exchange: true, partnerCenter: true } });
+    vi.mocked(api.system.installDependency).mockResolvedValue({ installed: true, detail: "ExchangeOnlineManagement is ready." });
+    renderApp("/settings/workbench");
+    await user.click(await screen.findByRole("button", { name: "Install Exchange module" }));
+    expect(screen.getByText(/download ExchangeOnlineManagement/)).toBeInTheDocument();
+    expect(api.system.installDependency).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^Install$/ }));
+    await waitFor(() => expect(api.system.installDependency).toHaveBeenCalledWith("exchange-module"));
+    await waitFor(() => expect(screen.getByText("Exchange Online: available")).toBeInTheDocument());
   });
 
   it("shows a setup checklist on Home when checks still need attention", async () => {

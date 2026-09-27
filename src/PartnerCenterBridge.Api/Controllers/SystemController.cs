@@ -62,4 +62,27 @@ public class SystemController : ControllerBase
             ? report
             : report with { Checks = Array.Empty<SystemCheck>() };
     }
+
+    public sealed record DependencyDecisionDto(bool Declined);
+
+    [HttpPut("dependencies/{id}/decision")]
+    [Authorize]
+    public async Task<IActionResult> DependencyDecision(string id, [FromBody] DependencyDecisionDto decision,
+        [FromServices] IInstanceAccessService access, [FromServices] IDependencySetupService setup, CancellationToken ct)
+    {
+        if (_hosting.Local is null || !DependencyIds.IsInstallable(id)) return NotFound();
+        if ((await access.GetRolesAsync(ct) & InstanceRole.Administrator) == 0) return Forbid();
+        await setup.SetDeclinedAsync(id, decision.Declined, ct);
+        return NoContent();
+    }
+
+    [HttpPost("dependencies/{id}/install")]
+    [Authorize]
+    public async Task<ActionResult<DependencyInstallResult>> InstallDependency(string id,
+        [FromServices] IInstanceAccessService access, [FromServices] IDependencySetupService setup, CancellationToken ct)
+    {
+        if (_hosting.Local is null || !DependencyIds.IsInstallable(id)) return NotFound();
+        if ((await access.GetRolesAsync(ct) & InstanceRole.Administrator) == 0) return Forbid();
+        return await setup.InstallAsync(id, ct);
+    }
 }

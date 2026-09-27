@@ -85,7 +85,11 @@ export const api = {
   /** Workbench host status + diagnostics (0.9.0+). Older servers answer 404. */
   system: {
     status: () => request<SystemStatus>("/api/system/status"),
-    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics")
+    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics"),
+    installDependency: (id: "pwsh" | "exchange-module") =>
+      request<{ installed: boolean; detail: string }>(`/api/system/dependencies/${id}/install`, { method: "POST" }),
+    declineDependency: (id: "pwsh" | "exchange-module") =>
+      request<void>(`/api/system/dependencies/${id}/decision`, { method: "PUT", body: JSON.stringify({ declined: true }) })
   },
 
   /** Instance-level Secure Application Model credential (requires instance.sam.manage). */

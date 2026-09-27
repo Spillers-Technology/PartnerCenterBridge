@@ -395,7 +395,9 @@ workspace's `mailbox` section, and any offboarding item that needs Exchange (`co
 probes `pwsh` and the module out-of-process (cached 60 seconds) and the app-only cert (checked
 fresh every time), and prints the exact fix for whichever piece is missing first, in the order
 you'd fix them: install PowerShell 7, then the module, then configure the app registration and
-certificate.
+certificate. In the Windows Local Workbench, an instance Administrator can install PowerShell 7
+and the module directly from Home or Settings after confirmation. Declining keeps a persistent
+blocked check; a successful install refreshes the probe and enables Exchange without a restart.
 
 The Exchange organization to connect to is read from Microsoft Graph for each tenant (its
 verified initial `*.onmicrosoft.com` domain, cross-checked against the tenant's own Entra id) the

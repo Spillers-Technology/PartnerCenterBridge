@@ -9,7 +9,7 @@ namespace PartnerCenterBridge.Api.Diagnostics;
 public enum SystemCheckStatus { Ok, Warning, Error, NotConfigured }
 
 /// <summary>How to fix a non-Ok check: a shell command to run and/or an SPA route to open.</summary>
-public sealed record SystemCheckFix(string Label, string? Command, string? Route);
+public sealed record SystemCheckFix(string Label, string? Command, string? Route, string? InstallId = null);
 
 public sealed record SystemCheck(string Id, string Label, SystemCheckStatus Status, string Detail, SystemCheckFix? Fix);
 
@@ -37,9 +37,10 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
     private readonly AuthModeInfo _authMode;
     private readonly ISamStatusService _sam;
     private readonly IExchangeDependencyProbe _exchange;
+    private readonly IDependencySetupService _setup;
 
     public SystemDiagnostics(HostingInfo hosting, PersistenceInfo persistence, BridgeDbContext db, IConfiguration cfg,
-        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange)
+        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange, IDependencySetupService setup)
     {
         _hosting = hosting;
         _persistence = persistence;
@@ -48,6 +49,7 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         _authMode = authMode;
         _sam = sam;
         _exchange = exchange;
+        _setup = setup;
     }
 
     public async Task<SystemDiagnosticsReport> RunAsync(CancellationToken ct)
@@ -63,7 +65,7 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         checks.Add(await TenantsAsync(databaseUsable, ct));
 
         var exchange = await _exchange.GetAsync(ct);
-        checks.AddRange(ExchangeChecks(exchange));
+        checks.AddRange(ExchangeChecks(exchange, _hosting.Local is not null, _setup));
 
         return new SystemDiagnosticsReport(checks, new SystemCapabilities(
             Graph: samReady, Exchange: exchange.Ready, PartnerCenter: samReady));
@@ -206,23 +208,32 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
             : new(id, label, SystemCheckStatus.Ok, $"{active} active tenant(s)", null);
     }
 
-    private static IEnumerable<SystemCheck> ExchangeChecks(ExchangeDependencyState state)
+    private static IEnumerable<SystemCheck> ExchangeChecks(ExchangeDependencyState state, bool local, IDependencySetupService setup)
     {
         yield return state.PwshAvailable
             ? new("pwsh", "PowerShell 7", SystemCheckStatus.Ok, $"PowerShell {state.PwshVersion} at {state.PwshPath}", null)
-            : new("pwsh", "PowerShell 7", SystemCheckStatus.NotConfigured,
-                (state.PwshError ?? "pwsh not found") + " (only needed for Exchange Online operations)",
-                new SystemCheckFix("Install PowerShell 7",
-                    OperatingSystem.IsWindows() ? "winget install --id Microsoft.PowerShell --source winget" : null, null));
+            : new("pwsh", "PowerShell 7", local && setup.IsDeclined(DependencyIds.Pwsh) ? SystemCheckStatus.Error : SystemCheckStatus.NotConfigured,
+                (state.PwshError ?? "pwsh not found") + (local && setup.IsDeclined(DependencyIds.Pwsh)
+                    ? ". Installation was declined; Exchange Online remains blocked until PowerShell 7 is installed."
+                    : " (only needed for Exchange Online operations)"),
+                new SystemCheckFix(state.PwshCommand is "pwsh" or "pwsh.exe" ? "Install PowerShell 7" : "Correct Exchange:PwshPath in pcb.local.json and restart",
+                    OperatingSystem.IsWindows() && (state.PwshCommand is "pwsh" or "pwsh.exe")
+                        ? "winget install --id Microsoft.PowerShell --source winget" : null,
+                    null,
+                    local && OperatingSystem.IsWindows() && (state.PwshCommand is "pwsh" or "pwsh.exe") ? DependencyIds.Pwsh : null));
 
         yield return !state.PwshAvailable
             ? new("exchange-module", "Exchange Online module", SystemCheckStatus.NotConfigured, "Needs PowerShell 7 first",
                 new SystemCheckFix("Install PowerShell 7, then the module", InstallModuleCommand, null))
             : state.ModuleAvailable
                 ? new("exchange-module", "Exchange Online module", SystemCheckStatus.Ok, $"ExchangeOnlineManagement {state.ModuleVersion}", null)
-                : new("exchange-module", "Exchange Online module", SystemCheckStatus.NotConfigured,
-                    "pwsh found, " + (state.ModuleError ?? "ExchangeOnlineManagement not installed"),
-                    new SystemCheckFix("Install module", InstallModuleCommand, null));
+                : new("exchange-module", "Exchange Online module",
+                    local && setup.IsDeclined(DependencyIds.ExchangeModule) ? SystemCheckStatus.Error : SystemCheckStatus.NotConfigured,
+                    "pwsh found, " + (state.ModuleError ?? "ExchangeOnlineManagement not installed") +
+                    (local && setup.IsDeclined(DependencyIds.ExchangeModule)
+                        ? ". Installation was declined; Exchange Online remains blocked until the module is installed." : ""),
+                    new SystemCheckFix("Install module", InstallModuleCommand, null,
+                        local ? DependencyIds.ExchangeModule : null));
 
         var usesCertificateThumbprint = state.CertificatePath.StartsWith("Cert:", StringComparison.OrdinalIgnoreCase);
         yield return state.AppConfigured

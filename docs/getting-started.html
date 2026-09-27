@@ -356,7 +356,9 @@ GDAP + the multi-tenant consent).</div>
 <p>
   Mailbox operations (mailbox archive repair, and converting or forwarding a leaver's mailbox during
   offboarding) run through Exchange Online PowerShell, out of process. They need three things,
-  and the app says which one is missing instead of failing silently:
+  and the app says which one is missing instead of failing silently. In the Windows Local Workbench,
+  an instance Administrator can install the first two from the Home setup checklist or Settings
+  after confirming; the commands below remain available for manual setup:
 </p>
 <ol class="doc-steps">
   <li><strong>PowerShell 7</strong> (<code>pwsh</code>) on PATH, or its path in <code>Exchange:PwshPath</code>.</li>

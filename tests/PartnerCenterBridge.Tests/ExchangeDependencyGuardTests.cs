@@ -38,6 +38,24 @@ public class ExchangeDependencyGuardTests
     }
 
     [Fact]
+    public async Task Guard_uses_the_freshly_discovered_executable_path()
+    {
+        var expected = "C:\\new-install\\pwsh.exe";
+        string? selected = null;
+        var inner = new CountingRunner();
+        var runner = new GuardedPwshRunner(inner, new FixedProbe(State(pwshPath: expected)), path =>
+        {
+            selected = path;
+            return inner;
+        });
+
+        await runner.RunAsync("script.ps1", "{}");
+
+        Assert.Equal(expected, selected);
+        Assert.Equal(1, inner.Calls);
+    }
+
+    [Fact]
     public void Locator_finds_nothing_for_a_missing_command()
     {
         Assert.Null(ExecutableLocator.Find("pcb-definitely-not-a-real-command"));
@@ -46,6 +64,7 @@ public class ExchangeDependencyGuardTests
     private sealed class FixedProbe(ExchangeDependencyState state) : IExchangeDependencyProbe
     {
         public Task<ExchangeDependencyState> GetAsync(CancellationToken ct) => Task.FromResult(state);
+        public Task InvalidateAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class CountingRunner : IPwshRunner
