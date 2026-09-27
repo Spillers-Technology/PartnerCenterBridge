@@ -231,6 +231,22 @@ Options:
 Full detail, including diagnostics and Exchange as an optional dependency:
 [Local Workbench](https://spillerstech.us/PartnerCenterBridge/local-workbench.html).
 
+**Download a signed build** instead of building it yourself: every tagged release publishes
+`PartnerCenterBridge-vX.Y.Z-win-x64.zip` (the exe, `LICENSE`, and a `README-FIRST.txt`) and its
+`.sha256` checksum to [GitHub Releases](https://github.com/Spillers-Technology/PartnerCenterBridge/releases).
+The exe is Authenticode-signed (see [docs/code-signing.md](docs/code-signing.md)); verify a
+download before running it:
+
+```powershell
+Get-AuthenticodeSignature .\PartnerCenterBridge.exe | Format-List Status, SignerCertificate, TimeStamperCertificate
+(Get-FileHash PartnerCenterBridge-vX.Y.Z-win-x64.zip -Algorithm SHA256).Hash.ToLower()
+Get-Content PartnerCenterBridge-vX.Y.Z-win-x64.zip.sha256
+```
+
+```sh
+sha256sum -c PartnerCenterBridge-vX.Y.Z-win-x64.zip.sha256
+```
+
 ### Server / container (Postgres, Docker, Kubernetes) — unchanged
 
 The original deployment path, untouched by this branch: Postgres, the API and web Docker images,
@@ -326,8 +342,18 @@ exe — health check, `/api/system/status` profile, SPA fallback for a deep link
 binding, and a stop/restart to confirm `pcb.db` persists; also runs `doctor` non-gating, since
 Exchange/SAM are expected unconfigured in CI; uploads the exe as a 14-day artifact), and a
 `docker` job (builds both container images without pushing). `.github/workflows/ui-overflow.yml`
-runs the separate mobile-overflow Playwright capture. None of this publishes anything; the release
-checklist in [CLAUDE.md](CLAUDE.md) covers the manual release steps.
+runs the separate mobile-overflow Playwright capture. None of this publishes anything.
+
+## Releasing
+
+Pushing a tag `vX.Y.Z` runs `.github/workflows/release.yml`: the same CI gate above, then
+publishing -- a signed Windows exe, both container images tagged `vX.Y.Z` and `latest`, a
+GitHub release built from `releases/vX.Y.Z.md`, and a docs-site deploy to GitHub Pages, all from
+one tag push. `workflow_dispatch` with `dry_run: true` (the default) runs the same pipeline
+without publishing anything, to prove it before tagging. See the release checklist in
+[CLAUDE.md](CLAUDE.md) for the steps that are still manual (bumping versions, writing the
+release notes, merging the PR) and [docs/code-signing.md](docs/code-signing.md) for how the
+Windows exe is signed.
 
 ## Config snapshots
 
