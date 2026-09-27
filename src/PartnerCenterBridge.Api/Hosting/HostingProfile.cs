@@ -66,15 +66,27 @@ public sealed class LocalWorkbenchOptions
     public bool IsLoopbackOnly => IPAddress.IsLoopback(ListenAddress);
 
     /// <summary>
-    /// Every address Kestrel binds. The canonical origin (<see cref="CanonicalUrl"/>, which browsers
-    /// and passkeys use) needs 127.0.0.1, so a specific <c>--listen</c> interface is bound in
-    /// addition to it; a wildcard (0.0.0.0, or dual-mode [::]) already covers loopback and is bound
-    /// alone to avoid a duplicate bind.
+    /// Every address Kestrel binds. Browsers resolve the canonical origin's "localhost"
+    /// (<see cref="CanonicalUrl"/>, which passkeys are bound to) to [::1] first and 127.0.0.1 second,
+    /// so both loopback addresses are held: otherwise another Windows user could bind the free one
+    /// and be served to this user's browser. [::1] is skipped only when this machine has no IPv6
+    /// loopback at all (<see cref="IPv6LoopbackAvailable"/>). A specific <c>--listen</c> interface is
+    /// bound in addition; dual-mode [::] already covers both loopback addresses and is bound alone.
     /// </summary>
-    public IReadOnlyList<IPAddress> ListenAddresses =>
-        ListenAddress.Equals(IPAddress.Loopback) || IsWildcard(ListenAddress)
-            ? new[] { ListenAddress }
-            : new[] { IPAddress.Loopback, ListenAddress };
+    public IReadOnlyList<IPAddress> ListenAddresses
+    {
+        get
+        {
+            if (ListenAddress.Equals(IPAddress.IPv6Any)) return new[] { ListenAddress };
+            var addresses = new List<IPAddress> { ListenAddress.Equals(IPAddress.Any) ? IPAddress.Any : IPAddress.Loopback };
+            if (IPv6LoopbackAvailable) addresses.Add(IPAddress.IPv6Loopback);
+            if (!addresses.Contains(ListenAddress) && !ListenAddress.Equals(IPAddress.Any)) addresses.Add(ListenAddress);
+            return addresses;
+        }
+    }
+
+    /// <summary>Whether [::1] can be bound on this machine (probed once, on an ephemeral port). Settable for tests.</summary>
+    public bool IPv6LoopbackAvailable { get; init; } = LoopbackSupport.IPv6;
 
     public static bool IsWildcard(IPAddress address) =>
         address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any);
@@ -191,4 +203,26 @@ public sealed class HostingInfo
         var plus = version.IndexOf('+');
         return plus >= 0 ? version[..plus] : version;
     }
+}
+
+/// <summary>Whether this machine has an IPv6 loopback interface.</summary>
+public static class LoopbackSupport
+{
+    private static readonly Lazy<bool> Probe = new(() =>
+    {
+        if (!System.Net.Sockets.Socket.OSSupportsIPv6) return false;
+        try
+        {
+            var listener = new System.Net.Sockets.TcpListener(IPAddress.IPv6Loopback, 0);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return false;
+        }
+    });
+
+    public static bool IPv6 => Probe.Value;
 }

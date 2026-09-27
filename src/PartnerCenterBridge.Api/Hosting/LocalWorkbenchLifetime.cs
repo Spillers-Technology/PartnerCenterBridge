@@ -122,7 +122,11 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
             _log.LogWarning("--listen {Address}: port {Port} is reachable from other machines (loopback stays bound for {Url}).",
                 _options.ListenAddress, _options.Port, _options.CanonicalUrl);
         }
-        foreach (var warning in _warnings.Messages) lines.Insert(lines.Count - 1, "  Note:      " + warning);
+        foreach (var warning in _warnings.Messages)
+        {
+            lines.Insert(lines.Count - 1, "  Note:      " + warning);
+            _log.LogWarning("{Note}", warning);
+        }
         Console.Out.WriteLine(string.Join(Environment.NewLine, lines));
         _log.LogInformation("Local Workbench listening at {Url} (data {DataRoot})", _options.CanonicalUrl, _options.DataRoot);
     }

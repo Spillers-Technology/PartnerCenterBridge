@@ -37,11 +37,32 @@ public static class LocalListeners
             return "Could not determine the addresses the server is listening on; stopping rather than risk an unintended network listener.";
 
         var unexpected = addresses.Where(address => !IsAllowed(address, options)).ToList();
-        if (unexpected.Count == 0) return null;
+        if (unexpected.Count == 0)
+        {
+            // Both loopback families must be ours: a free [::1] (or 127.0.0.1) could be taken by another
+            // Windows user and serve this user's browser, which resolves "localhost" to either.
+            // Kestrel reports "localhost" for a listener on both loopback addresses.
+            var bound = addresses.SelectMany(address => IsLocalhost(address)
+                    ? new IPAddress?[] { IPAddress.Loopback, IPAddress.IPv6Loopback }
+                    : new[] { ParseHost(address) })
+                .Where(ip => ip is not null).ToList();
+            var missing = options.ListenAddresses
+                .Where(expected => IPAddress.IsLoopback(expected) && !bound.Any(ip => expected.Equals(ip)))
+                .ToList();
+            if (missing.Count == 0) return null;
+            return $"The server is not listening on {string.Join(", ", missing)} for port {options.Port}, so another program " +
+                   "could answer the browser there. Stopping.";
+        }
         return $"The server is listening on {string.Join(", ", unexpected)}, which is not loopback and was not requested with --listen. " +
                "Stopping. Remove any Kestrel endpoint / URL configuration (Kestrel__Endpoints__*, ASPNETCORE_URLS, ASPNETCORE_HTTP_PORTS) " +
                "or pass --listen <address> deliberately.";
     }
+
+    private static bool IsLocalhost(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase);
+
+    private static IPAddress? ParseHost(string address) =>
+        Uri.TryCreate(address, UriKind.Absolute, out var uri) && IPAddress.TryParse(uri.Host.Trim('[', ']'), out var ip) ? ip : null;
 
     private static bool IsAllowed(string address, LocalWorkbenchOptions options)
     {

@@ -32,7 +32,9 @@ public static class HostingExtensions
         }
 
         var local = LocalWorkbenchOptions.FromConfiguration(cfg);
-        var directoryWarnings = LocalDataDirectory.Ensure(local);
+        var directoryWarnings = LocalDataDirectory.Ensure(local).ToList();
+        if (!local.IPv6LoopbackAvailable)
+            directoryWarnings.Add("IPv6 loopback ([::1]) is not available on this computer, so only 127.0.0.1 is bound.");
 
         // Local defaults sit above appsettings*.json (which describe the container deployment) and
         // below environment variables and the command line, so those can still override any of it.

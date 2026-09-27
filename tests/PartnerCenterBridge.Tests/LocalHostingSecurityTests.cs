@@ -27,13 +27,22 @@ public sealed class LocalHostingSecurityTests : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 
-    private static LocalWorkbenchOptions Options(string? listen = null, string dataDir = "") =>
-        LocalWorkbenchOptions.FromConfiguration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+    private static LocalWorkbenchOptions Options(string? listen = null, string dataDir = "", bool? ipv6 = null)
+    {
+        var options = LocalWorkbenchOptions.FromConfiguration(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             [HostingKeys.DataDir] = dataDir.Length > 0 ? dataDir : Path.GetTempPath(),
             [HostingKeys.Listen] = listen,
             [HostingKeys.Port] = "5199"
         }).Build());
+        return ipv6 is null
+            ? options
+            : new LocalWorkbenchOptions
+            {
+                DataRoot = options.DataRoot, Port = options.Port, ListenAddress = options.ListenAddress,
+                OpenBrowser = options.OpenBrowser, IPv6LoopbackAvailable = ipv6.Value
+            };
+    }
 
     private WebApplicationFactory<Program> Host(params (string Key, string Value)[] settings)
     {
@@ -62,11 +71,11 @@ public sealed class LocalHostingSecurityTests : IDisposable
     [Fact]
     public void Effective_addresses_must_be_loopback_without_listen()
     {
-        var local = Options();
-        Assert.Null(LocalListeners.Validate(new[] { "http://127.0.0.1:5199" }, local));
-        Assert.Null(LocalListeners.Validate(new[] { "http://localhost:5199", "http://[::1]:5199" }, local));
-        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://0.0.0.0:5081" }, local));
-        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::]:5081" }, local));
+        var local = Options(ipv6: true);
+        Assert.Null(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::1]:5199" }, local));
+        Assert.Null(LocalListeners.Validate(new[] { "http://localhost:5199" }, local));
+        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::1]:5199", "http://0.0.0.0:5081" }, local));
+        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::1]:5199", "http://[::]:5081" }, local));
         Assert.NotNull(LocalListeners.Validate(new[] { "http://*:5081" }, local));
         Assert.NotNull(LocalListeners.Validate(new[] { "http://192.168.1.10:5199" }, local));
         // Unknown effective addresses fail closed.
@@ -75,24 +84,54 @@ public sealed class LocalHostingSecurityTests : IDisposable
     }
 
     [Fact]
-    public void Explicit_listen_address_is_the_only_non_loopback_address_allowed()
+    public void Both_loopback_families_must_be_bound()
     {
-        var local = Options("192.168.1.10");
-        Assert.Null(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://192.168.1.10:5199" }, local));
-        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://10.0.0.5:5199" }, local));
-        Assert.Null(LocalListeners.Validate(new[] { "http://0.0.0.0:5199" }, Options("0.0.0.0")));
+        // Finding 1 (IPv6 variant): with only 127.0.0.1 held, another Windows user could bind [::1],
+        // which browsers try first for "localhost".
+        var problem = LocalListeners.Validate(new[] { "http://127.0.0.1:5199" }, Options(ipv6: true));
+        Assert.NotNull(problem);
+        Assert.Contains("::1", problem);
+        Assert.NotNull(LocalListeners.Validate(new[] { "http://[::1]:5199" }, Options(ipv6: true)));
+        // A machine without IPv6 loopback binds only 127.0.0.1.
+        Assert.Null(LocalListeners.Validate(new[] { "http://127.0.0.1:5199" }, Options(ipv6: false)));
     }
 
-    // --- Finding 13: a specific --listen keeps the canonical loopback listener ---
+    [Fact]
+    public void Explicit_listen_address_is_the_only_non_loopback_address_allowed()
+    {
+        var local = Options("192.168.1.10", ipv6: true);
+        Assert.Null(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::1]:5199", "http://192.168.1.10:5199" }, local));
+        Assert.NotNull(LocalListeners.Validate(new[] { "http://127.0.0.1:5199", "http://[::1]:5199", "http://10.0.0.5:5199" }, local));
+        Assert.Null(LocalListeners.Validate(new[] { "http://0.0.0.0:5199", "http://[::1]:5199" }, Options("0.0.0.0", ipv6: true)));
+    }
+
+    // --- Finding 13: a specific --listen keeps the canonical loopback listeners ---
 
     [Fact]
-    public void Specific_listen_address_keeps_the_canonical_loopback_listener()
+    public void Default_and_specific_listen_addresses_hold_both_loopback_families()
     {
-        Assert.Equal(new[] { IPAddress.Loopback }, Options().ListenAddresses);
-        Assert.Equal(new[] { IPAddress.Loopback, IPAddress.Parse("192.168.1.10") }, Options("192.168.1.10").ListenAddresses);
-        // Wildcards already cover loopback: bound alone, no duplicate bind.
-        Assert.Equal(new[] { IPAddress.Any }, Options("0.0.0.0").ListenAddresses);
-        Assert.Equal(new[] { IPAddress.IPv6Any }, Options("::").ListenAddresses);
+        var v4 = IPAddress.Loopback;
+        var v6 = IPAddress.IPv6Loopback;
+        Assert.Equal(new[] { v4, v6 }, Options(ipv6: true).ListenAddresses);
+        Assert.Equal(new[] { v4 }, Options(ipv6: false).ListenAddresses);
+        Assert.Equal(new[] { v4, v6, IPAddress.Parse("192.168.1.10") }, Options("192.168.1.10", ipv6: true).ListenAddresses);
+        Assert.Equal(new[] { v4, v6 }, Options("::1", ipv6: true).ListenAddresses);
+        // 0.0.0.0 covers 127.0.0.1 but not [::1]; dual-mode [::] covers both and is bound alone.
+        Assert.Equal(new[] { IPAddress.Any, v6 }, Options("0.0.0.0", ipv6: true).ListenAddresses);
+        Assert.Equal(new[] { IPAddress.IPv6Any }, Options("::", ipv6: true).ListenAddresses);
+    }
+
+    [Fact]
+    public void Preflight_reports_the_port_in_use_when_only_ipv6_loopback_is_taken()
+    {
+        if (!LoopbackSupport.IPv6) return;
+        using var squatter = new System.Net.Sockets.Socket(System.Net.Sockets.AddressFamily.InterNetworkV6,
+            System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp);
+        squatter.Bind(new IPEndPoint(IPAddress.IPv6Loopback, 0));
+        squatter.Listen();
+        var port = ((IPEndPoint)squatter.LocalEndPoint!).Port;
+        var options = new LocalWorkbenchOptions { DataRoot = Path.GetTempPath(), Port = port, IPv6LoopbackAvailable = true };
+        Assert.Equal(PortState.InUse, PortPreflight.CheckAsync(options).GetAwaiter().GetResult());
     }
 
     // --- Finding 4: an existing shared data root is refused ---
