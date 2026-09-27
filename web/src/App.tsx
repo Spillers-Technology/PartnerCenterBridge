@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, type Location } from "react-router";
 import Alert from "@mui/material/Alert";
 import Box from "@mui/material/Box";
@@ -6,12 +6,14 @@ import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { authEnabled, initAuth, login, logout } from "./auth";
-import { api } from "./api";
-import { clearLocalToken, getLocalToken } from "./session";
+import { api, errorText } from "./api";
+import { clearLocalToken, getLocalToken, setLocalToken } from "./session";
+import { takeLaunchSecretFromUrl } from "./launch";
 import type { AuthMode, AuthResponse, MeProfile, SystemStatus } from "./types";
 import { AppShell } from "./components/AppShell";
 import { Login } from "./components/Login";
 import { Register } from "./components/Register";
+import { AccountlessNotice } from "./components/AccountlessNotice";
 import { CommandPalette, CommandPaletteTrigger, useCommandPaletteShortcut } from "./components/CommandPalette";
 import { PageLoading, RouteErrorBoundary } from "./components/RouteFallback";
 import { WorkbenchProvider, useWorkbench, type WorkbenchSession } from "./workbench";
@@ -42,7 +44,7 @@ const WorkbenchSettingsPage = lazy(() => import("./routes/settings").then((m) =>
 const NotFound = lazy(() => import("./routes/not-found"));
 
 /** Where an unauthenticated visitor was headed, carried through /login and /register. */
-interface ReturnState { from?: string }
+interface ReturnState { from?: string; signedOut?: boolean }
 
 const OIDC_RETURN_KEY = "pcb.oidc.returnTo";
 
@@ -65,6 +67,13 @@ export function App() {
   // image works regardless of how a given deployment is configured -- no separate build per mode.
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [me, setMe] = useState<MeProfile | null>(null);
+  // Launch-link sign-in (Local Workbench without an account): the secret is taken out of the address
+  // bar during the first render, before anything else can read or record the URL. A ref survives
+  // React StrictMode's double effect run; it is cleared once the exchange has been attempted.
+  const launchSecret = useRef<string | null | undefined>(undefined);
+  if (launchSecret.current === undefined) launchSecret.current = takeLaunchSecretFromUrl();
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const location = useLocation();
 
   useEffect(() => {
     let cancelled = false;
@@ -77,6 +86,23 @@ export function App() {
         setStatus(s);
         setAuthMode(m.mode);
         if (m.mode === "Local") {
+          const secret = launchSecret.current;
+          if (secret) {
+            // Sync the router with the address bar the secret was just removed from.
+            navigate(`${location.pathname}${location.search}`, { replace: true, state: location.state });
+            try {
+              const r = await api.auth.launch(secret);
+              if (cancelled) return;
+              launchSecret.current = null;
+              setLocalToken(r.accessToken);
+              setMe(r.user);
+              return;
+            } catch (e) {
+              if (cancelled) return;
+              launchSecret.current = null;
+              setLaunchError(errorText(e));
+            }
+          }
           if (getLocalToken()) {
             try { setMe(await api.auth.me()); }
             catch { clearLocalToken(); }
@@ -114,14 +140,20 @@ export function App() {
     try { await api.auth.logout(); } catch { /* best-effort */ }
     clearLocalToken();
     setMe(null);
-    navigate("/login", { replace: true });
+    navigate("/login", { replace: true, state: { signedOut: true } satisfies ReturnState });
   }, [navigate]);
 
   const onAuthenticated = useCallback((r: AuthResponse) => {
     setMe(r.user);
-    // Whoever just registered is no longer waiting on a first user.
-    setStatus((s) => (s && s.needsFirstUser ? { ...s, needsFirstUser: false } : s));
+    setLaunchError(null);
+    // Whoever just registered (or chose no account) is no longer waiting on a first user.
+    setStatus((s) => (s ? { ...s, needsFirstUser: false, canSkipAccount: false, accountless: Boolean(r.user.isWorkbenchOwner) } : s));
   }, []);
+
+  const refreshStatus = useCallback(
+    () => api.system.status().then(setStatus).catch(() => {}),
+    []
+  );
 
   const session = useMemo<WorkbenchSession | null>(() => {
     if (authMode === null) return null;
@@ -132,9 +164,10 @@ export function App() {
       displayName: me?.displayName ?? user,
       status,
       refreshMe,
+      refreshStatus,
       signOut: showSignOut ? (authMode === "Local" ? () => void signOutLocal() : () => void logout()) : undefined
     };
-  }, [authMode, me, user, status, refreshMe, signOutLocal]);
+  }, [authMode, me, user, status, refreshMe, refreshStatus, signOutLocal]);
 
   if (bootError) {
     return (
@@ -160,6 +193,10 @@ export function App() {
   if (!ready || session === null) return <div className="center">Loading…</div>;
 
   const needsFirstUser = authMode === "Local" && Boolean(status?.needsFirstUser);
+  // Without an account there is no sign-in form: only the exe's launch link signs in.
+  const accountless = authMode === "Local" && Boolean(status?.accountless) && me === null;
+  const accountlessPage = <AccountlessNotice windowsUser={status?.windowsUser ?? null} launchError={launchError} />;
+  const skipAccount = needsFirstUser && status?.canSkipAccount ? { windowsUser: status.windowsUser ?? "this Windows user" } : null;
 
   return (
     <WorkbenchProvider value={session}>
@@ -168,7 +205,7 @@ export function App() {
           path="/login"
           element={
             <LocalAuthRoute authMode={session.authMode} signedIn={me !== null} redirectTo={needsFirstUser ? "/register" : null}>
-              <LoginScreen onAuthenticated={onAuthenticated} />
+              {accountless ? accountlessPage : <LoginScreen onAuthenticated={onAuthenticated} />}
             </LocalAuthRoute>
           }
         />
@@ -176,11 +213,11 @@ export function App() {
           path="/register"
           element={
             <LocalAuthRoute authMode={session.authMode} signedIn={me !== null} redirectTo={null}>
-              <RegisterScreen onAuthenticated={onAuthenticated} setup={needsFirstUser} />
+              {accountless ? accountlessPage : <RegisterScreen onAuthenticated={onAuthenticated} setup={needsFirstUser} skipAccount={skipAccount} />}
             </LocalAuthRoute>
           }
         />
-        <Route element={<RequireAuth user={user} needsFirstUser={needsFirstUser}><ShellLayout /></RequireAuth>}>
+        <Route element={accountless ? accountlessPage : <RequireAuth user={user} needsFirstUser={needsFirstUser}><ShellLayout /></RequireAuth>}>
           <Route index element={<Home />} />
           <Route path="people" element={<PeopleSearchPage />} />
           <Route path="people/:tenantId/:userId" element={<PersonWorkspacePage />} />
@@ -244,12 +281,21 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (r: AuthResponse) =
   );
 }
 
-function RegisterScreen({ onAuthenticated, setup }: { onAuthenticated: (r: AuthResponse) => void; setup: boolean }) {
+function RegisterScreen({
+  onAuthenticated,
+  setup,
+  skipAccount
+}: {
+  onAuthenticated: (r: AuthResponse) => void;
+  setup: boolean;
+  skipAccount: { windowsUser: string } | null;
+}) {
   const location = useLocation();
   const navigate = useNavigate();
   return (
     <Register
       setup={setup}
+      skipAccount={skipAccount}
       onAuthenticated={(r) => {
         onAuthenticated(r);
         navigate(returnTarget(location), { replace: true });
