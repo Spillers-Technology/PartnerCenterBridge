@@ -15,7 +15,7 @@ Partner Center Bridge's web client is being brought up to mobile-usable standard
 ## Breakpoint strategy
 
 MUI's default breakpoints (established in the [MUI design system foundation
-spec](superpowers/specs/2026-08-19-mui-design-system-foundation-design.md)): `xs` (<600px) = phone,
+spec](specs/2026-08-19-mui-design-system-foundation-design.md)): `xs` (<600px) = phone,
 `sm`-`md` (600-900px) = foldable/tablet, `lg`+ = desktop. `useIsPhone()`
 (`web/src/hooks/useIsPhone.ts`) is the shared hook for any component that needs to branch on phone
 vs windowed layout.

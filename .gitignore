@@ -127,3 +127,14 @@ docs/assets/screenshots/mobile/
 
 # Local Workbench publish output (scripts/publish-local.*)
 artifacts/
+
+# dotnet test results (dotnet test --results-directory)
+TestResults/
+
+# Playwright output, if run with its own defaults instead of PCBRIDGE_CAPTURE_OUT
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Pages build output (scripts/build-site.sh)
+site-out/

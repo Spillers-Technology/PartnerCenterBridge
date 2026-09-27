@@ -17,9 +17,22 @@ public record MeDto(
     IReadOnlyList<TenantAccessDto> TenantAccess,
     IReadOnlyList<InstanceRole> InstanceRoles,
     IReadOnlyList<string> InstancePermissions,
-    long AuthorizationVersion);
+    long AuthorizationVersion,
+    bool IsWorkbenchOwner = false);
 
 public record AuthResponse(string AccessToken, MeDto User);
+
+// --- Local Workbench without an account ----------------------------------------------------
+/// <summary>
+/// Body of <c>POST /api/auth/setup/no-account</c>. A JSON body (not an empty POST) so a web page
+/// on another origin cannot trigger the choice: a cross-origin JSON POST needs a CORS preflight
+/// the Local profile never grants.
+/// </summary>
+public record NoAccountSetupRequest(bool Confirm);
+/// <summary>Body of <c>POST /api/auth/launch</c>: the launch secret from the URL fragment.</summary>
+public record LaunchRequest(string? Secret);
+/// <summary>Body of <c>POST /api/auth/owner/protect</c>: the email and password that replace launch-link sign-in.</summary>
+public record ProtectOwnerRequest(string Email, string Password, string? DisplayName);
 
 /// <summary>Returned from <c>/api/auth/login</c> instead of <see cref="AuthResponse"/> when the account has TOTP enabled -- the password was correct but a second factor is still required.</summary>
 public record MfaChallengeResponse(string MfaTicket);

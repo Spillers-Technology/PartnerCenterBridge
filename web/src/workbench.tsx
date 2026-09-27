@@ -13,6 +13,8 @@ export interface WorkbenchSession {
   /** GET /api/system/status, or null when the server predates it (or it failed). */
   status: SystemStatus | null;
   refreshMe: () => Promise<void>;
+  /** Re-reads GET /api/system/status (e.g. after the no-account owner protected the workbench). */
+  refreshStatus?: () => Promise<void>;
   signOut?: () => void;
 }
 

@@ -91,6 +91,11 @@ public sealed class LocalWorkbenchOptions
     public string ConfigFilePath => Path.Combine(DataRoot, "pcb.local.json");
     /// <summary>The generated Auth:Local:SigningKey, protected with Data Protection.</summary>
     public string SigningKeyPath => Path.Combine(DataRoot, "auth-signing-key.protected");
+    /// <summary>The no-account owner's launch secret (see <see cref="LocalLaunchSecretStore"/>), protected like the signing key.</summary>
+    public string LaunchSecretPath => Path.Combine(DataRoot, "launch-secret.protected");
+
+    /// <summary>The URL that signs the no-account owner in: the secret rides in the fragment, which browsers never send to a server.</summary>
+    public string LaunchUrl(string secret) => $"{CanonicalUrl}/#launch={secret}";
 
     public static LocalWorkbenchOptions FromConfiguration(IConfiguration configuration)
     {

@@ -105,6 +105,9 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("IsWorkbenchOwner")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("LastLoginAt")
                         .HasColumnType("INTEGER");
 

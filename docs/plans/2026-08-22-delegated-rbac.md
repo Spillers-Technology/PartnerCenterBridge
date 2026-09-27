@@ -4,7 +4,7 @@
 fixed instance roles, close every confirmed tenant-authorization bypass, and ship the next release
 only after the REST/MCP/UI boundaries are independently reviewed and verified.
 
-**Design:** `docs/superpowers/specs/2026-08-22-delegated-rbac-design.md`
+**Design:** `docs/specs/2026-08-22-delegated-rbac-design.md`
 
 ## Constraints
 

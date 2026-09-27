@@ -42,6 +42,8 @@ public class PasskeyController : ControllerBase
         if (this.LocalUserId() is not { } userId) return BadRequest("Passkeys apply only to Auth:Mode=Local accounts.");
         var user = await _db.AppUsers.Include(u => u.PasskeyCredentials).FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return NotFound();
+        if (user.IsWorkbenchOwner)
+            return Conflict("This workbench is used without an account. Protect it with an account first; passkeys can be added after that.");
 
         var options = _fido2.RequestNewCredential(new RequestNewCredentialParams
         {
@@ -120,7 +122,7 @@ public class PasskeyController : ControllerBase
         var credential = await _db.PasskeyCredentials.Include(c => c.User)
             .FirstOrDefaultAsync(c => c.CredentialId == req.AssertionResponse.RawId, ct);
         if (credential?.User is null) return Unauthorized("Unrecognized passkey.");
-        if (!credential.User.IsActive) return Unauthorized("Unrecognized passkey.");
+        if (!credential.User.IsActive || credential.User.IsWorkbenchOwner) return Unauthorized("Unrecognized passkey.");
 
         var result = await _fido2.MakeAssertionAsync(new MakeAssertionParams
         {

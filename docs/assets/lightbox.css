@@ -169,6 +169,13 @@
   text-transform: uppercase;
 }
 
+/* On devices with a mouse, show the badge only on hover or keyboard focus. */
+@media (hover: hover) {
+  .lightbox-badge { opacity: 0; transition: opacity 160ms ease; }
+  .lightbox-host:hover .lightbox-badge,
+  .lightbox-host:focus-visible .lightbox-badge { opacity: 1; }
+}
+
 @media (max-width: 560px) {
   .lightbox-badge { top: 0.5rem; right: 0.5rem; }
   .image-lightbox__footer { align-items: center; flex-direction: column; gap: 0.15rem; }

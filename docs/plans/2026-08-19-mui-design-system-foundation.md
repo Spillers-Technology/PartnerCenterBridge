@@ -18,7 +18,7 @@ with the existing `.grid`/`.row`/`.badge` selectors.
 `@testing-library/jest-dom` `@testing-library/user-event` (dev — this is the first frontend test
 infrastructure in this repo).
 
-**Spec:** [docs/superpowers/specs/2026-08-19-mui-design-system-foundation-design.md](../specs/2026-08-19-mui-design-system-foundation-design.md)
+**Spec:** [docs/specs/2026-08-19-mui-design-system-foundation-design.md](../specs/2026-08-19-mui-design-system-foundation-design.md)
 
 ## Global Constraints
 

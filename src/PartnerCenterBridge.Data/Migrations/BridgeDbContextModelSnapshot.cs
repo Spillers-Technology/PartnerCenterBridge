@@ -110,6 +110,9 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
+                    b.Property<bool>("IsWorkbenchOwner")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTimeOffset?>("LastLoginAt")
                         .HasColumnType("timestamp with time zone");
 

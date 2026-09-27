@@ -165,7 +165,9 @@ public static class CliParser
           --data-dir <path>   Data directory (Local profile; default {LocalWorkbenchOptions.DefaultDataRoot()}).
           --listen <address>  Bind to another address instead of 127.0.0.1. Exposes the app to the
                               network; only use it when you understand the consequences.
-          --no-browser        Do not open the browser after startup.
+          --no-browser        Do not open the browser after startup. A workbench used without an
+                              account prints its sign-in link instead: that link grants full
+                              access to this workbench, so do not share it.
           --version           Print the version and exit.
           -h, --help          Print this help and exit.
 

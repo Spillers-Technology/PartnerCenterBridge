@@ -66,7 +66,7 @@ export function SettingsOverview() {
 }
 
 export function SecuritySettingsPage() {
-  const { me, authMode, refreshMe } = useWorkbench();
+  const { me, authMode, refreshMe, refreshStatus } = useWorkbench();
   if (authMode !== "Local" || me === null) {
     return (
       <Box>
@@ -82,7 +82,11 @@ export function SecuritySettingsPage() {
   return (
     <Box>
       <BackLink {...BACK} />
-      <Security me={me} onProfileChanged={() => void refreshMe()} />
+      <Security
+        me={me}
+        onProfileChanged={() => void refreshMe()}
+        onAccountProtected={() => { void refreshMe(); void refreshStatus?.(); }}
+      />
     </Box>
   );
 }

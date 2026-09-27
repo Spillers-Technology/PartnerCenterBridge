@@ -35,6 +35,15 @@ public class AppUser
 
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// The Local Workbench's built-in no-account owner ("Skip -- use without an account"): created
+    /// on first run instead of an administrator account and signed in only through the launch link
+    /// the exe opens (a DPAPI-protected launch secret in the data root) -- never by password or
+    /// passkey. Cleared when the owner protects the workbench with an email and password, after
+    /// which the row is an ordinary Local account. Never usable under the Server hosting profile.
+    /// </summary>
+    public bool IsWorkbenchOwner { get; set; }
+
     public int FailedLoginCount { get; set; }
 
     /// <summary>Set when <see cref="FailedLoginCount"/> crosses the lockout threshold; cleared on next successful login.</summary>

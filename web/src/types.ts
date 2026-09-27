@@ -211,6 +211,8 @@ export interface MeProfile {
   instanceRoles?: InstanceRole[];
   instancePermissions?: InstancePermission[];
   authorizationVersion?: number;
+  /** The built-in no-account owner of a Local Workbench (no password until protected). */
+  isWorkbenchOwner?: boolean;
 }
 
 export interface InstanceUser {
@@ -266,6 +268,12 @@ export interface SystemStatus {
   version: string;
   authMode: AuthMode;
   needsFirstUser: boolean;
+  /** Local Workbench used without an account: sign-in only through the launch link the exe opens. */
+  accountless?: boolean;
+  /** First run may offer "Skip -- use without an account" (Local profile, loopback only). */
+  canSkipAccount?: boolean;
+  /** The Windows user the workbench runs as; only sent when one of the two flags above is true. */
+  windowsUser?: string | null;
 }
 
 export type DiagnosticStatus = "Ok" | "Warning" | "Error" | "NotConfigured";

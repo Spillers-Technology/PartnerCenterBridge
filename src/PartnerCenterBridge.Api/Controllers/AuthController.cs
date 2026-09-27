@@ -29,17 +29,19 @@ public class AuthController : ControllerBase
     private readonly AuthModeInfo _mode;
     private readonly ChallengeCache _challenges;
     private readonly AuthResponseFactory _responses;
+    private readonly WorkbenchOwnerService _owner;
     private static readonly PasswordHasher<AppUser> Hasher = new();
 
     public AuthController(
         BridgeDbContext db, IOptions<LocalAuthOptions> options, AuthModeInfo mode,
-        ChallengeCache challenges, AuthResponseFactory responses)
+        ChallengeCache challenges, AuthResponseFactory responses, WorkbenchOwnerService owner)
     {
         _db = db;
         _options = options.Value;
         _mode = mode;
         _challenges = challenges;
         _responses = responses;
+        _owner = owner;
     }
 
     [HttpGet("mode")]
@@ -62,6 +64,11 @@ public class AuthController : ControllerBase
         // Serialize bootstrap so concurrent first registrations cannot both observe an empty user
         // table and both become Administrator.
         await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        // Without an account the workbench is single-user by design: another account could never
+        // sign in (there is no sign-in page), so the owner protects it with an account first.
+        if (await _db.AppUsers.AnyAsync(u => u.IsWorkbenchOwner, ct))
+            return Conflict("This workbench is used without an account. Its owner must first choose 'Protect with an account' " +
+                            "in Settings > Account & security before other accounts can be created.");
         if (await _db.AppUsers.AnyAsync(u => u.Email == email, ct))
             return Conflict("An account with that email already exists.");
 
@@ -121,9 +128,10 @@ public class AuthController : ControllerBase
 
         // Same generic failure for "no such user" and "wrong password" -- don't let login responses
         // confirm which emails have accounts.
-        if (user is null)
+        // The no-account owner has no password (only the launch link signs it in).
+        if (user is null || user.IsWorkbenchOwner)
         {
-            await RecordLoginFailureAsync(null, email, ct);
+            await RecordLoginFailureAsync(user?.Id, email, ct);
             return Unauthorized("Invalid email or password.");
         }
 
@@ -165,6 +173,157 @@ public class AuthController : ControllerBase
         });
         await _db.SaveChangesAsync(ct);
 
+        return Ok(await _responses.BuildAsync(user, ct));
+    }
+
+    /// <summary>
+    /// First run of a Local Workbench, the deliberate alternative to creating an administrator
+    /// account: creates the built-in workbench owner (named after the Windows user, all instance
+    /// administration, no tenant access until it adds tenants), creates the launch secret, and
+    /// signs the caller in. Only while no user exists, only in the Local profile, and never with a
+    /// non-loopback --listen address.
+    /// </summary>
+    [HttpPost("setup/no-account")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResponse>> SetupNoAccount(NoAccountSetupRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal || _owner.Local is null) return NotFound();
+        if (_owner.UnavailableReason is { } reason) return StatusCode(StatusCodes.Status403Forbidden, reason);
+        if (!req.Confirm) return BadRequest("Confirm that this workbench should be used without an account.");
+
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        if (await _db.AppUsers.AnyAsync(ct))
+            return Conflict("This workbench already has an account, so it cannot switch to use without an account.");
+
+        var user = new AppUser
+        {
+            Email = WorkbenchOwnerService.OwnerEmail,
+            DisplayName = WorkbenchOwnerService.OwnerDisplayName(),
+            PasswordHash = "",
+            // Administrator is the whole instance plane (it must be assigned alone). Tenant power still
+            // comes only from per-tenant grants: the owner gets Owner on tenants it adds or syncs.
+            InstanceRoles = InstanceRole.Administrator,
+            IsWorkbenchOwner = true,
+            LastLoginAt = DateTimeOffset.UtcNow
+        };
+        // A hash of a random value nobody keeps: there is no password, and login refuses the owner anyway.
+        user.PasswordHash = Hasher.HashPassword(user, Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48)));
+        _db.AppUsers.Add(user);
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.WorkbenchOwnerCreated,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                choice = "use without an account",
+                windowsUser = Environment.UserName,
+                machine = Environment.MachineName
+            })
+        });
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.BootstrapAdministratorAssigned,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new { roles = new[] { nameof(InstanceRole.Administrator) } })
+        });
+        authorizationLock.State.Revision++;
+        await _db.SaveChangesAsync(ct);
+        await authorizationLock.CommitAsync(ct);
+
+        // Later launches of the exe sign in through this secret.
+        _owner.EnsureSecret();
+        return Ok(await _responses.BuildAsync(user, ct));
+    }
+
+    /// <summary>
+    /// Launch-link sign-in for a workbench used without an account: the SPA posts the secret it
+    /// took from the URL fragment and gets the same <see cref="AuthResponse"/> as a password login.
+    /// Wrong secrets back off (see <see cref="WorkbenchOwnerService.Check"/>).
+    /// </summary>
+    [HttpPost("launch")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Launch(LaunchRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal || _owner.Local is null) return NotFound();
+        var owner = await _db.AppUsers.FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
+        if (owner is null || _owner.UnavailableReason is not null)
+            return Unauthorized("This workbench has accounts; sign in with yours.");
+
+        switch (_owner.Check(req.Secret, out var retryAfter))
+        {
+            case LaunchCheck.Throttled:
+                Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
+                return StatusCode(StatusCodes.Status429TooManyRequests,
+                    "Too many wrong launch links. Wait a moment, then open Partner Center Bridge from PartnerCenterBridge.exe again.");
+            case LaunchCheck.Rejected:
+                await RecordLoginFailureAsync(owner.Id, "launch link", ct);
+                return Unauthorized("This launch link is not valid (it may be from before the workbench was protected). " +
+                                    "Open Partner Center Bridge from PartnerCenterBridge.exe again.");
+        }
+
+        owner.LastLoginAt = DateTimeOffset.UtcNow;
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.LoginSucceeded,
+            ActorUserId = owner.Id,
+            ActorName = owner.DisplayName,
+            Detail = "\"launch link (no account)\""
+        });
+        await _db.SaveChangesAsync(ct);
+        return Ok(await _responses.BuildAsync(owner, ct));
+    }
+
+    /// <summary>
+    /// Converts the no-account owner into an ordinary Local account: sets the email and password
+    /// (usual password rules), clears <see cref="AppUser.IsWorkbenchOwner"/> and deletes the launch
+    /// secret, so launch links stop working and password (then passkey / TOTP) sign-in applies.
+    /// </summary>
+    [HttpPost("owner/protect")]
+    [Authorize]
+    public async Task<ActionResult<AuthResponse>> ProtectOwner(ProtectOwnerRequest req, CancellationToken ct)
+    {
+        if (!_mode.IsLocal) return BadRequest("Local accounts are not enabled on this deployment (Auth:Mode is not Local).");
+        if (this.LocalUserId() is not { } userId) return BadRequest("Not a local account.");
+        var email = (req.Email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@'))
+            return BadRequest("A valid email is required.");
+        if (email == WorkbenchOwnerService.OwnerEmail)
+            return BadRequest("Use your own email address.");
+        if ((req.Password ?? "").Length < _options.MinPasswordLength)
+            return BadRequest($"Password must be at least {_options.MinPasswordLength} characters.");
+
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        var user = await _db.AppUsers.FirstOrDefaultAsync(u => u.Id == userId, ct);
+        if (user is null) return NotFound();
+        if (!user.IsWorkbenchOwner) return Conflict("This account is already protected by a password.");
+        if (await _db.AppUsers.AnyAsync(u => u.Email == email && u.Id != userId, ct))
+            return Conflict("An account with that email already exists.");
+
+        user.Email = email;
+        if (!string.IsNullOrWhiteSpace(req.DisplayName)) user.DisplayName = req.DisplayName.Trim();
+        user.PasswordHash = Hasher.HashPassword(user, req.Password!);
+        user.IsWorkbenchOwner = false;
+        user.FailedLoginCount = 0;
+        user.LockedUntil = null;
+        _db.AuditEvents.Add(new AuditEvent
+        {
+            EventType = AuditEventType.WorkbenchOwnerProtected,
+            ActorUserId = user.Id,
+            ActorName = user.DisplayName,
+            EntityType = nameof(AppUser),
+            EntityId = user.Id.ToString(),
+            Detail = System.Text.Json.JsonSerializer.Serialize(new { email, launchLink = "revoked" })
+        });
+        await _db.SaveChangesAsync(ct);
+        await authorizationLock.CommitAsync(ct);
+
+        _owner.RevokeSecret();
         return Ok(await _responses.BuildAsync(user, ct));
     }
 

@@ -120,6 +120,12 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.Stateless = true)
     .WithToolsFromAssembly();
 builder.Services.AddScoped<AuthResponseFactory>();
+// "Use without an account" (Local Workbench only): launch secret + backoff. Registered in every
+// profile so AuthController resolves; under Server it refuses everything.
+builder.Services.AddSingleton(sp => new WorkbenchOwnerService(
+    sp.GetRequiredService<HostingInfo>(),
+    sp.GetService<TimeProvider>() ?? TimeProvider.System,
+    sp.GetRequiredService<ILogger<WorkbenchOwnerService>>()));
 
 // TOTP and passkeys are Local-mode features, but registered unconditionally like the above --
 // AuthController/TotpController/PasskeyController are always present, so their constructors must
@@ -223,11 +229,21 @@ if (cli.Command == CliCommand.Doctor)
 var isKestrel = app.Services.GetRequiredService<IServer>().GetType().Assembly.GetName().Name == "Microsoft.AspNetCore.Server.Kestrel.Core";
 if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel)
 {
-    switch (await PortPreflight.CheckAsync(local))
+    var preflight = await PortPreflight.CheckDetailedAsync(local);
+    switch (preflight.State)
     {
         case PortState.ThisApp:
             Console.WriteLine($"Partner Center Bridge is already running at {local.CanonicalUrl}.");
-            if (local.OpenBrowser) BrowserLauncher.TryOpen(local.CanonicalUrl);
+            // Without an account, the running instance is opened signed in: this process runs as the
+            // same Windows user, so it can read the launch secret the running instance saved.
+            var handOffUrl = local.CanonicalUrl;
+            if (preflight.Accountless && LocalLaunchSecretStore.TryRead(local) is { } launchSecret)
+            {
+                handOffUrl = local.LaunchUrl(launchSecret);
+                if (!local.OpenBrowser)
+                    Console.WriteLine($"Sign in: {handOffUrl}  (this link signs in as the workbench owner; do not share it)");
+            }
+            if (local.OpenBrowser) BrowserLauncher.TryOpen(handOffUrl);
             return 0;
         case PortState.OtherProgram:
             Console.Error.WriteLine($"Port {local.Port} is in use by another program; use --port <N> to pick a different one.");
@@ -237,6 +253,22 @@ if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel)
 
 // Apply schema at startup (the active provider's migrations) so a fresh database is usable immediately.
 await app.MigrateBridgeDatabaseAsync(authMode);
+
+// A workbench used without an account must never be reachable from other machines.
+if (hosting.Local is { IsLoopbackOnly: false } exposed && cli.Command == CliCommand.Run)
+{
+    using var scope = app.Services.CreateScope();
+    if (await WorkbenchOwnerService.IsAccountlessAsync(scope.ServiceProvider.GetRequiredService<BridgeDbContext>(), CancellationToken.None))
+    {
+        var problem =
+            $"This workbench is used without an account, so it cannot listen on {exposed.ListenAddress} (--listen): anyone " +
+            "who can reach that address would need no password. Start it without --listen, open Settings > Account & security " +
+            "and choose 'Protect with an account', then use --listen again.";
+        if (!isKestrel) throw new InvalidOperationException(problem);
+        Console.Error.WriteLine(problem);
+        return 1;
+    }
+}
 
 // CLI mode: `bootstrap-sam` runs the interactive device-code flow and exits.
 if (cli.Command == CliCommand.BootstrapSam)

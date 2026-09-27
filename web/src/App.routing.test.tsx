@@ -15,7 +15,7 @@ vi.mock("./api", async (importOriginal) => {
   return {
     ...actual,
     api: {
-      auth: { mode: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn() },
+      auth: { mode: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn(), launch: vi.fn(), setupNoAccount: vi.fn(), protectOwner: vi.fn() },
       totp: { challenge: vi.fn() },
       passkey: { loginOptions: vi.fn(), loginVerify: vi.fn() },
       system: { status: vi.fn(), diagnostics: vi.fn() },
@@ -415,6 +415,93 @@ describe("App routing", () => {
       vi.mocked(api.auth.me).mockResolvedValue({ ...ME, tenantAccess: [], instancePermissions: [] });
       renderApp("/");
       expect(await screen.findByText(/Ask a tenant Owner/)).toBeInTheDocument();
+    });
+  });
+
+  describe("Local Workbench without an account", () => {
+    const OWNER: MeProfile = {
+      ...ME, email: "owner@workbench.local", displayName: "maya (this computer)", isWorkbenchOwner: true, tenantAccess: []
+    };
+
+    beforeEach(() => {
+      vi.mocked(api.auth.mode).mockResolvedValue({ mode: "Local" });
+      vi.mocked(api.system.status).mockResolvedValue({
+        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: false, accountless: true, windowsUser: "maya"
+      });
+      window.history.replaceState(null, "", "/");
+    });
+
+    it("offers skipping the account on first run, only after a confirmation", async () => {
+      vi.mocked(api.system.status).mockResolvedValue({
+        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true, canSkipAccount: true, windowsUser: "maya"
+      });
+      vi.mocked(api.auth.setupNoAccount).mockResolvedValue({ accessToken: "owner-tok", user: OWNER });
+      const user = userEvent.setup();
+      renderApp("/");
+
+      expect(await screen.findByRole("button", { name: "Create administrator account" })).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Skip -- use without an account on this computer" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText(/Anyone who can run programs as maya on this computer, or open the launch link/)).toBeInTheDocument();
+      expect(within(dialog).getByText(/You can add a password later in Settings/)).toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(api.auth.setupNoAccount).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole("button", { name: "Skip -- use without an account on this computer" }));
+      await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Use without an account" }));
+      await waitFor(() => expect(api.auth.setupNoAccount).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(location()).toBe("/"));
+      expect(localStorage.getItem("pcb.local.accessToken")).toBe("owner-tok");
+    });
+
+    it("hides the skip option when the server does not allow it", async () => {
+      vi.mocked(api.system.status).mockResolvedValue({ profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true });
+      renderApp("/");
+      expect(await screen.findByRole("heading", { name: "Set up this workbench" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Skip/ })).not.toBeInTheDocument();
+    });
+
+    it("takes the launch secret out of the URL and signs in on the requested page", async () => {
+      window.history.replaceState(null, "", "/tenants?x=1#launch=s3cret");
+      vi.mocked(api.auth.launch).mockResolvedValue({ accessToken: "launch-tok", user: { ...OWNER, tenantAccess: ME.tenantAccess } });
+      renderApp("/tenants?x=1");
+
+      expect(window.location.hash).toBe("");
+      expect(window.location.pathname + window.location.search).toBe("/tenants?x=1");
+      await waitFor(() => expect(api.auth.launch).toHaveBeenCalledWith("s3cret"));
+      expect(await screen.findByText("Contoso Ltd")).toBeInTheDocument();
+      expect(location()).toBe("/tenants?x=1");
+      expect(localStorage.getItem("pcb.local.accessToken")).toBe("launch-tok");
+    });
+
+    it("shows guidance, not a password form, without a session", async () => {
+      renderApp("/tenants");
+      expect(await screen.findByText(/This workbench has no account. Open it from PartnerCenterBridge.exe/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument();
+    });
+
+    it("reports a stale launch link on the guidance page", async () => {
+      window.history.replaceState(null, "", "/#launch=old");
+      vi.mocked(api.auth.launch).mockRejectedValue(new ApiError(401, "401 Unauthorized: stale", "This launch link is not valid."));
+      renderApp("/");
+      expect(await screen.findByText("This launch link is not valid.")).toBeInTheDocument();
+      expect(screen.getByText(/This workbench has no account/)).toBeInTheDocument();
+    });
+
+    it("signing out shows the same guidance", async () => {
+      localStorage.setItem("pcb.local.accessToken", "tok");
+      vi.mocked(api.auth.me).mockResolvedValue(OWNER);
+      vi.mocked(api.auth.logout).mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      renderApp("/settings");
+      await user.click(await screen.findByRole("button", { name: "Account menu" }));
+      await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+      expect(await screen.findByRole("heading", { name: "Signed out" })).toBeInTheDocument();
+      expect(screen.getByText(/This workbench has no account. Open it from PartnerCenterBridge.exe/)).toBeInTheDocument();
+      expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
     });
   });
 });

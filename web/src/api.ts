@@ -263,6 +263,15 @@ export const api = {
     login: (email: string, password: string) =>
       request<AuthResponse | MfaChallengeResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
     logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+    /** First run: use this Local Workbench without an account (creates the built-in owner). */
+    setupNoAccount: () =>
+      request<AuthResponse>("/api/auth/setup/no-account", { method: "POST", body: JSON.stringify({ confirm: true }) }),
+    /** Exchanges the launch secret from the URL fragment for a session. */
+    launch: (secret: string) =>
+      request<AuthResponse>("/api/auth/launch", { method: "POST", body: JSON.stringify({ secret }) }),
+    /** Converts the no-account owner into a password account (launch links stop working). */
+    protectOwner: (email: string, password: string, displayName: string) =>
+      request<AuthResponse>("/api/auth/owner/protect", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
     me: () => request<MeProfile>("/api/auth/me")
   },
 
