@@ -11,8 +11,8 @@ using PartnerCenterBridge.Data;
 namespace PartnerCenterBridge.Data.Sqlite.Migrations
 {
     [DbContext(typeof(BridgeDbContext))]
-    [Migration("20260927000617_TenantExchangeOrganization")]
-    partial class TenantExchangeOrganization
+    [Migration("20260927002631_ExchangeOrganization")]
+    partial class ExchangeOrganization
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -106,6 +106,9 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsWorkbenchOwner")
                         .HasColumnType("INTEGER");
 
                     b.Property<long?>("LastLoginAt")

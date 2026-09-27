@@ -1,12 +1,11 @@
-﻿using System;
-using Microsoft.EntityFrameworkCore.Migrations;
+﻿using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace PartnerCenterBridge.Data.Migrations
+namespace PartnerCenterBridge.Data.Sqlite.Migrations
 {
     /// <inheritdoc />
-    public partial class TenantExchangeOrganization : Migration
+    public partial class ExchangeOrganization : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -14,13 +13,13 @@ namespace PartnerCenterBridge.Data.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "ExchangeOrganization",
                 table: "Tenants",
-                type: "text",
+                type: "TEXT",
                 nullable: true);
 
-            migrationBuilder.AddColumn<DateTimeOffset>(
+            migrationBuilder.AddColumn<long>(
                 name: "ExchangeOrganizationVerifiedAt",
                 table: "Tenants",
-                type: "timestamp with time zone",
+                type: "INTEGER",
                 nullable: true);
         }
 

@@ -12,8 +12,8 @@ using PartnerCenterBridge.Data;
 namespace PartnerCenterBridge.Data.Migrations
 {
     [DbContext(typeof(BridgeDbContext))]
-    [Migration("20260927000601_TenantExchangeOrganization")]
-    partial class TenantExchangeOrganization
+    [Migration("20260927002618_ExchangeOrganization")]
+    partial class ExchangeOrganization
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -111,6 +111,9 @@ namespace PartnerCenterBridge.Data.Migrations
                         .HasColumnType("integer");
 
                     b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsWorkbenchOwner")
                         .HasColumnType("boolean");
 
                     b.Property<DateTimeOffset?>("LastLoginAt")
