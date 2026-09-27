@@ -176,7 +176,7 @@ switch (authMode)
                         var db = context.HttpContext.RequestServices.GetRequiredService<BridgeDbContext>();
                         if (!await McpTokenValidator.ValidateAsync(context.Principal, db, context.HttpContext.RequestAborted))
                         {
-                            context.Fail("MCP token has been revoked.");
+                            context.Fail("The token has been revoked or superseded.");
                         }
                     }
                 };

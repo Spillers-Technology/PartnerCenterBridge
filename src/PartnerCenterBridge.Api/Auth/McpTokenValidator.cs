@@ -9,7 +9,9 @@ namespace PartnerCenterBridge.Api.Auth;
 public static class McpTokenValidator
 {
     /// <summary>
-    /// Returns false when the Local user is missing/inactive or an MCP PAT is missing, revoked,
+    /// Returns false when the Local user is missing/inactive, the token was issued under an older
+    /// security epoch (<see cref="Core.Entities.AppUser.SessionEpoch"/>, advanced for example when a
+    /// no-account workbench is protected with an account), or an MCP PAT is missing, revoked,
     /// expired, or belongs to a different user. Role claims are intentionally irrelevant: current
     /// instance roles and tenant grants are resolved after authentication from the database.
     /// </summary>
@@ -18,7 +20,14 @@ public static class McpTokenValidator
     {
         if (!Guid.TryParse(principal?.FindFirstValue(LocalTokenService.UserIdClaim), out var userId))
             return false;
-        if (!await db.AppUsers.AsNoTracking().AnyAsync(user => user.Id == userId && user.IsActive, ct))
+        if (LocalTokenService.EpochOf(principal) is not { } tokenEpoch)
+            return false;
+        // One lookup: the user must exist, be active, and still be on the token's epoch.
+        var currentEpoch = await db.AppUsers.AsNoTracking()
+            .Where(user => user.Id == userId && user.IsActive)
+            .Select(user => (int?)user.SessionEpoch)
+            .SingleOrDefaultAsync(ct);
+        if (currentEpoch is null || currentEpoch != tokenEpoch)
             return false;
 
         var jti = principal?.FindFirstValue(JwtRegisteredClaimNames.Jti);

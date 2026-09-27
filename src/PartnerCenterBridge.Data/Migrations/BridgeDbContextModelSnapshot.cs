@@ -123,6 +123,9 @@ namespace PartnerCenterBridge.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<int>("SessionEpoch")
+                        .HasColumnType("integer");
+
                     b.Property<bool>("TotpEnabled")
                         .HasColumnType("boolean");
 

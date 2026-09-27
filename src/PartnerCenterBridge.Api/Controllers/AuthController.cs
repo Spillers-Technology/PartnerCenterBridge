@@ -309,7 +309,9 @@ public class AuthController : ControllerBase
     /// <summary>
     /// Converts the no-account owner into an ordinary Local account: sets the email and password
     /// (usual password rules) and clears <see cref="AppUser.IsWorkbenchOwner"/>, so launch tickets
-    /// stop working and password (then passkey / TOTP) sign-in applies.
+    /// stop working and password (then passkey / TOTP) sign-in applies. It also advances the
+    /// security epoch (every earlier session token stops working) and revokes the owner's MCP tokens,
+    /// then returns a fresh session for the caller.
     /// </summary>
     [HttpPost("owner/protect")]
     [Authorize]
@@ -338,6 +340,15 @@ public class AuthController : ControllerBase
         user.IsWorkbenchOwner = false;
         user.FailedLoginCount = 0;
         user.LockedUntil = null;
+        // Everything issued before this point stops working on its next request: sessions opened
+        // through launch links (and any copy of them), and MCP tokens created without an account.
+        // The caller gets a fresh session below. A launch racing this conversion holds the same
+        // lock, so it either finishes first (and its token carries the old epoch) or finds no owner.
+        user.SessionEpoch++;
+        var now = DateTimeOffset.UtcNow;
+        var pats = await _db.McpTokens.Where(t => t.UserId == user.Id && t.RevokedAt == null).ToListAsync(ct);
+        foreach (var pat in pats) pat.RevokedAt = now;
+        _owner.RevokeTickets();
         _db.AuditEvents.Add(new AuditEvent
         {
             EventType = AuditEventType.WorkbenchOwnerProtected,
@@ -345,12 +356,15 @@ public class AuthController : ControllerBase
             ActorName = user.DisplayName,
             EntityType = nameof(AppUser),
             EntityId = user.Id.ToString(),
-            Detail = System.Text.Json.JsonSerializer.Serialize(new { email, launchLink = "revoked" })
+            Detail = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                email, launchLink = "revoked", earlierSessions = "revoked", mcpTokensRevoked = pats.Count
+            })
         });
         await _db.SaveChangesAsync(ct);
         await authorizationLock.CommitAsync(ct);
 
-        _owner.RevokeTickets();
+        _owner.RevokeTickets(); // again: nothing minted while this committed survives it
         return Ok(await _responses.BuildAsync(user, ct));
     }
 

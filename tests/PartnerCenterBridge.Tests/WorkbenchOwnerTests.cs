@@ -467,6 +467,74 @@ public sealed class WorkbenchOwnerTests : IDisposable
             .AnyAsync(e => e.EventType == AuditEventType.WorkbenchOwnerProtected));
     }
 
+    // --- Finding 3: conversion revokes everything issued before it ---
+
+    [Fact]
+    public async Task Protecting_revokes_every_earlier_session_and_mcp_token()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+        var setupToken = (await JsonAsync(await SkipAsync(factory, client))).GetProperty("accessToken").GetString()!;
+        var launchToken = (await JsonAsync(await LaunchAsync(client, Ticket(factory)))).GetProperty("accessToken").GetString()!;
+        var pat = (await JsonAsync(await client.SendAsync(Authed(HttpMethod.Post, "/api/mcp-tokens", launchToken, new { name = "agent" }))))
+            .GetProperty("jwt").GetString()!;
+        // A PAT authenticates (and is then restricted to /mcp): 403, not 401.
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", pat))).StatusCode);
+
+        var converted = await JsonAsync(await client.SendAsync(Authed(HttpMethod.Post, "/api/auth/owner/protect", setupToken,
+            new { email = "me@example.com", password = Password })));
+        var fresh = converted.GetProperty("accessToken").GetString()!;
+
+        foreach (var stale in new[] { setupToken, launchToken, pat })
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", stale))).StatusCode);
+        // An old session can no longer enroll a passkey or mint a PAT without the new password.
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.SendAsync(Authed(HttpMethod.Post, "/api/auth/passkey/register/options", launchToken))).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await client.SendAsync(Authed(HttpMethod.Post, "/api/mcp-tokens", launchToken, new { name = "late" }))).StatusCode);
+
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", fresh))).StatusCode);
+        var newPat = (await JsonAsync(await client.SendAsync(Authed(HttpMethod.Post, "/api/mcp-tokens", fresh, new { name = "new" }))))
+            .GetProperty("jwt").GetString()!;
+        Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", newPat))).StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
+        Assert.Equal(1, await db.AppUsers.Select(u => u.SessionEpoch).SingleAsync());
+        Assert.NotNull((await db.McpTokens.SingleAsync(t => t.Name == "agent")).RevokedAt);
+        Assert.Null((await db.McpTokens.SingleAsync(t => t.Name == "new")).RevokedAt);
+    }
+
+    [Fact]
+    public async Task A_launch_racing_the_conversion_never_yields_a_working_session()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+        var token = (await JsonAsync(await SkipAsync(factory, client))).GetProperty("accessToken").GetString()!;
+        var tickets = Enumerable.Range(0, 8).Select(_ => Ticket(factory)).ToList();
+
+        var launches = tickets.Select(ticket => Task.Run(() => LaunchAsync(client, ticket))).ToList();
+        var protect = Task.Run(() => client.SendAsync(Authed(HttpMethod.Post, "/api/auth/owner/protect", token,
+            new { email = "me@example.com", password = Password })));
+        await Task.WhenAll(launches.Cast<Task>().Append(protect));
+        (await protect).EnsureSuccessStatusCode();
+
+        // Whatever the interleaving, a launch either lost (401) or got a token from before the epoch bump.
+        foreach (var launch in launches)
+        {
+            var response = await launch;
+            if (response.StatusCode != HttpStatusCode.OK)
+            {
+                Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+                continue;
+            }
+            var launched = (await JsonAsync(response)).GetProperty("accessToken").GetString()!;
+            Assert.Equal(HttpStatusCode.Unauthorized, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", launched))).StatusCode);
+        }
+        // And every leftover ticket is dead.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, Ticket(factory))).StatusCode);
+    }
+
     [Fact]
     public async Task Browser_link_carries_a_fresh_ticket_in_the_fragment_and_tickets_die_with_the_process()
     {

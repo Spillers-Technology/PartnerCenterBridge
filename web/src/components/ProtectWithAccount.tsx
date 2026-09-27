@@ -14,7 +14,8 @@ import type { MeProfile } from "../types";
 
 /**
  * For a Local Workbench used without an account: turns the built-in owner into an ordinary account
- * (email + password; passkeys and two-factor become available). The launch link stops working.
+ * (email + password; passkeys and two-factor become available). Launch links stop working, and every
+ * earlier session and MCP token is revoked; this browser gets a fresh session.
  */
 export function ProtectWithAccount({ me, onProtected }: { me: MeProfile; onProtected: () => void }) {
   const confirm = useConfirm();
@@ -37,11 +38,12 @@ export function ProtectWithAccount({ me, onProtected }: { me: MeProfile; onProte
           Protect with an account
         </Typography>
         <Alert severity="warning" sx={{ mb: 2 }}>
-          This workbench has no account: anyone who can run programs as this Windows user on this computer,
-          or open its launch link, can use it with full administrator rights.
+          This workbench has no account: anyone who can run programs as this Windows user on this computer
+          can use it with full administrator rights.
         </Alert>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Add an email and password to require a sign-in from now on. Launch links stop working, and passkeys
+          Add an email and password to require a sign-in from now on. Launch links stop working, every other
+          signed-in window and MCP token is signed out or revoked (this one stays signed in), and passkeys
           and two-factor authentication become available. Your tenants, settings and history stay as they are.
         </Typography>
         <Stack
@@ -52,7 +54,7 @@ export function ProtectWithAccount({ me, onProtected }: { me: MeProfile; onProte
             ev.preventDefault();
             const ok = await confirm({
               title: "Protect this workbench with an account?",
-              message: `From now on, signing in needs ${email.trim() || "this email"} and the password. Launch links, including the one PartnerCenterBridge.exe opens, stop working.`,
+              message: `From now on, signing in needs ${email.trim() || "this email"} and the password. Launch links, including the one PartnerCenterBridge.exe opens, stop working, and existing MCP tokens and other signed-in windows are revoked.`,
               confirmLabel: "Protect with an account",
               mutating: true
             });
