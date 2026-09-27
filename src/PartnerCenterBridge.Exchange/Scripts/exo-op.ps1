@@ -12,6 +12,7 @@ $ErrorActionPreference = 'Stop'
 $steps = [System.Collections.Generic.List[object]]::new()
 $data = $null
 $notFound = $false
+$tenantMismatch = $false
 function Add-Step($name, $ok, $detail) { $steps.Add([ordered]@{ name = $name; success = $ok; detail = $detail }) }
 
 # Run one remediation action, recording success/failure without aborting the remaining steps.
@@ -21,6 +22,26 @@ function Invoke-Step($name, [scriptblock]$action) {
 }
 
 $EmptyGuid = '00000000-0000-0000-0000-000000000000'
+
+# Tenant id(s) of the live Exchange connection. EXO V3 reports it as Get-ConnectionInformation's
+# TenantID (checked against ExchangeOnlineManagement 3.10.1); Get-OrganizationConfig's
+# ExternalDirectoryOrganizationId is the fallback if no connection reports one.
+function Get-ConnectedTenantIds {
+    $ids = @()
+    if (Get-Command Get-ConnectionInformation -ErrorAction SilentlyContinue) {
+        $ids = @(Get-ConnectionInformation | ForEach-Object { "$($_.TenantID)" } | Where-Object { $_ })
+    }
+    if ($ids.Count -eq 0 -and (Get-Command Get-OrganizationConfig -ErrorAction SilentlyContinue)) {
+        $ids = @("$((Get-OrganizationConfig).ExternalDirectoryOrganizationId)" | Where-Object { $_ })
+    }
+    return $ids
+}
+
+function Test-SameTenant($a, $b) {
+    $ga = [guid]::Empty; $gb = [guid]::Empty
+    if ([guid]::TryParse("$a", [ref]$ga) -and [guid]::TryParse("$b", [ref]$gb)) { return $ga -eq $gb }
+    return ("$a" -ieq "$b") -and "$a" -ne ""
+}
 
 # True when an error record from a recipient lookup means "no such object". Checked structurally
 # first (error category, exception type anywhere in the chain, error id); the message fallback is
@@ -78,6 +99,22 @@ try {
     }
     Connect-ExchangeOnline @connectArgs | Out-Null
     Add-Step 'Connect' $true $c.organization
+
+    # Bind the connection to the Entra tenant before touching anything: an organization name that
+    # resolves to some other directory the shared app can reach must not receive this operation.
+    $expected = "$($payload.expectedTenantId)"
+    $connected = @(Get-ConnectedTenantIds)
+    $mismatch = if (-not $expected) { 'no expected tenant id was supplied' }
+        elseif ($connected.Count -eq 0) { 'the connected tenant id could not be determined' }
+        elseif (@($connected | Where-Object { -not (Test-SameTenant $_ $expected) }).Count -gt 0) {
+            "connected to tenant $($connected -join ', '), expected $expected" }
+        else { $null }
+    if ($mismatch) {
+        $tenantMismatch = $true
+        Add-Step 'Tenant check' $false $mismatch
+        throw "Tenant check failed: $mismatch"
+    }
+    Add-Step 'Tenant check' $true $expected
 
     switch ($payload.operation) {
         'getMailbox' {
@@ -172,7 +209,8 @@ try {
     }
 }
 catch {
-    Add-Step 'Error' $false $_.Exception.Message
+    # A failed tenant check already recorded why; nothing ran after it.
+    if (-not $tenantMismatch) { Add-Step 'Error' $false $_.Exception.Message }
 }
 finally {
     try { Disconnect-ExchangeOnline -Confirm:$false -ErrorAction SilentlyContinue | Out-Null } catch {}
@@ -183,5 +221,6 @@ $result = [ordered]@{
     steps   = $steps
     data    = $data
     notFound = [bool]$notFound
+    tenantMismatch = [bool]$tenantMismatch
 }
 $result | ConvertTo-Json -Depth 6 -Compress

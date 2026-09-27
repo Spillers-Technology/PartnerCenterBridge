@@ -9,12 +9,62 @@ namespace PartnerCenterBridge.Tests;
 
 public class ExchangeOnlineServiceTests
 {
-    private static Tenant Tenant() => new() { TenantId = "t-id", DisplayName = "Contoso", DefaultDomain = "contoso.onmicrosoft.com" };
+    private const string ContosoTenantId = "11111111-2222-3333-4444-555555555555";
 
-    private static ExchangeOnlineService Service(FakeRunner runner) => new(
+    // DefaultDomain deliberately names another organization: it must never reach the connect call.
+    private static Tenant Tenant() => new() { TenantId = ContosoTenantId, DisplayName = "Contoso", DefaultDomain = "fabrikam.onmicrosoft.com" };
+
+    private static ExchangeOnlineService Service(IPwshRunner runner, ITenantExchangeOrganizationProvider? organizations = null) => new(
         runner,
+        organizations ?? new FixedOrganization("contoso.onmicrosoft.com"),
         Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
         NullLogger<ExchangeOnlineService>.Instance);
+
+    [Fact]
+    public async Task Connect_uses_the_graph_verified_organization_never_the_default_domain()
+    {
+        var runner = new FakeRunner(new PwshResult(0, """{"success":true,"steps":[],"data":null,"notFound":false}""", ""));
+        var organizations = new FixedOrganization("contoso.onmicrosoft.com");
+
+        await Service(runner, organizations).ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false);
+
+        using var payload = JsonDocument.Parse(runner.LastPayload!);
+        Assert.Equal("contoso.onmicrosoft.com", payload.RootElement.GetProperty("connect").GetProperty("organization").GetString());
+        Assert.Equal(ContosoTenantId, payload.RootElement.GetProperty("expectedTenantId").GetString());
+        Assert.DoesNotContain("fabrikam", runner.LastPayload!);
+        Assert.Equal(ContosoTenantId, organizations.LastTenant!.TenantId);
+    }
+
+    [Fact]
+    public async Task An_unresolvable_organization_fails_before_pwsh_runs()
+    {
+        var runner = new FakeRunner(new PwshResult(0, """{"success":true,"steps":[]}""", ""));
+
+        var ex = await Assert.ThrowsAsync<ExchangeOrganizationException>(
+            () => Service(runner, new FailingOrganization()).ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false));
+
+        Assert.Contains("Microsoft Graph", ex.Message);
+        Assert.Null(runner.LastPayload);
+    }
+
+    [Fact]
+    public async Task A_failed_tenant_check_is_a_hard_failure_for_every_operation()
+    {
+        var runner = new FakeRunner(new PwshResult(0,
+            """
+            {"success":false,"steps":[{"name":"Connect","success":true,"detail":"contoso.onmicrosoft.com"},
+              {"name":"Tenant check","success":false,"detail":"connected to tenant 99999999-0000-0000-0000-000000000000, expected 11111111-2222-3333-4444-555555555555"}],
+             "data":null,"notFound":false,"tenantMismatch":true}
+            """, ""));
+        var service = Service(runner);
+
+        var ex = await Assert.ThrowsAsync<ExchangeTenantMismatchException>(
+            () => service.ConvertToSharedAsync(Tenant(), "ada@contoso.com", null, false));
+        Assert.StartsWith("Exchange Online connected to a different organization than Contoso; nothing was changed.", ex.Message);
+        await Assert.ThrowsAsync<ExchangeTenantMismatchException>(() => service.ListSharedMailboxesAsync(Tenant()));
+        await Assert.ThrowsAsync<ExchangeTenantMismatchException>(() => service.GetMailboxAsync(Tenant(), "ada@contoso.com"));
+        await Assert.ThrowsAsync<ExchangeTenantMismatchException>(() => service.NudgeArchiveAsync(Tenant(), "ada@contoso.com"));
+    }
 
     [Fact]
     public async Task GetMailbox_parses_data_and_sends_correct_operation()
@@ -276,13 +326,66 @@ public class ExchangeOnlineServiceTests
         });
     }
 
+    /// <summary>
+    /// The real exo-op.ps1 when Exchange Online authenticates into a different directory than the
+    /// tenant the operation is for: the tenant check fails, no operation cmdlet runs, and the
+    /// service throws the tenant-mismatch error.
+    /// </summary>
+    [Fact]
+    public async Task Script_performs_no_operation_when_connected_to_another_tenant()
+    {
+        if (!PwshAvailable()) return;
+        await WithFakeExchangeAsync("fabrikam.onmicrosoft.com", async (service, tenant, calls) =>
+        {
+            var ex = await Assert.ThrowsAsync<ExchangeTenantMismatchException>(
+                () => service.ConvertToSharedAsync(tenant, "ada@contoso.com", "mgr@contoso.com", true));
+            Assert.Contains("different organization than Contoso; nothing was changed", ex.Message);
+            Assert.Contains("99999999-0000-0000-0000-000000000000", ex.Message);
+
+            await Assert.ThrowsAsync<ExchangeTenantMismatchException>(() => service.RemediateArchiveAsync(
+                tenant, "ada@contoso.com", new ArchiveRemediationOptions()));
+
+            var log = calls();
+            Assert.Equal(2, log.Count(c => c.StartsWith("Connect-ExchangeOnline")));
+            Assert.Equal(2, log.Count(c => c == "Disconnect-ExchangeOnline"));
+            Assert.DoesNotContain(log, c => c.StartsWith("Set-Mailbox") || c.StartsWith("Enable-Mailbox")
+                || c.StartsWith("Start-ManagedFolderAssistant") || c.StartsWith("Get-Mailbox") || c.StartsWith("Get-EXOMailbox"));
+        });
+    }
+
+    [Fact]
+    public async Task Script_runs_the_operation_when_the_connected_tenant_matches()
+    {
+        if (!PwshAvailable()) return;
+        await WithFakeExchangeAsync("contoso.onmicrosoft.com", async (service, tenant, calls) =>
+        {
+            var result = await service.ConvertToSharedAsync(tenant, "ada@contoso.com", null, false);
+
+            Assert.True(result.Succeeded);
+            Assert.Contains(result.Steps, s => s.Name == "Tenant check" && s.Success);
+            Assert.Contains("Set-Mailbox ada@contoso.com", calls());
+            Assert.Contains(calls(), c => c.StartsWith("Connect-ExchangeOnline org=contoso.onmicrosoft.com "));
+        });
+    }
+
     // A stand-in ExchangeOnlineManagement module for running the real exo-op.ps1 without Exchange.
+    // Every cmdlet appends a line to $env:PCB_FAKE_EXO_LOG so tests can assert what ran. The
+    // connection reports the Contoso tenant id unless the organization is fabrikam.
     private const string FakeExchangeModule =
         """
-        function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword)
-            if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." } }
-        function Disconnect-ExchangeOnline { param($Confirm) }
-        function Get-EXOMailbox { [CmdletBinding()] param($Identity, $Properties)
+        function Write-Call($text) { if ($env:PCB_FAKE_EXO_LOG) { Add-Content -LiteralPath $env:PCB_FAKE_EXO_LOG -Value $text } }
+        $script:Org = $null
+        function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword, $CertificateThumbprint)
+            $secret = if ($CertificatePassword) { [Net.NetworkCredential]::new('', $CertificatePassword).Password } else { '' }
+            Write-Call "Connect-ExchangeOnline org=$Organization file=$CertificateFilePath thumb=$CertificateThumbprint pwd=$secret"
+            if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." }
+            $script:Org = $Organization }
+        function Get-ConnectionInformation {
+            $tid = if ($script:Org -like 'fabrikam*') { '99999999-0000-0000-0000-000000000000' } else { '11111111-2222-3333-4444-555555555555' }
+            [pscustomobject]@{ State = 'Connected'; Organization = $script:Org; TenantID = $tid } }
+        function Disconnect-ExchangeOnline { param($Confirm) Write-Call 'Disconnect-ExchangeOnline' }
+        function Get-EXOMailbox { [CmdletBinding()] param($Identity, $Properties, $RecipientTypeDetails, $ResultSize)
+            Write-Call "Get-EXOMailbox $Identity"
             switch -Wildcard ($Identity) {
                 'nobody@*' { Write-Error -Message "The operation couldn't be performed because object '$Identity' couldn't be found." -Category ObjectNotFound -ErrorAction Stop }
                 'gone@*' { throw "Error while querying REST service. HttpStatusCode=404 ErrorMessage=The operation couldn't be performed because object '$Identity' couldn't be found on 'EURPR01A001.PROD.OUTLOOK.COM'." }
@@ -292,6 +395,7 @@ public class ExchangeOnlineServiceTests
             } }
         $script:Assigned = $null
         function Get-Mailbox { param($Identity)
+            Write-Call "Get-Mailbox $Identity"
             $policy = if ($Identity -like 'haspolicy@*') { 'Legacy Policy' } elseif ($script:Assigned) { $script:Assigned } else { '' }
             [pscustomobject]@{ UserPrincipalName = $Identity; ArchiveGuid = [guid]::NewGuid(); ArchiveStatus = 'Active';
                                AutoExpandingArchiveEnabled = $true; ArchiveQuota = '100 GB'; ArchiveWarningQuota = '90 GB';
@@ -299,23 +403,38 @@ public class ExchangeOnlineServiceTests
                                ElcProcessingDisabled = $false } }
         function Get-MailboxStatistics { param($Identity, [switch]$Archive, $ErrorAction)
             [pscustomobject]@{ TotalItemSize = '1 GB'; ItemCount = 10 } }
-        function Set-Mailbox { param($Identity, $RetentionPolicy) if ($RetentionPolicy) { $script:Assigned = $RetentionPolicy } }
-        function Enable-Mailbox { param($Identity, [switch]$Archive, [switch]$AutoExpandingArchive) }
-        function Start-ManagedFolderAssistant { param($Identity) }
+        function Set-Mailbox { param($Identity, $RetentionPolicy, $Type, $ForwardingSmtpAddress, $DeliverToMailboxAndForward, $RetentionHoldEnabled, $ElcProcessingDisabled)
+            Write-Call "Set-Mailbox $Identity"
+            if ($RetentionPolicy) { $script:Assigned = $RetentionPolicy } }
+        function Enable-Mailbox { param($Identity, [switch]$Archive, [switch]$AutoExpandingArchive) Write-Call "Enable-Mailbox $Identity" }
+        function Start-ManagedFolderAssistant { param($Identity) Write-Call "Start-ManagedFolderAssistant $Identity" }
         """;
 
-    private static async Task WithFakeExchangeAsync(string organization, Func<ExchangeOnlineService, Tenant, Task> body)
+    private static Task WithFakeExchangeAsync(string organization, Func<ExchangeOnlineService, Tenant, Task> body) =>
+        WithFakeExchangeAsync(organization, (service, tenant, _) => body(service, tenant));
+
+    /// <summary>
+    /// Runs <paramref name="body"/> against the real script and the stand-in module. The tenant is
+    /// Contoso; <paramref name="organization"/> is what the (stubbed) Graph resolution returns, and the
+    /// tenant's DefaultDomain names yet another domain that must never be used. The third argument
+    /// reads the stand-in's call log.
+    /// </summary>
+    private static async Task WithFakeExchangeAsync(
+        string organization, Func<ExchangeOnlineService, Tenant, Func<string[]>, Task> body, ExchangeOptions? options = null)
     {
         var dir = Path.Combine(Path.GetTempPath(), "pcb-exo-fake-" + Guid.NewGuid().ToString("N"));
         var module = Path.Combine(dir, "modules", "ExchangeOnlineManagement");
         Directory.CreateDirectory(module);
         await File.WriteAllTextAsync(Path.Combine(module, "ExchangeOnlineManagement.psm1"), FakeExchangeModule);
+        var log = Path.Combine(dir, "calls.log");
+        string[] Calls() => File.Exists(log) ? File.ReadAllLines(log) : Array.Empty<string>();
         try
         {
-            var service = new ExchangeOnlineService(new FakeModuleRunner(Path.Combine(dir, "modules"), dir),
-                Options.Create(new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
+            var service = new ExchangeOnlineService(new FakeModuleRunner(Path.Combine(dir, "modules"), dir, log),
+                new FixedOrganization(organization),
+                Options.Create(options ?? new ExchangeOptions { AppId = "app-1", CertificatePath = "/certs/exo.pfx" }),
                 NullLogger<ExchangeOnlineService>.Instance);
-            await body(service, new Tenant { TenantId = "t-id", DisplayName = "Contoso", DefaultDomain = organization });
+            await body(service, new Tenant { TenantId = ContosoTenantId, DisplayName = "Contoso", DefaultDomain = "wrong.example.com" }, Calls);
         }
         finally
         {
@@ -324,13 +443,14 @@ public class ExchangeOnlineServiceTests
     }
 
     /// <summary>Runs the given script through a wrapper that puts the stand-in module first on PSModulePath.</summary>
-    private sealed class FakeModuleRunner(string modulePath, string workDir) : IPwshRunner
+    private sealed class FakeModuleRunner(string modulePath, string workDir, string callLog) : IPwshRunner
     {
         public async Task<PwshResult> RunAsync(string scriptPath, string payloadJson, CancellationToken ct = default)
         {
             var wrapper = Path.Combine(workDir, $"wrapper-{Guid.NewGuid():N}.ps1");
             await File.WriteAllTextAsync(wrapper,
                 "param([string]$PayloadPath)\n" +
+                $"$env:PCB_FAKE_EXO_LOG = '{callLog.Replace("'", "''")}'\n" +
                 $"$env:PSModulePath = '{modulePath.Replace("'", "''")}' + [IO.Path]::PathSeparator + $env:PSModulePath\n" +
                 $"& '{scriptPath.Replace("'", "''")}' -PayloadPath $PayloadPath\n", ct);
             return await new PwshRunner("pwsh", timeoutSeconds: 120).RunAsync(wrapper, payloadJson, ct);
@@ -351,6 +471,22 @@ public class ExchangeOnlineServiceTests
             return true;
         }
         catch { return false; }
+    }
+
+    private sealed class FixedOrganization(string organization) : ITenantExchangeOrganizationProvider
+    {
+        public Tenant? LastTenant { get; private set; }
+        public Task<string> GetOrganizationAsync(Tenant tenant, CancellationToken ct = default)
+        {
+            LastTenant = tenant;
+            return Task.FromResult(organization);
+        }
+    }
+
+    private sealed class FailingOrganization : ITenantExchangeOrganizationProvider
+    {
+        public Task<string> GetOrganizationAsync(Tenant tenant, CancellationToken ct = default) =>
+            throw new ExchangeOrganizationException($"Could not read the organization of tenant {tenant.TenantId} from Microsoft Graph: forbidden.");
     }
 
     private sealed class FakeRunner : IPwshRunner

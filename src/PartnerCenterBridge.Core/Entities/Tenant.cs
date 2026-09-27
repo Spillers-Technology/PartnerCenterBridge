@@ -13,8 +13,23 @@ public class Tenant
 
     public required string DisplayName { get; set; }
 
-    /// <summary>Primary/default domain, handy for display and disambiguation.</summary>
+    /// <summary>
+    /// Primary/default domain, handy for display and disambiguation. Supplied by Partner Center or
+    /// by whoever registered the tenant, so it is never used as an authorization target -- in
+    /// particular not as the Exchange Online organization (see <see cref="ExchangeOrganization"/>).
+    /// </summary>
     public string? DefaultDomain { get; set; }
+
+    /// <summary>
+    /// The tenant's initial <c>*.onmicrosoft.com</c> domain as reported by Microsoft Graph
+    /// (<c>GET /organization</c> with a token for <see cref="TenantId"/>, the verified domain
+    /// flagged <c>isInitial</c>). This, not <see cref="DefaultDomain"/>, is what Exchange Online
+    /// connects to.
+    /// </summary>
+    public string? ExchangeOrganization { get; set; }
+
+    /// <summary>When <see cref="ExchangeOrganization"/> was last read from Microsoft Graph.</summary>
+    public DateTimeOffset? ExchangeOrganizationVerifiedAt { get; set; }
 
     /// <summary>Active GDAP relationship id backing our delegated access, if known.</summary>
     public string? GdapRelationshipId { get; set; }
