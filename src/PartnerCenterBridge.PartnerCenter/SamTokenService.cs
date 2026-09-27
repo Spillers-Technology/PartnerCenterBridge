@@ -22,6 +22,13 @@ public interface ITokenProvider
     /// using the stored SAM refresh token. Rotates and persists the refresh token as a side effect.
     /// </summary>
     Task<string> GetAccessTokenAsync(string tenantId, string resource, CancellationToken ct = default);
+
+    /// <summary>Token source for a multi-request operation. Providers with a persistent cache may renew before each request.</summary>
+    async Task<Func<CancellationToken, Task<string>>> CreateTokenSourceAsync(string tenantId, string resource, CancellationToken ct = default)
+    {
+        var token = await GetAccessTokenAsync(tenantId, resource, ct);
+        return _ => Task.FromResult(token);
+    }
 }
 
 /// <summary>

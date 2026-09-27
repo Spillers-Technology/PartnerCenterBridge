@@ -38,9 +38,11 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
     private readonly ISamStatusService _sam;
     private readonly IExchangeDependencyProbe _exchange;
     private readonly IDependencySetupService _setup;
+    private readonly DirectTenantConnection? _direct;
 
     public SystemDiagnostics(HostingInfo hosting, PersistenceInfo persistence, BridgeDbContext db, IConfiguration cfg,
-        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange, IDependencySetupService setup)
+        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange, IDependencySetupService setup,
+        DirectTenantConnection? direct = null)
     {
         _hosting = hosting;
         _persistence = persistence;
@@ -50,6 +52,7 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         _sam = sam;
         _exchange = exchange;
         _setup = setup;
+        _direct = direct;
     }
 
     public async Task<SystemDiagnosticsReport> RunAsync(CancellationToken ct)
@@ -61,6 +64,27 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         var databaseUsable = database.Status is SystemCheckStatus.Ok;
         checks.Add(await AuthAsync(databaseUsable, ct));
         var (samCheck, samReady) = await SamAsync(databaseUsable, ct);
+        var directReady = false;
+        if (databaseUsable && _direct is { Available: true })
+        {
+            try
+            {
+                var connections = await _direct.ListAsync(ct);
+                directReady = _direct.Configured && connections.Any(c => !c.ReconnectRequired);
+                checks.Add(new("microsoft-sign-in", "Microsoft tenant sign-in",
+                    directReady ? SystemCheckStatus.Ok : SystemCheckStatus.NotConfigured,
+                    directReady ? $"{connections.Count(c => !c.ReconnectRequired)} tenant connection(s) available for this operator"
+                        : "Add a Microsoft admin connection or reconnect your account in Tenants",
+                    new SystemCheckFix("Manage Microsoft connections", null, "/tenants")));
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                checks.Add(new("microsoft-sign-in", "Microsoft tenant sign-in", SystemCheckStatus.Error,
+                    "Saved connections cannot be decrypted. Restore the original Data Protection key ring.", null));
+            }
+        }
+        if (directReady && !samReady)
+            samCheck = samCheck with { Detail = samCheck.Detail + ". SAM is optional for directly connected Graph tenants; it is still required for Partner Center." };
         checks.Add(samCheck);
         checks.Add(await TenantsAsync(databaseUsable, ct));
 
@@ -68,7 +92,7 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         checks.AddRange(ExchangeChecks(exchange, _hosting.Local is not null, _setup));
 
         return new SystemDiagnosticsReport(checks, new SystemCapabilities(
-            Graph: samReady, Exchange: exchange.Ready, PartnerCenter: samReady));
+            Graph: samReady || directReady, Exchange: exchange.Ready, PartnerCenter: samReady));
     }
 
     private bool DatabaseExists => _persistence.DatabaseFilePath is null || File.Exists(_persistence.DatabaseFilePath);

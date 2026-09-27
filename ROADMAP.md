@@ -2,7 +2,7 @@
 
 Things we want to come back to. Not scheduled, not sequenced -- just tracked so they don't get lost.
 
-## Next (0.9.1)
+## Next
 
 - **Onboarding policy.** A contract-defined new-user plan, mirroring offboarding policy v2's
   plan -> apply -> verify loop with structured evidence, instead of the current one-shot
@@ -20,6 +20,11 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
   operations -- not a fire-and-forget PATCH.
 
 ## Tenant sign-in: later phases
+
+The v0.9.1 Local Workbench now includes a separate system-browser delegated connection per
+operator and tenant, encrypted MSAL caches, silent renewal, and account-specific reconnect.
+The broader SAM health/rotation work below remains separate; direct sign-in does not implement
+the partner reconnect flow, app-only direct connections, or WAM.
 
 Phases 2-4 of `docs/specs/tenant-sign-in-review.md`'s phased design, after Phase 1 above lands:
 GDAP customers arriving with actionable state and one-click remediation (verify access, grant

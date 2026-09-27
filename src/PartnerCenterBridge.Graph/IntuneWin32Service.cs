@@ -74,7 +74,7 @@ public class IntuneWin32Service : IIntuneWin32Service
 
         try
         {
-            var token = await _tokens.GetAccessTokenAsync(tenant.TenantId, Resources.Graph, ct);
+            var token = await _tokens.CreateTokenSourceAsync(tenant.TenantId, Resources.Graph, ct);
             var http = _httpFactory.CreateClient("graph");
             var graph = new GraphRestClient(http, token, _graphBetaBaseUrl);
 

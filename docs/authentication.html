@@ -18,7 +18,7 @@
 <meta property="og:image:width" content="1440">
 <meta property="og:image:height" content="960">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
@@ -31,7 +31,7 @@
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
       <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
@@ -91,6 +91,9 @@
 <article class="doc">
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Guides</span></p>
 <h1>Authentication</h1>
+<p>For connecting Microsoft admin accounts to several tenants in the Local Workbench, see
+  <a href="local-workbench.html#direct-microsoft-sign-in">Add tenants with Microsoft sign-in</a>.
+  Those encrypted, per-operator Graph connections are separate from the workbench login described below.</p>
 <p class="lead">
   The operator plane -- <em>who is allowed to use the bridge, and against which tenants</em> --
   is independent of the Microsoft plane (the SAM app that gives the bridge access to customer
@@ -313,7 +316,7 @@ roaming ones (security keys) alike.</p>
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
         <span class="brand-name">Partner Center Bridge</span>
       </a>
       <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>

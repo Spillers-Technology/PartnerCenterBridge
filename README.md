@@ -11,7 +11,7 @@ or an action it cannot perform says so, with the reason, instead of pretending t
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Maturity (v0.9.0), feature by feature:**
+> **Maturity (v0.9.1), feature by feature:**
 >
 > | Capability | Status |
 > |---|---|
@@ -23,6 +23,9 @@ reconciles every tenant on the contract to it.
 > | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
 > | MCP server (Streamable HTTP at `/mcp`) with a per-tenant human approval queue | **Beta** |
 > | Local Workbench: single `.exe`, SQLite, local accounts, no server to stand up | **Beta** |
+> | Guided PowerShell 7 and Exchange module setup in the Local Workbench | **Beta** |
+> | Windows tray, branded executable and matching app/site favicons | **Beta** |
+> | Direct Microsoft admin sign-in per tenant, encrypted caches and reconnect | **Beta** - Local Workbench; app registration and consent required |
 > | Person workspace (profile/licenses/groups/auth/mailbox/devices/history in one read) | **Beta** |
 > | Access Parity: copy a source user's missing cloud group memberships to a target, additive-only | **Beta** |
 > | Offboarding policy v2: per-contract policy, ordered plan/apply/verify, ticket evidence | **Beta** |
@@ -67,6 +70,11 @@ Two independent auth planes:
 - **Microsoft plane** — a multi-tenant Entra app under the **Secure Application Model** with a
   GDAP relationship per customer. `SamTokenService` exchanges the stored (encrypted, auto-rotated)
   SAM refresh token for a per-tenant Graph token on demand.
+  The loopback-only Local Workbench also supports **Tenants > Add tenant with Microsoft**:
+  each operator/tenant pair gets its own encrypted MSAL cache, silent renewal, and **Reconnect**
+  for the remembered username when interaction is required. Configure `MicrosoftSignIn:ClientId`
+  once; see [direct sign-in setup](https://spillerstech.us/PartnerCenterBridge/local-workbench.html#direct-microsoft-sign-in).
+  Direct sign-in covers Graph; Partner Center and Exchange retain their separate credentials.
 
 ```
 web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile / workflows / operations)

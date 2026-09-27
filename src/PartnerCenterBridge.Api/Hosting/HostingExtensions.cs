@@ -91,6 +91,7 @@ public static class HostingExtensions
         builder.Services.AddSingleton(local);
         builder.Services.AddSingleton(new LocalStartupWarnings(directoryWarnings));
         builder.Services.AddHostedService<LocalWorkbenchLifetime>();
+        if (cli.Command == CliCommand.Run) builder.Services.AddHostedService<WindowsTrayService>();
         // A second launch asks this process for a fresh one-time link over a current-user-only pipe.
         builder.Services.AddHostedService(sp => new LaunchHandOffServer(
             sp.GetRequiredService<IHostApplicationLifetime>(), local, sp.GetRequiredService<IServiceScopeFactory>(),

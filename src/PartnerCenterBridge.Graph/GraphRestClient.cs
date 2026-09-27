@@ -14,20 +14,22 @@ internal sealed class GraphRestClient
     public const string DefaultBeta = "https://graph.microsoft.com/beta";
 
     private readonly HttpClient _http;
-    private readonly string _accessToken;
+    private readonly Func<CancellationToken, Task<string>> _tokenSource;
     private readonly string _baseUrl;
 
     public GraphRestClient(HttpClient http, string accessToken, string? baseUrl = null)
+        : this(http, _ => Task.FromResult(accessToken), baseUrl) { }
+
+    public GraphRestClient(HttpClient http, Func<CancellationToken, Task<string>> tokenSource, string? baseUrl = null)
     {
         _http = http;
-        _accessToken = accessToken;
+        _tokenSource = tokenSource;
         _baseUrl = (baseUrl ?? DefaultBeta).TrimEnd('/');
     }
 
     private HttpRequestMessage New(HttpMethod method, string url, object? body)
     {
         var req = new HttpRequestMessage(method, url.StartsWith("http") ? url : $"{_baseUrl}{url}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _accessToken);
         if (body is not null)
             req.Content = JsonContent.Create(body, options: JsonOpts);
         return req;
@@ -65,6 +67,8 @@ internal sealed class GraphRestClient
 
     private async Task<JsonDocument> SendAsync(HttpRequestMessage req, CancellationToken ct)
     {
+        using var request = req;
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await _tokenSource(ct));
         using var resp = await _http.SendAsync(req, ct);
         var content = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)

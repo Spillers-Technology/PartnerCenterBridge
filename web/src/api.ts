@@ -78,6 +78,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  microsoftConnections: {
+    list: () => request<{ available: boolean; configured: boolean; connections: { id: string; tenantId: string; displayName: string; username: string; reconnectRequired: boolean }[] }>("/api/microsoft-connections"),
+    connect: (tenantId?: string) => request<Tenant>("/api/microsoft-connections", { method: "POST", body: JSON.stringify({ tenantId }) })
+  },
   health: () => request<{ status: string }>("/health"),
 
   dashboard: () => request<Dashboard>("/api/dashboard"),

@@ -18,7 +18,7 @@
 <meta property="og:image:width" content="1440">
 <meta property="og:image:height" content="960">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
@@ -31,7 +31,7 @@
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
       <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
@@ -176,8 +176,54 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
 <p>
   On first launch the process creates its data directory, opens (and migrates) the SQLite
   database, prints a small banner with the URL and data path, waits for its own <code>/health</code>
-  endpoint to answer, and then opens your browser there once. Stop it with Ctrl+C in that window.
+  endpoint to answer, and then opens your browser there once. Stop it from the tray menu, or with
+  Ctrl+C when running in a terminal.
 </p>
+
+<h2 id="tray">The Windows tray</h2>
+<p>The workbench keeps running in the Windows notification area after you close its browser tab.
+  Double-click its bridge icon to open a fresh workbench window. Right-click for <strong>Open workbench</strong>,
+  <strong>Open logs</strong>, or <strong>Exit PartnerCenterBridge</strong>. An Explorer-launched console is
+  detached after the tray icon is ready; an existing terminal is left intact. Use <code>--no-browser</code>
+  or <code>--Hosting:Tray=false</code> for console operation.</p>
+
+<h2 id="direct-microsoft-sign-in">Add tenants with Microsoft sign-in</h2>
+<p>In a loopback-only Local Workbench, an operator with tenant registry permission can choose
+  <strong>Tenants &gt; Add tenant with Microsoft</strong>. The system browser opens Microsoft's account
+  picker. Sign in with an administrator of the organization, complete MFA and consent, and the tenant
+  appears using its directory name and verified domains. Repeat for each tenant. Existing tenants
+  require Owner access in the workbench before an admin connection can be attached.</p>
+<p>One-time application setup: register an application in Microsoft Entra with accounts in any
+  organizational directory. Add the <strong>Mobile and desktop applications</strong> platform with
+  <code>http://localhost</code> as a redirect URI. Configure delegated Microsoft Graph permissions:
+  <code>Organization.Read.All</code> is required to discover the tenant; add only the delegated
+  permissions needed by your chosen operations and obtain tenant admin consent. The desktop flow
+  uses authorization code with PKCE and requires no client secret. In your data directory's
+  <code>pcb.local.json</code>, merge this section and restart:</p>
+<pre><code>{
+  "MicrosoftSignIn": {
+    "ClientId": "YOUR-MULTITENANT-APPLICATION-ID"
+  }
+}</code></pre>
+<p>A distributor can register one application and supply its public application ID to all workbench
+  installations. Customers consent to that application in their own tenants; they do not each
+  need to register another app. No application ID is bundled until a production registration is selected.</p>
+<p>The application requests the registration's Graph <code>.default</code> permissions. A successful
+  sign-in does not grant roles or bypass tenant policy: Graph actions require both the delegated
+  permission and the signed-in administrator's appropriate role. Guest administration should
+  reconnect an already registered target tenant to select its tenant authority.</p>
+<p>MSAL silently renews tokens as needed. Each local operator and tenant has a separate encrypted
+  cache that survives restarts; neither tokens nor refresh tokens are sent to the SPA. When Microsoft
+  requires interaction, the connection shows <strong>Reconnect</strong> with its remembered username.
+  Reconnection targets the same tenant and account, including any claims challenge. Cancellation or
+  signing in as a different account leaves the saved connection intact.</p>
+<p>Direct sign-in covers Microsoft Graph. Partner Center still uses SAM/GDAP, and Exchange Online
+  still uses its app-only certificate. A direct-only tenant never silently borrows the partner's
+  identity. Sharing a tenant does not share the admin token cache. Unattended jobs without a local
+  operator identity cannot use these direct connections. Server-hosted interactive sign-in is not
+  included in this release.</p>
+<p>See Microsoft's <a href="https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/acquire-token-silently">silent token acquisition guidance</a>
+  for why consent changes, revocation, and Conditional Access can require another sign-in.</p>
 
 <h2 id="where-data-lives">Where data lives</h2>
 <p>
@@ -386,7 +432,7 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
         <span class="brand-name">Partner Center Bridge</span>
       </a>
       <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>

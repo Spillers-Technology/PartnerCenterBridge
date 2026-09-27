@@ -6,7 +6,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>PartnerCenterBridge.Api</RootNamespace>
     <!-- Product version reported by /api/system/status and the version flag; bump with web/package.json. -->
-    <Version>0.9.0</Version>
+    <Version>0.9.1</Version>
+    <ApplicationIcon>Assets/app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!--
@@ -72,6 +73,7 @@
   </Target>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets/app.ico" LogicalName="PartnerCenterBridge.AppIcon.ico" />
     <PackageReference Include="Fido2" Version="4.0.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.11" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" Version="8.0.11" />

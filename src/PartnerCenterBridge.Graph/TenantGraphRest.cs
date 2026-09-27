@@ -20,7 +20,7 @@ internal sealed class TenantGraphRest
 
     public async Task<GraphRestClient> CreateAsync(Tenant tenant, CancellationToken ct)
     {
-        var token = await _tokens.GetAccessTokenAsync(tenant.TenantId, Resources.Graph, ct);
+        var token = await _tokens.CreateTokenSourceAsync(tenant.TenantId, Resources.Graph, ct);
         return new GraphRestClient(_httpFactory.CreateClient("graph"), token, _baseUrl);
     }
 }

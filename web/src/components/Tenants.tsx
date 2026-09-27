@@ -19,6 +19,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { MicrosoftConnections } from "./MicrosoftConnections";
 import { humanizeEnum, Timestamp } from "../format";
 import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
@@ -376,6 +377,7 @@ export function Tenants({
         </Table>
       </TableContainer>
 
+      {canManageRegistry && <MicrosoftConnections onConnected={() => { void loadAction.run(); onProfileChanged(); }} />}
       {canManageRegistry && <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
         <Typography component="legend" variant="subtitle1">
           Add a tenant

@@ -177,6 +177,7 @@ export function AppShell({
             component="div"
             sx={{ flexGrow: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
+            <Box component="img" src="/brand/logo-128.png" alt="" sx={{ width: 32, height: 32, verticalAlign: "middle", mr: 1 }} />
             {isPhone && activeLabel ? activeLabel : "Partner Center Bridge"}
           </Typography>
           {headerActions}

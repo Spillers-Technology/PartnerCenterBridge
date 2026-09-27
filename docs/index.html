@@ -21,7 +21,7 @@
 <meta property="og:image:alt" content="The Partner Center Bridge person workspace: account, licensing, MFA and device tiles plus an Actions list of fixes and operations.">
 <meta name="twitter:card" content="summary_large_image">
 
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
@@ -34,7 +34,7 @@
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
       <span class="brand-name">Partner Center Bridge</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
@@ -58,14 +58,14 @@
 <section class="hero" aria-labelledby="hero-title">
   <div class="wrap hero-copy">
     <a class="hero-pill" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">
-      <span class="badge accent">v0.9.0</span> Now a signed Windows download &rarr;
+      <span class="badge accent">v0.9.1</span> Signed Windows download &rarr;
     </a>
-    <h1 id="hero-title">Start from the person.<br><span class="accent">Finish with proof.</span></h1>
+    <p class="eyebrow">Your connected admin workbench</p>
+    <h1 id="hero-title">Many tenants.<br><span class="accent">One place to work.</span></h1>
     <p class="hero-lead">
-      Partner Center Bridge is a Microsoft 365 workbench for MSP technicians. Start from
-      <strong>the person, the tenant, or the outcome</strong> you need, and PCB plans the change,
-      applies it, verifies it by reading it back, and records the evidence for your ticket, across
-      every customer tenant you manage.
+      Bring your Microsoft 365 administration together. Find a person, manage a tenant,
+      and work through everyday fixes with a clear record of what changed.
+      <strong>Your tools, your tenants, your workbench.</strong>
     </p>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">
@@ -75,7 +75,8 @@
       <a class="btn btn-secondary btn-lg" href="deployment.html">Run as a shared server (Docker)</a>
     </div>
     <ul class="hero-meta" aria-label="Download details">
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>v0.9.0 &middot; Windows x64 &middot; about 66 MB</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>v0.9.1 &middot; Windows x64 &middot; about 66 MB</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Install missing Exchange dependencies from the setup checklist</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Signed by Joseph Spillers</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><a href="getting-started.html#download-and-verify">SHA-256 checksum</a> with every release</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Free and open source (MIT)</li>
@@ -85,7 +86,7 @@
     <div class="frame">
       <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span class="frame-url">localhost:5080</span></div>
       <button class="lightbox-trigger" type="button" data-lightbox data-lightbox-caption="Home: find a person, finish setting up, and the four most common actions">
-        <img src="assets/screenshots/pcbridge-dashboard.jpg" width="1440" height="960" alt="Partner Center Bridge Home screen: a Find a person search box, a Finish setting up checklist naming a tenant without GDAP delegation and a missing Exchange Online module with the command to install it, action cards for Onboard, Offboard, Mirror access and Run a known fix, and tenant and run statistics.">
+        <img src="assets/screenshots/pcbridge-dashboard.jpg" width="1440" height="960" alt="Partner Center Bridge Home screen: a Find a person search box, a Finish setting up checklist with an Install Exchange module button and a tenant without GDAP delegation, action cards for Onboard, Offboard, Mirror access and Run a known fix, and tenant and run statistics.">
       </button>
     </div>
     <div class="hero-fade" aria-hidden="true"></div>
@@ -457,7 +458,7 @@
       <li class="step">
         <span class="step-num">Step 1</span>
         <h3>Download and verify</h3>
-        <p>Get <code>PartnerCenterBridge-v0.9.0-win-x64.zip</code> from GitHub Releases and check it
+        <p>Get <code>PartnerCenterBridge-v0.9.1-win-x64.zip</code> from GitHub Releases and check it
           against the published <code>.sha256</code>.</p>
         <pre data-copy><code>Get-FileHash .\PartnerCenterBridge-*.zip</code></pre>
       </li>
@@ -646,7 +647,7 @@
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
         <span class="brand-name">Partner Center Bridge</span>
       </a>
       <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>
