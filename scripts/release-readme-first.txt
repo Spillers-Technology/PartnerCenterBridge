@@ -10,13 +10,14 @@ Double-click PartnerCenterBridge.exe, or from a terminal:
 
     PartnerCenterBridge.exe
 
-It opens your browser to http://localhost:5080 once it's healthy. Pass
---port <N> to use a different port, or --no-browser to skip opening one.
+It opens a desktop window containing the same PartnerCenterBridge web app.
+The local API uses an automatically selected loopback port and closes with
+the window. Microsoft Edge WebView2 Runtime is required; Windows 11 normally
+includes it. Install the Evergreen Runtime if the app asks for it.
 
-The bridge icon stays in the Windows notification area. Double-click to
-reopen the workbench; right-click to open logs or exit. Closing the browser
-does not stop it. Explorer launches close their console once the tray is
-ready. Use --Hosting:Tray=false to keep console operation.
+For the classic browser and tray mode, run PartnerCenterBridge.exe --browser.
+Pass --port <N> --no-browser for a headless local API, or run doctor/help from
+a terminal. These modes use the same data folder and application services.
 
 Microsoft tenant sign-in
 ------------------------

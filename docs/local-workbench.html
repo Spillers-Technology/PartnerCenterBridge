@@ -101,7 +101,9 @@
 
 <h2 id="first-run-walkthrough">First run, click by click</h2>
 <p>
-  Start the exe, and it opens your browser to <code>http://localhost:5080</code> once it's healthy.
+  Start the exe, and it opens a desktop window containing the workbench once its local API is healthy.
+  The API chooses an available loopback port automatically. The Windows WebView2 Runtime is
+  required; the window explains how to install it if it is missing.
   A brand-new install has no accounts yet, so <code>GET /api/system/status</code> reports
   <code>needsFirstUser</code> and the first screen asks one question instead of showing a sign-in
   form: create an administrator account (recommended), or <strong>Skip &mdash; use without an
@@ -154,7 +156,7 @@
 <pre><code>PartnerCenterBridge.exe [command] [options]
 
 Commands:
-  (none)          Start the web app (API + UI).
+  (none)          Open the desktop window (API + UI in one process).
   doctor          Check configuration and dependencies, print the results and exit
                   (exit code 0 = no errors, 1 = at least one error). Does not start the server.
   bootstrap-sam   Run the interactive Secure Application Model bootstrap (device code) and exit.
@@ -162,26 +164,30 @@ Commands:
 Options:
   --local             Use the Local Workbench profile. The Local Workbench build uses it by
                       default, so you will not normally need to pass it.
-  --port &lt;N&gt;          Port to listen on (default 5080).
+  --browser           Open the classic browser and tray host instead of the desktop window.
+  --port &lt;N&gt;          CLI/browser host port (default 5080).
   --data-dir &lt;path&gt;   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
   --listen &lt;address&gt;  Bind to another address instead of 127.0.0.1. Exposes the app to the
                       network; only use it when you understand the consequences.
-  --no-browser        Do not open the browser after startup. A workbench used without an
+  --no-browser        Run the local API without a browser or desktop window. A workbench used without an
                       account prints its sign-in link instead: that link grants full
                       access to this workbench, so do not share it.
   --version           Print the version and exit.
   -h, --help          Print this help and exit.
 
 Any --Section:Key=value argument is passed through as configuration.</code></pre>
+<p>The executable is a Windows GUI application. For PowerShell scripts that need to wait and read
+  its exit code, use <code>Start-Process .\PartnerCenterBridge.exe -ArgumentList 'doctor' -NoNewWindow -Wait -PassThru</code>.
+  Capture diagnostics with <code>-RedirectStandardOutput</code> and <code>-RedirectStandardError</code>.</p>
 <p>
   On first launch the process creates its data directory, opens (and migrates) the SQLite
-  database, prints a small banner with the URL and data path, waits for its own <code>/health</code>
-  endpoint to answer, and then opens your browser there once. Stop it from the tray menu, or with
-  Ctrl+C when running in a terminal.
+  database, waits for its own <code>/health</code> endpoint to answer, and then loads the app in
+  WebView2. Close the window to stop it. CLI mode prints the URL and data path to the terminal.
 </p>
 
-<h2 id="tray">The Windows tray</h2>
-<p>The workbench keeps running in the Windows notification area after you close its browser tab.
+<h2 id="tray">Browser and tray mode</h2>
+<p>Run <code>PartnerCenterBridge.exe --browser</code> to use the browser-hosted mode. The workbench
+  keeps running in the Windows notification area after you close its browser tab.
   Double-click its bridge icon to open a fresh workbench window. Right-click for <strong>Open workbench</strong>,
   <strong>Open logs</strong>, or <strong>Exit PartnerCenterBridge</strong>. An Explorer-launched console is
   detached after the tray icon is ready; an existing terminal is left intact. Use <code>--no-browser</code>
@@ -402,15 +408,16 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   self-contained, trimmed-symbols exe to <code>artifacts/local/win-x64/PartnerCenterBridge.exe</code>.
   Equivalent command:
 </p>
-<pre><code>dotnet publish src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained `
+<pre><code>dotnet publish src/PartnerCenterBridge.Desktop -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true `
+  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true -p:PcbDesktop=true `
   -o artifacts/local/win-x64</code></pre>
 <p>
   <code>.github/workflows/ci.yml</code> runs this on every PR and push to <code>main</code>
   (Windows runner), then smoke-tests the published exe: health check, the
   <code>/api/system/status</code> profile, the SPA fallback for a deep link, loopback-only
-  binding, and a stop/restart to confirm <code>pcb.db</code> persists. It also runs
+  binding, and a stop/restart to confirm <code>pcb.db</code> persists. A separate GUI smoke test
+  checks that the desktop window starts its API and creates a WebView2 profile. It also runs
   <code>doctor</code> non-gating (Exchange and SAM are expected unconfigured in CI) and uploads
   the exe as a 14-day build artifact.
 </p>

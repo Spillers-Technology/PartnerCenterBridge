@@ -33,6 +33,13 @@ application connections (app-only, certificate-based, independent of the partner
 and WAM as a separate desktop token provider for delegated connections, kept apart from the
 existing SAM refresh-token extractor and server automation.
 
+The v0.9.2 Desktop Workbench is a thin WebView2 host for the same API. It does not acquire
+Microsoft tokens itself. `ITokenProvider` and `DirectTenantConnection` are the current selection
+seam: direct delegated connections are selected by tenant and local operator; the partner/SAM
+fallback remains separate. Before adding direct app-only or WAM, introduce an explicit connection
+catalog with capability metadata and deterministic selection per tenant/operation, including a
+clear ambiguity/consent result. Keep WAM in a provider below that catalog, never in the WPF UI.
+
 ## Mobile UX testing
 
 The manual half of this landed: `docs/scripts/capture-mobile-media.mjs` screenshots all current

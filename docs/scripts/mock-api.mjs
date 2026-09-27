@@ -513,7 +513,7 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
 
   if (method === "GET" && apiPath === "/dashboard") return json(route, dashboard);
   if (method === "GET" && apiPath === "/system/status") {
-    return json(route, { profile: "Server", version: "0.9.1", authMode: authModeOverride || "Dev", needsFirstUser });
+    return json(route, { profile: "Server", version: "0.9.2", authMode: authModeOverride || "Dev", needsFirstUser });
   }
   if (method === "GET" && apiPath === "/system/diagnostics") return json(route, diagnostics);
   if (method === "GET" && apiPath === "/admin/sam/status") return json(route, { bootstrapped: true });

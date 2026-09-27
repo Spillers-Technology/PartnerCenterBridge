@@ -101,8 +101,8 @@
 
 <div class="download-panel">
   <div>
-    <h3>Partner Center Bridge v0.9.1 for Windows</h3>
-    <p>PartnerCenterBridge-v0.9.1-win-x64.zip &middot; about 66 MB &middot; signed by Joseph Spillers &middot; SHA-256 checksum published next to it</p>
+    <h3>Partner Center Bridge v0.9.2 for Windows</h3>
+    <p>PartnerCenterBridge-v0.9.2-win-x64.zip &middot; about 107 MB &middot; signed by Joseph Spillers &middot; SHA-256 checksum published next to it</p>
   </div>
   <a class="btn btn-primary" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download from GitHub Releases</a>
 </div>
@@ -112,8 +112,9 @@
   <li><strong>64-bit Windows (x64).</strong> The release is self-contained, so you do not need to
       install .NET. Only a <code>win-x64</code> build is published. There is no macOS or Linux
       executable.</li>
-  <li><strong>A current browser</strong> on the same machine. The app is served at
-      <code>http://localhost:5080</code>. Passkey sign-in needs a browser with WebAuthn support.</li>
+  <li><strong>Microsoft Edge WebView2 Runtime.</strong> The desktop window uses it to show the app.
+      If missing, the app shows an installation hint. A current browser remains useful for
+      Microsoft account sign-in and the optional browser/tray mode.</li>
   <li><strong>To work in customer tenants:</strong> a CSP partner tenant, a multi-tenant Entra app
       registration, and a GDAP relationship with each customer. See
       <a href="#connect-microsoft">Connect Microsoft</a>.</li>
@@ -126,11 +127,11 @@
 <span id="local-workbench-quick-start"></span>
 <p>
   From the <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">latest
-  release</a>, download <code>PartnerCenterBridge-v0.9.1-win-x64.zip</code> and the
+  release</a>, download <code>PartnerCenterBridge-v0.9.2-win-x64.zip</code> and the
   <code>.sha256</code> file published next to it. Before you unzip, check that the hash matches. In
   PowerShell, from the download folder:
 </p>
-<pre data-copy><code>$zip = "PartnerCenterBridge-v0.9.1-win-x64.zip"
+<pre data-copy><code>$zip = "PartnerCenterBridge-v0.9.2-win-x64.zip"
 $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
 (Get-FileHash $zip -Algorithm SHA256).Hash -eq $expected   # True means the zip is intact</code></pre>
 <p>
@@ -147,18 +148,16 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
 <p>Unzip to a folder of your choice and start the program:</p>
 <pre data-copy><code>.\PartnerCenterBridge.exe</code></pre>
 <p>
-  On first launch it creates its data folder, sets up its SQLite database, prints a short banner
-  with the address and data path, waits until it is healthy, and then opens
-  <code>http://localhost:5080</code> in your browser. Leave the window open while you work and
-  press <kbd>Ctrl</kbd>+<kbd>C</kbd> in it to stop. Launching it a second time while it is already
-  running simply opens the browser to the running copy.
+  On first launch it creates its data folder, sets up its SQLite database, and opens the workbench
+  in its desktop window. Close the window to stop the local API. Launching the exe a second time
+  brings the existing window forward. Use <code>--browser</code> for the classic browser/tray mode.
 </p>
 <div class="table-wrap">
 <table>
   <tr><th>Good to know</th><th>Detail</th></tr>
   <tr><td>Where your data lives</td><td><code>%LOCALAPPDATA%\PartnerCenterBridge</code>: the database, encryption keys, logs and uploaded app packages. Change it with <code>--data-dir</code>.</td></tr>
   <tr><td>Who can reach it</td><td>Only this machine. It listens on the loopback address unless you pass <code>--listen</code>.</td></tr>
-  <tr><td>Another port</td><td><code>.\PartnerCenterBridge.exe --port 5090</code></td></tr>
+  <tr><td>Another port</td><td>Desktop mode picks an available loopback port automatically. <code>.\PartnerCenterBridge.exe --port 5090</code> starts the CLI host on a chosen port.</td></tr>
   <tr><td>Check dependencies</td><td><code>.\PartnerCenterBridge.exe doctor</code> prints every check with its fix and exits (exit code 1 if anything is an error).</td></tr>
   <tr><td>All options</td><td><code>.\PartnerCenterBridge.exe --help</code>, or see <a href="local-workbench.html#running-it">Local Workbench: running it</a>.</td></tr>
 </table>

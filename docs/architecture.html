@@ -161,7 +161,10 @@ completely separate:</p>
   <code>HostingExtensions.AddBridgeHosting</code> configures before the rest of startup runs:
   the persistence provider, the auth mode default, the Data Protection key ring path, Kestrel's
   bind address, and (Local only) a generated signing key and a background service that prints a
-  startup banner and opens the browser. See
+  startup banner and opens the browser in CLI/browser mode. The Windows Desktop Workbench
+  (<code>PartnerCenterBridge.Desktop</code>) starts the same API in-process, then loads that
+  loopback origin in WebView2. Its WPF code owns only window and WebView lifecycle; it does not
+  implement a separate data, authentication, or operation layer. See
   <a href="local-workbench.html">Local Workbench</a> for the full CLI, data layout, and how
   secrets are protected in that mode.
 </p>
