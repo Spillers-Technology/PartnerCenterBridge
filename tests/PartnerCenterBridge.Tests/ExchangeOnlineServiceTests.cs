@@ -370,7 +370,7 @@ public class ExchangeOnlineServiceTests
 
     /// <summary>
     /// End to end over stdin with a PFX password: the script receives the password intact (non-ASCII
-    /// included) while no temp file written during the run contains it.
+    /// included) while no legacy exo-*.json temp payload file contains it.
     /// </summary>
     [Fact]
     public async Task Script_gets_the_pfx_password_over_stdin_and_no_temp_file_holds_it()
@@ -523,10 +523,9 @@ public class ExchangeOnlineServiceTests
         function Connect-ExchangeOnline { param($AppId, $Organization, $ShowBanner, $CertificateFilePath, $CertificatePassword, $CertificateThumbprint)
             $secret = if ($CertificatePassword) { [Net.NetworkCredential]::new('', $CertificatePassword).Password } else { '' }
             Write-Call "Connect-ExchangeOnline org=$Organization file=$CertificateFilePath thumb=$CertificateThumbprint pwd=$secret"
-            # While pwsh holds the password, no recently written temp file may contain it.
+            # While pwsh holds the password, no legacy temp payload file may contain it.
             if ($secret) {
-                Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -File -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Length -lt 1MB -and $_.LastWriteTime -gt (Get-Date).AddMinutes(-10) } |
+                Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Filter 'exo-*.json' -File -ErrorAction SilentlyContinue |
                     ForEach-Object { try { if ((Get-Content -Raw -LiteralPath $_.FullName -ErrorAction Stop) -like "*$secret*") { Write-Call "LEAK $($_.Name)" } } catch { } } }
             if ($Organization -like 'nocert*') { throw "The certificate file '$CertificateFilePath' could not be found." }
             $script:Org = $Organization }

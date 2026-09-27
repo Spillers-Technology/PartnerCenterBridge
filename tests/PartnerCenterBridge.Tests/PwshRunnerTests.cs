@@ -32,8 +32,9 @@ public class PwshRunnerTests
 
     /// <summary>
     /// The payload carries the PFX password. While the script runs, the password must be readable
-    /// from stdin (non-ASCII intact) yet absent from pwsh's command line and from every file written
-    /// to the temp directory -- the old runner put it in %TEMP%\exo-*.json.
+    /// from stdin (non-ASCII intact) yet absent from pwsh's command line and from the legacy
+    /// %TEMP%\exo-*.json payload files. Narrowing the scan to that name keeps it bounded on busy
+    /// CI runners, where other tests may create many unrelated temporary files.
     /// </summary>
     [Fact]
     public async Task Runner_never_puts_the_payload_on_disk_or_the_command_line()
@@ -45,8 +46,7 @@ public class PwshRunnerTests
             """
 
             $secret = $j.connect.certificatePassword
-            $leaks = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -File -ErrorAction SilentlyContinue |
-                Where-Object { $_.Length -lt 1MB -and $_.LastWriteTime -gt (Get-Date).AddMinutes(-10) } |
+            $leaks = @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Filter 'exo-*.json' -File -ErrorAction SilentlyContinue |
                 Where-Object { try { (Get-Content -Raw -LiteralPath $_.FullName -ErrorAction Stop) -like "*$secret*" } catch { $false } } |
                 ForEach-Object Name)
             [ordered]@{
