@@ -1,11 +1,11 @@
-// Shared site behavior: mobile header menu, collapsible docs sidebar, and the
+// Shared site behavior: mobile header menu, collapsible docs sidebar, copy buttons, and the
 // "On this page" list. Everything here is progressive enhancement -- with JS off,
-// the header keeps its GitHub button, the docs sidebar shows in full, and the
+// the header keeps its Download button, the docs sidebar shows in full, and the
 // footer links every page.
 (function () {
   "use strict";
 
-  var NARROW_NAV = window.matchMedia("(max-width: 980px)");
+  var NARROW_NAV = window.matchMedia("(max-width: 960px)");
   var NARROW_SIDEBAR = window.matchMedia("(max-width: 860px)");
 
   function onChange(mq, fn) {
@@ -62,6 +62,33 @@
       }
     });
     onChange(NARROW_SIDEBAR, function (mq) { if (!mq.matches) setSide(false); });
+  }
+
+  // ---- Copy buttons on pre[data-copy] ----
+  var COPY_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  if (navigator.clipboard && window.isSecureContext !== false) {
+    Array.prototype.forEach.call(document.querySelectorAll("pre[data-copy]"), function (pre) {
+      var wrap = document.createElement("div");
+      wrap.className = "code-block";
+      pre.parentNode.insertBefore(wrap, pre);
+      wrap.appendChild(pre);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "copy-btn";
+      btn.innerHTML = COPY_ICON + "<span>Copy</span>";
+      btn.setAttribute("aria-label", "Copy command to clipboard");
+      var label = btn.querySelector("span");
+      var timer = null;
+      btn.addEventListener("click", function () {
+        navigator.clipboard.writeText(pre.innerText.replace(/\s+$/, "")).then(function () {
+          btn.classList.add("is-copied");
+          label.textContent = "Copied";
+          clearTimeout(timer);
+          timer = setTimeout(function () { btn.classList.remove("is-copied"); label.textContent = "Copy"; }, 1800);
+        }, function () { label.textContent = "Press Ctrl+C"; });
+      });
+      wrap.appendChild(btn);
+    });
   }
 
   // ---- On this page ----
