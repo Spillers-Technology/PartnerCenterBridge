@@ -224,12 +224,13 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
                     "pwsh found, " + (state.ModuleError ?? "ExchangeOnlineManagement not installed"),
                     new SystemCheckFix("Install module", InstallModuleCommand, null));
 
+        var usesCertificateThumbprint = state.CertificatePath.StartsWith("Cert:", StringComparison.OrdinalIgnoreCase);
         yield return state.AppConfigured
             ? new("exchange-app", "Exchange Online app", SystemCheckStatus.Ok, $"App-only certificate at {state.CertificatePath}", null)
             : new("exchange-app", "Exchange Online app", SystemCheckStatus.NotConfigured,
                 !state.AppIdConfigured
                     ? "Exchange:AppId is not set"
-                    : $"Certificate not found at '{state.CertificatePath}' (Exchange:CertificatePath)",
+                    : $"Certificate not found at '{state.CertificatePath}' ({(usesCertificateThumbprint ? "Exchange:CertificateThumbprint" : "Exchange:CertificatePath")})",
                 new SystemCheckFix("Configure the Exchange app registration and certificate", null, MicrosoftSettingsRoute));
     }
 
