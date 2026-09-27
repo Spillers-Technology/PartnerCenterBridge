@@ -1,0 +1,368 @@
+name: Release
+
+# Tag push builds and publishes a real release. workflow_dispatch runs the exact same pipeline
+# with dry_run: true by default -- build, sign-check, smoke-test and package, but push no image,
+# create no release, and deploy no Pages -- so a broken credential or a packaging regression
+# shows up before tag day, not on it.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: >
+          Build, sign-check, smoke-test and package, but publish nothing (no image push, no
+          GitHub release, no Pages deploy). Uses the version already in web/package.json and
+          the API csproj as if it were the tag, since no tag exists yet on a manual run.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Fails fast on a tag/version mismatch before anything downstream spends CI minutes building,
+  # signing or pushing images for a release that will just be rejected.
+  verify:
+    name: Verify tag and versions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Determine tag, version and dry-run mode
+        id: meta
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          DRY_RUN_INPUT: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          web_ver="$(jq -r .version web/package.json)"
+          csproj_ver="$(grep -oP '(?<=<Version>)[^<]+(?=</Version>)' src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj)"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            dry_run="${DRY_RUN_INPUT:-true}"
+            tag="v$web_ver"
+            echo "workflow_dispatch: no tag was pushed; using v$web_ver from web/package.json as if it were the tag."
+          else
+            dry_run="false"
+            tag="$REF_NAME"
+          fi
+
+          if [ "$tag" != "v$web_ver" ]; then
+            echo "Tag $tag does not match web/package.json version v$web_ver" >&2
+            exit 1
+          fi
+          if [ "$tag" != "v$csproj_ver" ]; then
+            echo "Tag $tag does not match PartnerCenterBridge.Api.csproj <Version> v$csproj_ver" >&2
+            exit 1
+          fi
+
+          version="${tag#v}"
+          prerelease="false"
+          case "$tag" in *-*) prerelease="true" ;; esac
+
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+            echo "dry_run=$dry_run"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Releasing $tag (prerelease=$prerelease, dry_run=$dry_run)"
+
+  # A job can't both run steps and call a reusable workflow, so the tag check above and this
+  # call are two jobs -- together they are "verify" in spirit: no release proceeds past this
+  # point unless both the versions agree and the exact PR/main gate (ci.yml) passes.
+  ci:
+    name: Run CI
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  windows:
+    name: Build, sign and package (Windows)
+    needs: [verify, ci]
+    runs-on: windows-latest
+    environment: release
+    # id-token: write is required for the OIDC exchange the signing action performs.
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      # Fails before anything is built, not part-way through, and refuses to fall back to an
+      # unsigned release if signing is misconfigured. Mirrors SpoolSmith's release job; see
+      # docs/code-signing.md.
+      - name: Check signing configuration
+        shell: pwsh
+        env:
+          SIGNING_ENDPOINT: ${{ vars.SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.SIGNING_PROFILE }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          $missing = @('SIGNING_ENDPOINT', 'SIGNING_ACCOUNT', 'SIGNING_PROFILE',
+                       'AZURE_CLIENT_ID', 'AZURE_TENANT_ID', 'AZURE_SUBSCRIPTION_ID') |
+            Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }
+          if ($missing) {
+            throw "Code signing is not configured; missing: $($missing -join ', '). " +
+                  'Set them under Settings > Environments > release, or run scripts/setup-signing.ps1 ' +
+                  '(from a checkout of Spillers-Technology/spoolsmith) against this repository. ' +
+                  'Setup steps are in docs/code-signing.md. Releases are never published unsigned.'
+          }
+
+      - name: Publish Local Workbench
+        shell: pwsh
+        run: ./scripts/publish-local.ps1
+
+      - name: Stage exe for signing
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item artifacts/local/win-x64/PartnerCenterBridge.exe dist/PartnerCenterBridge.exe
+
+      - name: Sign and verify the exe
+        uses: ./.github/actions/sign-release
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          endpoint: ${{ vars.SIGNING_ENDPOINT }}
+          account: ${{ vars.SIGNING_ACCOUNT }}
+          profile: ${{ vars.SIGNING_PROFILE }}
+          expected-subject: ${{ vars.SIGNING_EXPECTED_SUBJECT }}
+          folder: dist
+          filter: exe
+          verify: dist/PartnerCenterBridge.exe
+
+      # Same checks ci.yml's local-workbench job runs, factored into scripts/smoke-local.ps1 so
+      # both call the same script instead of two copies that can drift -- run here against the
+      # actual signed exe that ships, not just the unsigned one CI already smoke-tested.
+      - name: Smoke test the signed exe
+        shell: pwsh
+        run: |
+          ./scripts/smoke-local.ps1 -ExePath dist/PartnerCenterBridge.exe `
+            -DataDir (Join-Path $env:RUNNER_TEMP 'pcb-release-smoke') `
+            -LogDir $env:RUNNER_TEMP
+
+      - name: Package release zip
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'pcb-release-package'
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          Copy-Item dist/PartnerCenterBridge.exe (Join-Path $stage 'PartnerCenterBridge.exe')
+          Copy-Item LICENSE (Join-Path $stage 'LICENSE')
+          Copy-Item scripts/release-readme-first.txt (Join-Path $stage 'README-FIRST.txt')
+
+          $zipName = "PartnerCenterBridge-v$($env:VERSION)-win-x64.zip"
+          Compress-Archive -Path (Join-Path $stage '*') -DestinationPath $zipName -Force
+
+          $hash = (Get-FileHash $zipName -Algorithm SHA256).Hash.ToLower()
+          # sha256sum's own format: "<hash>  <filename>\n" -- written explicitly with an LF
+          # (not Set-Content's default CRLF) so `sha256sum -c` on any platform parses it cleanly.
+          [System.IO.File]::WriteAllText((Join-Path (Get-Location) "$zipName.sha256"), "$hash  $zipName`n")
+
+          Write-Host "Packaged $zipName"
+          Get-Content "$zipName.sha256"
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets
+          path: |
+            PartnerCenterBridge-v*.zip
+            PartnerCenterBridge-v*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  images:
+    name: Build and push container images
+    needs: [verify, ci]
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: needs.verify.outputs.dry_run != 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # latest is skipped for a prerelease tag (one containing '-') so a prerelease never
+      # becomes what a plain `docker pull ...:latest` gets.
+      - name: Compute image tags
+        id: tags
+        shell: bash
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          suffixes="$VERSION"
+          if [ "$PRERELEASE" != "true" ]; then
+            suffixes="$suffixes,latest"
+          fi
+          api_tags="$(echo "$suffixes" | sed 's#,#\n#g' | sed 's#^#ghcr.io/spillers-technology/partnercenterbridge-api:#' | paste -sd, -)"
+          web_tags="$(echo "$suffixes" | sed 's#,#\n#g' | sed 's#^#ghcr.io/spillers-technology/partnercenterbridge-web:#' | paste -sd, -)"
+          echo "api-tags=$api_tags" >> "$GITHUB_OUTPUT"
+          echo "web-tags=$web_tags" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/PartnerCenterBridge.Api/Dockerfile
+          push: ${{ needs.verify.outputs.dry_run != 'true' }}
+          tags: ${{ steps.tags.outputs.api-tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: ${{ needs.verify.outputs.dry_run != 'true' }}
+          tags: ${{ steps.tags.outputs.web-tags }}
+          labels: |
+            org.opencontainers.image.version=${{ needs.verify.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  publish:
+    name: Publish GitHub release
+    needs: [verify, windows, images]
+    if: needs.verify.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Download Windows release assets
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-assets
+          path: assets
+
+      - name: Check release notes exist
+        id: notes
+        shell: bash
+        env:
+          TAG: ${{ needs.verify.outputs.tag }}
+        run: |
+          set -euo pipefail
+          notes="releases/${TAG}.md"
+          if [ ! -f "$notes" ]; then
+            echo "Missing release notes: $notes -- write them before tagging a release." >&2
+            exit 1
+          fi
+          echo "path=$notes" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--title "$TAG" --notes-file "${{ steps.notes.outputs.path }}")
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" "${args[@]}" \
+            "assets/PartnerCenterBridge-${TAG}-win-x64.zip" \
+            "assets/PartnerCenterBridge-${TAG}-win-x64.zip.sha256"
+
+      # Downloads the assets back from the release the same way a user would, and re-checks the
+      # checksum against the published copy -- not just the copy this run built.
+      - name: Verify published assets against their checksum
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.verify.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          gh release download "$TAG" --pattern "PartnerCenterBridge-${TAG}-win-x64.zip*" --dir verify --clobber
+          (cd verify && sha256sum --check --strict "PartnerCenterBridge-${TAG}-win-x64.zip.sha256")
+          echo "Published release asset matches its published checksum."
+
+  pages:
+    name: Deploy docs site to GitHub Pages
+    needs: [verify, publish]
+    if: needs.verify.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Shared with .github/workflows/pages.yml (doc-only redeploys between releases) so both
+      # paths build "the public site" the same way.
+      - name: Build site
+        run: ./scripts/build-site.sh site-out
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site-out
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
