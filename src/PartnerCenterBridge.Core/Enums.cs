@@ -144,5 +144,9 @@ public enum AuditEventType
     BootstrapAdministratorAssigned,
     InstanceRolesChanged,
     SamCredentialRotated,
-    McpApprovalModeChanged
+    McpApprovalModeChanged,
+    /// <summary>First run chose "use without an account": the built-in workbench owner was created.</summary>
+    WorkbenchOwnerCreated,
+    /// <summary>The workbench owner added an email and password; launch-link sign-in is off from then on.</summary>
+    WorkbenchOwnerProtected
 }

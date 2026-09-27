@@ -27,12 +27,23 @@ import { useToast } from "../hooks/useToast";
 import { createPasskey, type RegisterOptionsWire } from "../webauthn";
 import type { McpTokenInfo, MeProfile, PasskeyInfo } from "../types";
 import { InstanceAccessCard } from "./InstanceAccessCard";
+import { ProtectWithAccount } from "./ProtectWithAccount";
 
 type PasskeysLastAction = "addPasskey" | "removePasskey" | null;
 type TotpLastAction = "startTotp" | "confirmTotp" | "disableTotp" | null;
 type TokensLastAction = "createToken" | "revokeToken" | null;
 
-export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileChanged: () => void }) {
+export function Security({
+  me,
+  onProfileChanged,
+  onAccountProtected
+}: {
+  me: MeProfile;
+  onProfileChanged: () => void;
+  /** After the no-account owner added a password (defaults to onProfileChanged). */
+  onAccountProtected?: () => void;
+}) {
+  const accountless = Boolean(me.isWorkbenchOwner);
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -247,12 +258,15 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
         Security
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Signed in as {me.displayName} ({me.email})
+        {accountless ? `Signed in as ${me.displayName}, without an account` : `Signed in as ${me.displayName} (${me.email})`}
         {me.instanceRoles?.length ? ` \u2013 ${me.instanceRoles.join(", ")}` : ""}
       </Typography>
 
+      {accountless && <ProtectWithAccount me={me} onProtected={onAccountProtected ?? onProfileChanged} />}
+
       {hasInstancePermission(me, "instance.roles.manage") && <InstanceAccessCard me={me} />}
 
+      {!accountless && (
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -325,7 +339,9 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           </Button>
         </CardContent>
       </Card>
+      )}
 
+      {!accountless && (
       <Card variant="outlined" sx={{ mb: 3 }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
@@ -405,6 +421,7 @@ export function Security({ me, onProfileChanged }: { me: MeProfile; onProfileCha
           )}
         </CardContent>
       </Card>
+      )}
 
       <Card variant="outlined">
         <CardContent>

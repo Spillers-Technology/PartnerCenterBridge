@@ -9,16 +9,24 @@ import { api } from "../api";
 import { setLocalToken } from "../session";
 import type { AuthResponse } from "../types";
 import { useAsyncAction } from "../hooks/useAsyncAction";
+import { useConfirm } from "../hooks/useConfirm";
+import Divider from "@mui/material/Divider";
 
 export function Register({
   onAuthenticated,
   onGoLogin,
-  setup = false
+  setup = false,
+  skipAccount = null
 }: {
   onAuthenticated: (r: AuthResponse) => void;
   onGoLogin: () => void;
   /** First run: nobody has registered yet, so this account becomes the instance Administrator. */
   setup?: boolean;
+  /**
+   * First run of a Local Workbench that may be used without an account: offers "Skip -- use without
+   * an account on this computer" as a clearly secondary, confirmed choice. Null hides it.
+   */
+  skipAccount?: { windowsUser: string } | null;
 }) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -74,11 +82,13 @@ export function Register({
             onChange={(e) => setPassword(e.target.value)}
           />
           <Button type="submit" variant="contained" disabled={registerAction.busy}>
-            {registerAction.busy ? "Creating account..." : "Create account"}
+            {registerAction.busy ? "Creating account..." : setup ? "Create administrator account" : "Create account"}
           </Button>
         </Stack>
 
         {registerAction.error && <Alert severity="error">{registerAction.error}</Alert>}
+
+        {setup && skipAccount && <SkipAccountOption windowsUser={skipAccount.windowsUser} onAuthenticated={onAuthenticated} />}
 
         {!setup && (
           <Typography variant="body2" color="text.secondary">
@@ -90,5 +100,52 @@ export function Register({
         </Typography>
       </Stack>
     </Box>
+  );
+}
+
+/** The confirmation text for using the workbench without an account. */
+export function skipAccountWarning(windowsUser: string): string {
+  return (
+    `Anyone who can run programs as ${windowsUser} on this computer, or open the launch link, can use ` +
+    "Partner Center Bridge with full administrator rights. Choose this only if this computer is already " +
+    "secured (screen lock, disk encryption, no shared Windows account). You can add a password later in Settings."
+  );
+}
+
+function SkipAccountOption({ windowsUser, onAuthenticated }: { windowsUser: string; onAuthenticated: (r: AuthResponse) => void }) {
+  const confirm = useConfirm();
+  const skipAction = useAsyncAction(async () => {
+    const r = await api.auth.setupNoAccount();
+    setLocalToken(r.accessToken);
+    onAuthenticated(r);
+  });
+
+  return (
+    <Stack spacing={1}>
+      <Divider>or</Divider>
+      <Box>
+        <Button
+          variant="text"
+          color="inherit"
+          size="small"
+          disabled={skipAction.busy}
+          onClick={async () => {
+            const ok = await confirm({
+              title: "Use without an account?",
+              message: skipAccountWarning(windowsUser),
+              confirmLabel: "Use without an account",
+              destructive: true
+            });
+            if (ok) void skipAction.run();
+          }}
+        >
+          {skipAction.busy ? "Setting up..." : "Skip -- use without an account on this computer"}
+        </Button>
+      </Box>
+      <Typography variant="caption" color="text.secondary">
+        For a computer only you use: PartnerCenterBridge.exe then opens the workbench already signed in as {windowsUser}.
+      </Typography>
+      {skipAction.error && <Alert severity="error">{skipAction.error}</Alert>}
+    </Stack>
   );
 }
