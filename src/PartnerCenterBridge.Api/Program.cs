@@ -120,8 +120,8 @@ builder.Services.AddMcpServer()
     .WithHttpTransport(o => o.Stateless = true)
     .WithToolsFromAssembly();
 builder.Services.AddScoped<AuthResponseFactory>();
-// "Use without an account" (Local Workbench only): launch secret + backoff. Registered in every
-// profile so AuthController resolves; under Server it refuses everything.
+// "Use without an account" and first-run setup (Local Workbench only): one-time launch tickets.
+// Registered in every profile so AuthController resolves; under Server it refuses everything.
 builder.Services.AddSingleton(sp => new WorkbenchOwnerService(
     sp.GetRequiredService<HostingInfo>(),
     sp.GetService<TimeProvider>() ?? TimeProvider.System,
@@ -234,16 +234,7 @@ if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel)
     {
         case PortState.ThisApp:
             Console.WriteLine($"Partner Center Bridge is already running at {local.CanonicalUrl}.");
-            // Without an account, the running instance is opened signed in: this process runs as the
-            // same Windows user, so it can read the launch secret the running instance saved.
-            var handOffUrl = local.CanonicalUrl;
-            if (preflight.Accountless && LocalLaunchSecretStore.TryRead(local) is { } launchSecret)
-            {
-                handOffUrl = local.LaunchUrl(launchSecret);
-                if (!local.OpenBrowser)
-                    Console.WriteLine($"Sign in: {handOffUrl}  (this link signs in as the workbench owner; do not share it)");
-            }
-            if (local.OpenBrowser) BrowserLauncher.TryOpen(handOffUrl);
+            if (local.OpenBrowser) BrowserLauncher.TryOpen(local.CanonicalUrl);
             return 0;
         case PortState.OtherProgram:
             Console.Error.WriteLine($"Port {local.Port} is in use by another program; use --port <N> to pick a different one.");

@@ -91,11 +91,17 @@ public sealed class LocalWorkbenchOptions
     public string ConfigFilePath => Path.Combine(DataRoot, "pcb.local.json");
     /// <summary>The generated Auth:Local:SigningKey, protected with Data Protection.</summary>
     public string SigningKeyPath => Path.Combine(DataRoot, "auth-signing-key.protected");
-    /// <summary>The no-account owner's launch secret (see <see cref="LocalLaunchSecretStore"/>), protected like the signing key.</summary>
-    public string LaunchSecretPath => Path.Combine(DataRoot, "launch-secret.protected");
+    /// <summary>
+    /// A persisted launch secret written by pre-release 0.9.0 builds. Nothing reads it any more
+    /// (launch tickets live only in the running process); startup deletes it.
+    /// </summary>
+    public string LegacyLaunchSecretPath => Path.Combine(DataRoot, "launch-secret.protected");
 
-    /// <summary>The URL that signs the no-account owner in: the secret rides in the fragment, which browsers never send to a server.</summary>
-    public string LaunchUrl(string secret) => $"{CanonicalUrl}/#launch={secret}";
+    /// <summary>
+    /// A one-time launch ticket URL (see <c>WorkbenchOwnerService</c>): the ticket rides in the
+    /// fragment, which browsers never send to a server, and the SPA removes it from the address bar.
+    /// </summary>
+    public string TicketUrl(string ticket) => $"{CanonicalUrl}/#ticket={ticket}";
 
     public static LocalWorkbenchOptions FromConfiguration(IConfiguration configuration)
     {

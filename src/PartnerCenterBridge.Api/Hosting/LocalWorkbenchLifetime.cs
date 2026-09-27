@@ -9,9 +9,10 @@ namespace PartnerCenterBridge.Api.Hosting;
 
 /// <summary>
 /// Local profile startup UX: once the host has started, print the banner, wait until the
-/// canonical URL's /health answers, then (unless disabled) open the browser there once. A
-/// workbench used without an account is opened through its launch URL (the launch secret in the
-/// fragment), which signs the browser in; with --no-browser that URL is printed instead.
+/// canonical URL's /health answers, then (unless disabled) open the browser there once. On first
+/// run, and for a workbench used without an account, the browser is opened through a one-time
+/// ticket URL minted by this process (see <see cref="WorkbenchOwnerService"/>); with --no-browser
+/// that URL is printed to this console instead. Tickets are never written to a log.
 /// </summary>
 public sealed class LocalWorkbenchLifetime : BackgroundService
 {
@@ -39,40 +40,58 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
         try { await started.Task; }
         catch (OperationCanceledException) { return; }
 
-        string? launchUrl = null;
+        BrowserLink link = new(_options.CanonicalUrl, BrowserLinkKind.Plain);
         try
         {
-            launchUrl = await ResolveLaunchUrlAsync(_scopes, _options, stoppingToken);
+            link = await CreateBrowserLinkAsync(_scopes, stoppingToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _log.LogWarning(ex, "Could not prepare the launch link for this workbench (no account); open it again from PartnerCenterBridge.exe.");
+            // Thrown before any ticket exists, so the exception cannot carry one.
+            _log.LogWarning(ex, "Could not prepare the one-time link for this workbench; run PartnerCenterBridge.exe again to get one.");
         }
 
-        PrintBanner(launchUrl);
+        PrintBanner(link);
         if (!_options.OpenBrowser) return;
 
         if (await WaitForHealthAsync(_options, stoppingToken))
-            BrowserLauncher.TryOpen(launchUrl ?? _options.CanonicalUrl, _log);
+            BrowserLauncher.TryOpen(link.Url, _log);
         else
             _log.LogWarning("{Url}/health did not answer; not opening the browser. Open {Url} manually.",
                 _options.CanonicalUrl, _options.CanonicalUrl);
     }
 
     /// <summary>
-    /// The URL that opens this workbench signed in when it is used without an account (creating the
-    /// launch secret if needed), or null when it has accounts (the plain canonical URL applies).
+    /// The URL a browser opened by this process should use (see
+    /// <see cref="WorkbenchOwnerService.CreateBrowserLinkAsync"/>): a one-time setup or sign-in
+    /// ticket URL, or the plain canonical URL once the workbench has accounts.
     /// </summary>
-    public static async Task<string?> ResolveLaunchUrlAsync(IServiceScopeFactory scopes, LocalWorkbenchOptions options, CancellationToken ct)
+    public static async Task<BrowserLink> CreateBrowserLinkAsync(IServiceScopeFactory scopes, CancellationToken ct)
     {
         using var scope = scopes.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
-        if (!await WorkbenchOwnerService.IsAccountlessAsync(db, ct)) return null;
         var owner = scope.ServiceProvider.GetRequiredService<WorkbenchOwnerService>();
-        return owner.UnavailableReason is null ? options.LaunchUrl(owner.EnsureSecret()) : null;
+        return await owner.CreateBrowserLinkAsync(scope.ServiceProvider.GetRequiredService<BridgeDbContext>(), ct);
     }
 
-    private void PrintBanner(string? launchUrl)
+    /// <summary>Console lines describing a one-time link (never logged).</summary>
+    public static IEnumerable<string> DescribeLink(BrowserLink link, string indent) => link.Kind switch
+    {
+        BrowserLinkKind.Setup => new[]
+        {
+            indent + "Set up:    " + link.Url,
+            indent + "           (one-time link, valid for " + (int)WorkbenchOwnerService.SetupLifetime.TotalMinutes +
+                " minutes; run " + HostingInfo.CommandName + " again for a new one)"
+        },
+        BrowserLinkKind.SignIn => new[]
+        {
+            indent + "Sign in:   " + link.Url,
+            indent + "           (one-time link, valid for " + (int)WorkbenchOwnerService.SignInLifetime.TotalMinutes +
+                " minutes; it signs in with full administrator rights -- do not share it)"
+        },
+        _ => Array.Empty<string>()
+    };
+
+    private void PrintBanner(BrowserLink link)
     {
         var lines = new List<string>
         {
@@ -84,21 +103,20 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
             "  Stop:      press Ctrl+C in this window",
             ""
         };
-        if (launchUrl is not null)
+        // A ticket is printed only when no browser is opened, and only to this console -- never to a log.
+        var extra = new List<string>();
+        if (link.Kind == BrowserLinkKind.SignIn)
         {
-            // The secret is printed only when no browser is opened, and only to this console -- never to the log file.
-            var account = new List<string> { "  Account:   none -- anyone who can run programs as " + Environment.UserName + " here can use it" };
-            if (!_options.OpenBrowser)
-            {
-                account.Add("  Sign in:   " + launchUrl);
-                account.Add("             (this link signs in with full administrator rights; do not share it)");
-            }
-            else
-            {
-                account.Add("             run " + HostingInfo.CommandName + " again to open another signed-in window");
-            }
-            lines.InsertRange(3, account);
+            extra.Add("  Account:   none -- anyone who can run programs as " + Environment.UserName + " here can use it");
+            if (_options.OpenBrowser)
+                extra.Add("             run " + HostingInfo.CommandName + " again to open another signed-in window");
         }
+        else if (link.Kind == BrowserLinkKind.Setup)
+        {
+            extra.Add("  Setup:     not finished -- create the first account (or choose no account) in the browser");
+        }
+        if (!_options.OpenBrowser) extra.AddRange(DescribeLink(link, "  "));
+        lines.InsertRange(3, extra);
         if (!_options.IsLoopbackOnly)
         {
             lines.Insert(lines.Count - 2, $"  WARNING:   listening on {_options.ListenAddress}:{_options.Port} -- reachable from other machines.");

@@ -16,7 +16,9 @@ export function Register({
   onAuthenticated,
   onGoLogin,
   setup = false,
-  skipAccount = null
+  skipAccount = null,
+  setupTicket = null,
+  setupTicketRequired = false
 }: {
   onAuthenticated: (r: AuthResponse) => void;
   onGoLogin: () => void;
@@ -27,16 +29,26 @@ export function Register({
    * an account on this computer" as a clearly secondary, confirmed choice. Null hides it.
    */
   skipAccount?: { windowsUser: string } | null;
+  /** The one-time setup ticket PartnerCenterBridge.exe opened this page with (Local Workbench first run). */
+  setupTicket?: string | null;
+  /** The server needs {@link setupTicket} for the first account; without it, guidance replaces the form. */
+  setupTicketRequired?: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
 
   const registerAction = useAsyncAction(async () => {
-    const r = await api.auth.register(email, password, displayName);
+    const r = setupTicket
+      ? await api.auth.register(email, password, displayName, setupTicket)
+      : await api.auth.register(email, password, displayName);
     setLocalToken(r.accessToken);
     onAuthenticated(r);
   });
+
+  // Local Workbench first run opened without the exe's setup link (a bookmark, another Windows user,
+  // a reload after the link was removed from the address bar): the server would refuse the form.
+  if (setup && setupTicketRequired && !setupTicket) return <SetupFromExeNotice />;
 
   return (
     <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>
@@ -88,7 +100,9 @@ export function Register({
 
         {registerAction.error && <Alert severity="error">{registerAction.error}</Alert>}
 
-        {setup && skipAccount && <SkipAccountOption windowsUser={skipAccount.windowsUser} onAuthenticated={onAuthenticated} />}
+        {setup && skipAccount && (
+          <SkipAccountOption windowsUser={skipAccount.windowsUser} ticket={setupTicket} onAuthenticated={onAuthenticated} />
+        )}
 
         {!setup && (
           <Typography variant="body2" color="text.secondary">
@@ -103,19 +117,52 @@ export function Register({
   );
 }
 
+/**
+ * First run of a Local Workbench without the one-time setup link: only PartnerCenterBridge.exe, run
+ * by this computer's Windows user, can open setup (the link proves the browser was opened by it).
+ */
+function SetupFromExeNotice() {
+  return (
+    <Box sx={{ display: "grid", placeItems: "center", minHeight: "100vh", p: 2 }}>
+      <Stack spacing={2} sx={{ width: "100%", maxWidth: 440 }}>
+        <Typography variant="h5" component="h1">
+          Set up this workbench
+        </Typography>
+        <Typography variant="body1">
+          Open Partner Center Bridge from PartnerCenterBridge.exe to finish setup.
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Setup opens through a one-time link that the exe hands to the browser, so a bookmark, a reloaded
+          page or another Windows user on this computer cannot create the first account. Running
+          PartnerCenterBridge.exe again opens a new setup link; if you started it with --no-browser, open the
+          link it printed in its window.
+        </Typography>
+      </Stack>
+    </Box>
+  );
+}
+
 /** The confirmation text for using the workbench without an account. */
 export function skipAccountWarning(windowsUser: string): string {
   return (
-    `Anyone who can run programs as ${windowsUser} on this computer, or open the launch link, can use ` +
+    `Anyone who can run programs as ${windowsUser} on this computer can use ` +
     "Partner Center Bridge with full administrator rights. Choose this only if this computer is already " +
     "secured (screen lock, disk encryption, no shared Windows account). You can add a password later in Settings."
   );
 }
 
-function SkipAccountOption({ windowsUser, onAuthenticated }: { windowsUser: string; onAuthenticated: (r: AuthResponse) => void }) {
+function SkipAccountOption({
+  windowsUser,
+  ticket,
+  onAuthenticated
+}: {
+  windowsUser: string;
+  ticket: string | null;
+  onAuthenticated: (r: AuthResponse) => void;
+}) {
   const confirm = useConfirm();
   const skipAction = useAsyncAction(async () => {
-    const r = await api.auth.setupNoAccount();
+    const r = await api.auth.setupNoAccount(ticket);
     setLocalToken(r.accessToken);
     onAuthenticated(r);
   });

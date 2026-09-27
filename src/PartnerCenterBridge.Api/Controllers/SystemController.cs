@@ -33,8 +33,9 @@ public class SystemController : ControllerBase
     /// <param name="Accountless">The Local Workbench is used without an account (launch-link sign-in only).</param>
     /// <param name="CanSkipAccount">First run may offer "use without an account" (Local profile, loopback only, no user yet).</param>
     /// <param name="WindowsUser">The Windows user the workbench runs as -- only when one of the two flags above is true.</param>
+    /// <param name="SetupTicketRequired">First run of a Local Workbench: creating the first account (or choosing no account) needs the one-time setup link the exe opens.</param>
     public record SystemStatusDto(string Profile, string Version, string AuthMode, bool NeedsFirstUser,
-        bool Accountless = false, bool CanSkipAccount = false, string? WindowsUser = null);
+        bool Accountless = false, bool CanSkipAccount = false, string? WindowsUser = null, bool SetupTicketRequired = false);
 
     [HttpGet("status")]
     [AllowAnonymous]
@@ -47,7 +48,8 @@ public class SystemController : ControllerBase
         var accountless = localOwnerPlane && await WorkbenchOwnerService.IsAccountlessAsync(_db, ct);
         var canSkip = localOwnerPlane && needsFirstUser && owner.UnavailableReason is null;
         return new SystemStatusDto(_hosting.Profile, _hosting.Version, _authMode.Mode, needsFirstUser,
-            accountless, canSkip, accountless || canSkip ? Environment.UserName : null);
+            accountless, canSkip, accountless || canSkip ? Environment.UserName : null,
+            localOwnerPlane && needsFirstUser);
     }
 
     [HttpGet("diagnostics")]

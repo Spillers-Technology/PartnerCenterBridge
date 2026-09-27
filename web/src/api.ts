@@ -258,17 +258,18 @@ export const api = {
 
   auth: {
     mode: () => request<{ mode: AuthMode }>("/api/auth/mode"),
-    register: (email: string, password: string, displayName: string) =>
-      request<AuthResponse>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),
+    /** On a Local Workbench's first run the first account needs the one-time setup ticket the exe opened. */
+    register: (email: string, password: string, displayName: string, ticket?: string | null) =>
+      request<AuthResponse>("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password, displayName, ticket: ticket ?? undefined }) }),
     login: (email: string, password: string) =>
       request<AuthResponse | MfaChallengeResponse>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
     logout: () => request<void>("/api/auth/logout", { method: "POST" }),
-    /** First run: use this Local Workbench without an account (creates the built-in owner). */
-    setupNoAccount: () =>
-      request<AuthResponse>("/api/auth/setup/no-account", { method: "POST", body: JSON.stringify({ confirm: true }) }),
-    /** Exchanges the launch secret from the URL fragment for a session. */
-    launch: (secret: string) =>
-      request<AuthResponse>("/api/auth/launch", { method: "POST", body: JSON.stringify({ secret }) }),
+    /** First run: use this Local Workbench without an account (creates the built-in owner); needs the setup ticket. */
+    setupNoAccount: (ticket: string | null) =>
+      request<AuthResponse>("/api/auth/setup/no-account", { method: "POST", body: JSON.stringify({ confirm: true, ticket }) }),
+    /** Exchanges the one-time sign-in ticket from the URL fragment for a session. */
+    launch: (ticket: string) =>
+      request<AuthResponse>("/api/auth/launch", { method: "POST", body: JSON.stringify({ ticket }) }),
     /** Converts the no-account owner into a password account (launch links stop working). */
     protectOwner: (email: string, password: string, displayName: string) =>
       request<AuthResponse>("/api/auth/owner/protect", { method: "POST", body: JSON.stringify({ email, password, displayName }) }),

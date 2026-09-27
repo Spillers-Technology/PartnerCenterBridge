@@ -8,7 +8,7 @@ import Typography from "@mui/material/Typography";
 import { authEnabled, initAuth, login, logout } from "./auth";
 import { api, errorText } from "./api";
 import { clearLocalToken, getLocalToken, setLocalToken } from "./session";
-import { takeLaunchSecretFromUrl } from "./launch";
+import { takeLaunchTicketFromUrl } from "./launch";
 import type { AuthMode, AuthResponse, MeProfile, SystemStatus } from "./types";
 import { AppShell } from "./components/AppShell";
 import { Login } from "./components/Login";
@@ -67,12 +67,14 @@ export function App() {
   // image works regardless of how a given deployment is configured -- no separate build per mode.
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [me, setMe] = useState<MeProfile | null>(null);
-  // Launch-link sign-in (Local Workbench without an account): the secret is taken out of the address
-  // bar during the first render, before anything else can read or record the URL. A ref survives
-  // React StrictMode's double effect run; it is cleared once the exchange has been attempted.
-  const launchSecret = useRef<string | null | undefined>(undefined);
-  if (launchSecret.current === undefined) launchSecret.current = takeLaunchSecretFromUrl();
+  // One-time launch ticket (Local Workbench first run, or no account): taken out of the address bar
+  // during the first render, before anything else can read or record the URL. A ref survives React
+  // StrictMode's double effect run; it is cleared once it has been used or handed to first-run setup.
+  const launchTicket = useRef<string | null | undefined>(undefined);
+  if (launchTicket.current === undefined) launchTicket.current = takeLaunchTicketFromUrl();
   const [launchError, setLaunchError] = useState<string | null>(null);
+  // First run: the setup ticket stays in memory until the first account (or "no account") is created.
+  const [setupTicket, setSetupTicket] = useState<string | null>(null);
   const location = useLocation();
 
   useEffect(() => {
@@ -86,21 +88,30 @@ export function App() {
         setStatus(s);
         setAuthMode(m.mode);
         if (m.mode === "Local") {
-          const secret = launchSecret.current;
-          if (secret) {
-            // Sync the router with the address bar the secret was just removed from.
+          const ticket = launchTicket.current;
+          if (ticket) {
+            // Sync the router with the address bar the ticket was just removed from.
             navigate(`${location.pathname}${location.search}`, { replace: true, state: location.state });
-            try {
-              const r = await api.auth.launch(secret);
-              if (cancelled) return;
-              launchSecret.current = null;
-              setLocalToken(r.accessToken);
-              setMe(r.user);
-              return;
-            } catch (e) {
-              if (cancelled) return;
-              launchSecret.current = null;
-              setLaunchError(errorText(e));
+            if (s?.needsFirstUser) {
+              // A setup ticket: sent with the first account (or the no-account choice).
+              launchTicket.current = null;
+              setSetupTicket(ticket);
+            } else if (s && !s.accountless) {
+              // The workbench has accounts now; the ticket has nothing left to do.
+              launchTicket.current = null;
+            } else {
+              try {
+                const r = await api.auth.launch(ticket);
+                if (cancelled) return;
+                launchTicket.current = null;
+                setLocalToken(r.accessToken);
+                setMe(r.user);
+                return;
+              } catch (e) {
+                if (cancelled) return;
+                launchTicket.current = null;
+                setLaunchError(errorText(e));
+              }
             }
           }
           if (getLocalToken()) {
@@ -146,6 +157,7 @@ export function App() {
   const onAuthenticated = useCallback((r: AuthResponse) => {
     setMe(r.user);
     setLaunchError(null);
+    setSetupTicket(null);
     // Whoever just registered (or chose no account) is no longer waiting on a first user.
     setStatus((s) => (s ? { ...s, needsFirstUser: false, canSkipAccount: false, accountless: Boolean(r.user.isWorkbenchOwner) } : s));
   }, []);
@@ -213,7 +225,15 @@ export function App() {
           path="/register"
           element={
             <LocalAuthRoute authMode={session.authMode} signedIn={me !== null} redirectTo={null}>
-              {accountless ? accountlessPage : <RegisterScreen onAuthenticated={onAuthenticated} setup={needsFirstUser} skipAccount={skipAccount} />}
+              {accountless ? accountlessPage : (
+                <RegisterScreen
+                  onAuthenticated={onAuthenticated}
+                  setup={needsFirstUser}
+                  skipAccount={skipAccount}
+                  setupTicket={setupTicket}
+                  setupTicketRequired={needsFirstUser && Boolean(status?.setupTicketRequired)}
+                />
+              )}
             </LocalAuthRoute>
           }
         />
@@ -284,11 +304,15 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (r: AuthResponse) =
 function RegisterScreen({
   onAuthenticated,
   setup,
-  skipAccount
+  skipAccount,
+  setupTicket,
+  setupTicketRequired
 }: {
   onAuthenticated: (r: AuthResponse) => void;
   setup: boolean;
   skipAccount: { windowsUser: string } | null;
+  setupTicket: string | null;
+  setupTicketRequired: boolean;
 }) {
   const location = useLocation();
   const navigate = useNavigate();
@@ -296,6 +320,8 @@ function RegisterScreen({
     <Register
       setup={setup}
       skipAccount={skipAccount}
+      setupTicket={setupTicket}
+      setupTicketRequired={setupTicketRequired}
       onAuthenticated={(r) => {
         onAuthenticated(r);
         navigate(returnTarget(location), { replace: true });

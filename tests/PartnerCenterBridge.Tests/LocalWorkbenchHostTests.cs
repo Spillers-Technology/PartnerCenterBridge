@@ -48,10 +48,14 @@ public sealed class LocalWorkbenchHostTests : IDisposable
         return factory;
     }
 
-    private static async Task<string> RegisterAsync(HttpClient client, string email)
+    /// <summary>A first-run setup ticket, as the exe's browser launch or console would hand out.</summary>
+    private static string SetupTicket(WebApplicationFactory<Program> factory) =>
+        factory.Services.GetRequiredService<WorkbenchOwnerService>().Mint(TicketPurpose.Setup);
+
+    private static async Task<string> RegisterAsync(HttpClient client, string email, string? ticket = null)
     {
         var response = await client.PostAsJsonAsync("/api/auth/register",
-            new { email, password = Password, displayName = email.Split('@')[0] });
+            new { email, password = Password, displayName = email.Split('@')[0], ticket });
         response.EnsureSuccessStatusCode();
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         return json.RootElement.GetProperty("accessToken").GetString()!;
@@ -67,7 +71,8 @@ public sealed class LocalWorkbenchHostTests : IDisposable
     [Fact]
     public async Task Status_is_anonymous_and_reports_first_run()
     {
-        var client = Host().CreateClient();
+        var factory = Host();
+        var client = factory.CreateClient();
 
         var response = await client.GetAsync("/api/system/status");
         response.EnsureSuccessStatusCode();
@@ -75,7 +80,7 @@ public sealed class LocalWorkbenchHostTests : IDisposable
         using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
             var root = json.RootElement;
-            Assert.Equal(new[] { "profile", "version", "authMode", "needsFirstUser", "accountless", "canSkipAccount", "windowsUser" },
+            Assert.Equal(new[] { "profile", "version", "authMode", "needsFirstUser", "accountless", "canSkipAccount", "windowsUser", "setupTicketRequired" },
                 root.EnumerateObject().Select(p => p.Name).ToArray());
             Assert.Equal("Local", root.GetProperty("profile").GetString());
             Assert.Equal(HostingInfo.ProductVersion, root.GetProperty("version").GetString());
@@ -83,7 +88,7 @@ public sealed class LocalWorkbenchHostTests : IDisposable
             Assert.True(root.GetProperty("needsFirstUser").GetBoolean());
         }
 
-        await RegisterAsync(client, "admin@example.com");
+        await RegisterAsync(client, "admin@example.com", SetupTicket(factory));
         var after = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.False(after.GetProperty("needsFirstUser").GetBoolean());
         Assert.True(File.Exists(Path.Combine(_dataDir, "pcb.db")));
@@ -92,10 +97,11 @@ public sealed class LocalWorkbenchHostTests : IDisposable
     [Fact]
     public async Task Diagnostics_requires_auth_and_hides_details_from_non_admins()
     {
-        var client = Host().CreateClient();
+        var factory = Host();
+        var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/system/diagnostics")).StatusCode);
 
-        var adminToken = await RegisterAsync(client, "admin@example.com");   // first account: Administrator
+        var adminToken = await RegisterAsync(client, "admin@example.com", SetupTicket(factory));   // first account: Administrator
         var userToken = await RegisterAsync(client, "user@example.com");     // later accounts: no instance role
 
         var admin = await client.SendAsync(Get("/api/system/diagnostics", adminToken));
@@ -177,7 +183,7 @@ public sealed class LocalWorkbenchHostTests : IDisposable
         {
             var first = Host();
             var client = first.CreateClient();
-            token = await RegisterAsync(client, "admin@example.com");
+            token = await RegisterAsync(client, "admin@example.com", SetupTicket(first));
             firstKey = first.Services.GetRequiredService<IOptions<LocalAuthOptions>>().Value.SigningKey;
         }
 

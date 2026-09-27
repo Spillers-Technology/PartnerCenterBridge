@@ -6,8 +6,8 @@ import Typography from "@mui/material/Typography";
 
 /**
  * Shown instead of any sign-in form when a Local Workbench is used without an account and this
- * browser has no session (a bookmark, a signed-out tab, an expired token): only the launch link that
- * PartnerCenterBridge.exe opens can sign in, so there is nothing to type here.
+ * browser has no session (a bookmark, a signed-out tab, an expired token, a used link): only the one-time
+ * link that PartnerCenterBridge.exe opens can sign in, so there is nothing to type here.
  */
 export function AccountlessNotice({ windowsUser, launchError }: { windowsUser: string | null; launchError: string | null }) {
   const location = useLocation();
@@ -20,11 +20,13 @@ export function AccountlessNotice({ windowsUser, launchError }: { windowsUser: s
         </Typography>
         {launchError && <Alert severity="error">{launchError}</Alert>}
         <Typography variant="body1">
-          This workbench has no account. Open it from PartnerCenterBridge.exe (running it again opens a signed-in window).
+          This workbench has no account. Open it from PartnerCenterBridge.exe (running it again opens a fresh
+          signed-in window).
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {windowsUser ? `It is used without an account by ${windowsUser} on this computer. ` : ""}
-          If you started it with --no-browser, open the sign-in link it printed in its window.
+          Sign-in links work once and expire after a few minutes, so a bookmark or an old link lands here. If you
+          use --no-browser, run PartnerCenterBridge.exe again to print a fresh sign-in link.
         </Typography>
       </Stack>
     </Box>

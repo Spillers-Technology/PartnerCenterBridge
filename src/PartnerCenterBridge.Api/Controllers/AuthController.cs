@@ -50,6 +50,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register")]
     [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
     public async Task<ActionResult<AuthResponse>> Register(RegisterRequest req, CancellationToken ct)
     {
         if (!_mode.IsLocal) return BadRequest("Self-registration is not enabled on this deployment (Auth:Mode is not Local).");
@@ -73,6 +74,12 @@ public class AuthController : ControllerBase
             return Conflict("An account with that email already exists.");
 
         var isFirstUser = !await _db.AppUsers.AnyAsync(ct);
+        // The first account becomes Administrator. In the Local Workbench, loopback is shared by
+        // every Windows user on the machine, so the first account needs the setup ticket that only
+        // this process hands out (its own browser launch, console, or a verified second launch).
+        // The Server profile relies on network controls for bootstrap instead (see the docs).
+        if (isFirstUser && _owner.Local is not null && !ConsumeSetupTicket(req.Ticket))
+            return SetupTicketRequired();
 
         var user = new AppUser
         {
@@ -108,9 +115,18 @@ public class AuthController : ControllerBase
         }
         await _db.SaveChangesAsync(ct);
         await authorizationLock.CommitAsync(ct);
+        if (isFirstUser) _owner.RevokeTickets(TicketPurpose.Setup);
 
         return Ok(await _responses.BuildAsync(user, ct));
     }
+
+    private bool ConsumeSetupTicket(string? ticket) =>
+        _owner.Consume(ticket, TicketPurpose.Setup, out _) == TicketCheck.Accepted;
+
+    private ObjectResult SetupTicketRequired() =>
+        StatusCode(StatusCodes.Status403Forbidden,
+            "To finish setting up this workbench, open Partner Center Bridge from PartnerCenterBridge.exe on this computer " +
+            "(setup links work once and expire; running the exe again opens a new one).");
 
     /// <summary>
     /// Password login. Returns <see cref="AuthResponse"/> directly, or -- if the account has TOTP
@@ -179,12 +195,13 @@ public class AuthController : ControllerBase
     /// <summary>
     /// First run of a Local Workbench, the deliberate alternative to creating an administrator
     /// account: creates the built-in workbench owner (named after the Windows user, all instance
-    /// administration, no tenant access until it adds tenants), creates the launch secret, and
-    /// signs the caller in. Only while no user exists, only in the Local profile, and never with a
-    /// non-loopback --listen address.
+    /// administration, no tenant access until it adds tenants) and signs the caller in. Only while
+    /// no user exists, only in the Local profile, never with a non-loopback --listen address, and
+    /// only with the first-run setup ticket this process handed out.
     /// </summary>
     [HttpPost("setup/no-account")]
     [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
     public async Task<ActionResult<AuthResponse>> SetupNoAccount(NoAccountSetupRequest req, CancellationToken ct)
     {
         if (!_mode.IsLocal || _owner.Local is null) return NotFound();
@@ -194,6 +211,7 @@ public class AuthController : ControllerBase
         await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
         if (await _db.AppUsers.AnyAsync(ct))
             return Conflict("This workbench already has an account, so it cannot switch to use without an account.");
+        if (!ConsumeSetupTicket(req.Ticket)) return SetupTicketRequired();
 
         var user = new AppUser
         {
@@ -235,54 +253,63 @@ public class AuthController : ControllerBase
         authorizationLock.State.Revision++;
         await _db.SaveChangesAsync(ct);
         await authorizationLock.CommitAsync(ct);
+        _owner.RevokeTickets(TicketPurpose.Setup);
 
-        // Later launches of the exe sign in through this secret.
-        _owner.EnsureSecret();
+        // Later launches of the exe sign in with one-time tickets the running process mints.
         return Ok(await _responses.BuildAsync(user, ct));
     }
 
     /// <summary>
-    /// Launch-link sign-in for a workbench used without an account: the SPA posts the secret it
-    /// took from the URL fragment and gets the same <see cref="AuthResponse"/> as a password login.
-    /// Wrong secrets back off (see <see cref="WorkbenchOwnerService.Check"/>).
+    /// Launch-link sign-in for a workbench used without an account: the SPA posts the one-time
+    /// ticket it took from the URL fragment and gets the same <see cref="AuthResponse"/> as a
+    /// password login. The ticket is checked first, so wrong ones never block a valid one (see
+    /// <see cref="WorkbenchOwnerService.Consume"/>). The session is issued under the instance
+    /// authorization lock, which "Protect with an account" also holds, so a launch racing a
+    /// conversion either sees no owner or gets a token from before the conversion's epoch bump.
     /// </summary>
     [HttpPost("launch")]
     [AllowAnonymous]
+    [RequestSizeLimit(16 * 1024)]
     public async Task<IActionResult> Launch(LaunchRequest req, CancellationToken ct)
     {
         if (!_mode.IsLocal || _owner.Local is null) return NotFound();
-        var owner = await _db.AppUsers.FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
-        if (owner is null || _owner.UnavailableReason is not null)
-            return Unauthorized("This workbench has accounts; sign in with yours.");
 
-        switch (_owner.Check(req.Secret, out var retryAfter))
+        switch (_owner.Consume(req.Ticket, TicketPurpose.SignIn, out var retryAfter))
         {
-            case LaunchCheck.Throttled:
+            case TicketCheck.Throttled:
                 Response.Headers.RetryAfter = Math.Max(1, (int)Math.Ceiling(retryAfter.TotalSeconds)).ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return StatusCode(StatusCodes.Status429TooManyRequests,
-                    "Too many wrong launch links. Wait a moment, then open Partner Center Bridge from PartnerCenterBridge.exe again.");
-            case LaunchCheck.Rejected:
-                await RecordLoginFailureAsync(owner.Id, "launch link", ct);
-                return Unauthorized("This launch link is not valid (it may be from before the workbench was protected). " +
+                    "This sign-in link is not valid. Open Partner Center Bridge from PartnerCenterBridge.exe again.");
+            case TicketCheck.Rejected:
+                var owner = await _db.AppUsers.AsNoTracking().FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
+                if (owner is not null) await RecordLoginFailureAsync(owner.Id, "launch link", ct);
+                return Unauthorized("This sign-in link is not valid: each link works once and only for a few minutes. " +
                                     "Open Partner Center Bridge from PartnerCenterBridge.exe again.");
         }
 
-        owner.LastLoginAt = DateTimeOffset.UtcNow;
+        await using var authorizationLock = await InstanceAuthorizationLock.AcquireAsync(_db, ct);
+        var current = await _db.AppUsers.FirstOrDefaultAsync(u => u.IsWorkbenchOwner && u.IsActive, ct);
+        if (current is null || _owner.UnavailableReason is not null)
+            return Unauthorized("This workbench has accounts; sign in with yours.");
+
+        current.LastLoginAt = DateTimeOffset.UtcNow;
         _db.AuditEvents.Add(new AuditEvent
         {
             EventType = AuditEventType.LoginSucceeded,
-            ActorUserId = owner.Id,
-            ActorName = owner.DisplayName,
+            ActorUserId = current.Id,
+            ActorName = current.DisplayName,
             Detail = "\"launch link (no account)\""
         });
         await _db.SaveChangesAsync(ct);
-        return Ok(await _responses.BuildAsync(owner, ct));
+        var response = await _responses.BuildAsync(current, ct);
+        await authorizationLock.CommitAsync(ct);
+        return Ok(response);
     }
 
     /// <summary>
     /// Converts the no-account owner into an ordinary Local account: sets the email and password
-    /// (usual password rules), clears <see cref="AppUser.IsWorkbenchOwner"/> and deletes the launch
-    /// secret, so launch links stop working and password (then passkey / TOTP) sign-in applies.
+    /// (usual password rules) and clears <see cref="AppUser.IsWorkbenchOwner"/>, so launch tickets
+    /// stop working and password (then passkey / TOTP) sign-in applies.
     /// </summary>
     [HttpPost("owner/protect")]
     [Authorize]
@@ -323,7 +350,7 @@ public class AuthController : ControllerBase
         await _db.SaveChangesAsync(ct);
         await authorizationLock.CommitAsync(ct);
 
-        _owner.RevokeSecret();
+        _owner.RevokeTickets();
         return Ok(await _responses.BuildAsync(user, ct));
     }
 

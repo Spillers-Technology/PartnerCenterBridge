@@ -49,6 +49,10 @@ public static class LocalDataDirectory
 
         foreach (var path in new[] { options.KeysPath, options.LogsPath, options.PackagesPath, options.CertificatesPath })
             Directory.CreateDirectory(path);
+        // Pre-release builds kept a reusable launch secret here; one-time tickets replaced it.
+        try { if (File.Exists(options.LegacyLaunchSecretPath)) File.Delete(options.LegacyLaunchSecretPath); }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         return warnings;
     }
 
@@ -62,7 +66,7 @@ public static class LocalDataDirectory
 
     /// <summary>
     /// The first sensitive entry under the data root (the database, the Data Protection key ring and
-    /// its keys, the protected signing key and launch secret) that carries an explicit permission entry giving someone
+    /// its keys, the protected signing key) that carries an explicit permission entry giving someone
     /// else access, or null. Inherited entries come from the data root, which is validated
     /// separately; this catches a file or folder that was shared on its own. Windows only: elsewhere
     /// the private root's mode already keeps other users out of everything below it.
@@ -70,7 +74,7 @@ public static class LocalDataDirectory
     public static (string Path, string Problem)? FindInsecureSensitiveEntry(LocalWorkbenchOptions options)
     {
         if (!OperatingSystem.IsWindows()) return null;
-        var candidates = new List<string> { options.DatabasePath, options.SigningKeyPath, options.LaunchSecretPath, options.KeysPath };
+        var candidates = new List<string> { options.DatabasePath, options.SigningKeyPath, options.KeysPath };
         if (Directory.Exists(options.KeysPath)) candidates.AddRange(Directory.GetFiles(options.KeysPath));
         foreach (var candidate in candidates)
         {

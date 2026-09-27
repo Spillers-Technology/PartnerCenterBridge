@@ -431,9 +431,11 @@ describe("App routing", () => {
       window.history.replaceState(null, "", "/");
     });
 
-    it("offers skipping the account on first run, only after a confirmation", async () => {
+    it("offers skipping the account on first run, only after a confirmation, with the setup ticket", async () => {
+      window.history.replaceState(null, "", "/#ticket=setup-tkt");
       vi.mocked(api.system.status).mockResolvedValue({
-        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true, canSkipAccount: true, windowsUser: "maya"
+        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true, canSkipAccount: true, windowsUser: "maya",
+        setupTicketRequired: true
       });
       vi.mocked(api.auth.setupNoAccount).mockResolvedValue({ accessToken: "owner-tok", user: OWNER });
       const user = userEvent.setup();
@@ -442,7 +444,8 @@ describe("App routing", () => {
       expect(await screen.findByRole("button", { name: "Create administrator account" })).toBeInTheDocument();
       await user.click(screen.getByRole("button", { name: "Skip -- use without an account on this computer" }));
       const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByText(/Anyone who can run programs as maya on this computer, or open the launch link/)).toBeInTheDocument();
+      expect(within(dialog).getByText(/Anyone who can run programs as maya on this computer can use/)).toBeInTheDocument();
+      expect(window.location.hash).toBe("");
       expect(within(dialog).getByText(/You can add a password later in Settings/)).toBeInTheDocument();
 
       await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
@@ -452,8 +455,49 @@ describe("App routing", () => {
       await user.click(screen.getByRole("button", { name: "Skip -- use without an account on this computer" }));
       await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Use without an account" }));
       await waitFor(() => expect(api.auth.setupNoAccount).toHaveBeenCalledTimes(1));
+      expect(api.auth.setupNoAccount).toHaveBeenCalledWith("setup-tkt");
       await waitFor(() => expect(location()).toBe("/"));
       expect(localStorage.getItem("pcb.local.accessToken")).toBe("owner-tok");
+    });
+
+    it("shows guidance instead of the first-run form without the exe's setup link", async () => {
+      vi.mocked(api.system.status).mockResolvedValue({
+        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true, canSkipAccount: true, windowsUser: "maya",
+        setupTicketRequired: true
+      });
+      renderApp("/");
+      expect(await screen.findByText("Open Partner Center Bridge from PartnerCenterBridge.exe to finish setup.")).toBeInTheDocument();
+      expect(location()).toBe("/register");
+      expect(screen.queryByLabelText("Password (12+ characters)")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Skip/ })).not.toBeInTheDocument();
+    });
+
+    it("sends the setup ticket with the first account, and never tries it as a sign-in", async () => {
+      window.history.replaceState(null, "", "/#ticket=setup-tkt");
+      vi.mocked(api.system.status).mockResolvedValue({
+        profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: true, setupTicketRequired: true
+      });
+      vi.mocked(api.auth.register).mockResolvedValue({ accessToken: "admin-tok", user: ME });
+      const user = userEvent.setup();
+      renderApp("/");
+
+      await user.type(await screen.findByLabelText("Display name"), "Maya");
+      expect(window.location.hash).toBe("");
+      await user.type(screen.getByLabelText("Email"), "maya@contoso.com");
+      await user.type(screen.getByLabelText("Password (12+ characters)"), "correct-horse-battery");
+      await user.click(screen.getByRole("button", { name: "Create administrator account" }));
+      await waitFor(() => expect(api.auth.register).toHaveBeenCalledWith("maya@contoso.com", "correct-horse-battery", "Maya", "setup-tkt"));
+      expect(api.auth.launch).not.toHaveBeenCalled();
+      await waitFor(() => expect(location()).toBe("/"));
+    });
+
+    it("ignores a leftover ticket once the workbench has accounts", async () => {
+      window.history.replaceState(null, "", "/#ticket=old");
+      vi.mocked(api.system.status).mockResolvedValue({ profile: "Local", version: "0.9.0", authMode: "Local", needsFirstUser: false });
+      renderApp("/");
+      expect(await screen.findByRole("button", { name: "Sign in" })).toBeInTheDocument();
+      expect(window.location.hash).toBe("");
+      expect(api.auth.launch).not.toHaveBeenCalled();
     });
 
     it("hides the skip option when the server does not allow it", async () => {
@@ -463,14 +507,14 @@ describe("App routing", () => {
       expect(screen.queryByRole("button", { name: /Skip/ })).not.toBeInTheDocument();
     });
 
-    it("takes the launch secret out of the URL and signs in on the requested page", async () => {
-      window.history.replaceState(null, "", "/tenants?x=1#launch=s3cret");
+    it("takes the sign-in ticket out of the URL and signs in on the requested page", async () => {
+      window.history.replaceState(null, "", "/tenants?x=1#ticket=t1ck3t");
       vi.mocked(api.auth.launch).mockResolvedValue({ accessToken: "launch-tok", user: { ...OWNER, tenantAccess: ME.tenantAccess } });
       renderApp("/tenants?x=1");
 
       expect(window.location.hash).toBe("");
       expect(window.location.pathname + window.location.search).toBe("/tenants?x=1");
-      await waitFor(() => expect(api.auth.launch).toHaveBeenCalledWith("s3cret"));
+      await waitFor(() => expect(api.auth.launch).toHaveBeenCalledWith("t1ck3t"));
       expect(await screen.findByText("Contoso Ltd")).toBeInTheDocument();
       expect(location()).toBe("/tenants?x=1");
       expect(localStorage.getItem("pcb.local.accessToken")).toBe("launch-tok");
@@ -484,10 +528,10 @@ describe("App routing", () => {
     });
 
     it("reports a stale launch link on the guidance page", async () => {
-      window.history.replaceState(null, "", "/#launch=old");
-      vi.mocked(api.auth.launch).mockRejectedValue(new ApiError(401, "401 Unauthorized: stale", "This launch link is not valid."));
+      window.history.replaceState(null, "", "/#ticket=old");
+      vi.mocked(api.auth.launch).mockRejectedValue(new ApiError(401, "401 Unauthorized: stale", "This sign-in link is not valid."));
       renderApp("/");
-      expect(await screen.findByText("This launch link is not valid.")).toBeInTheDocument();
+      expect(await screen.findByText("This sign-in link is not valid.")).toBeInTheDocument();
       expect(screen.getByText(/This workbench has no account/)).toBeInTheDocument();
     });
 

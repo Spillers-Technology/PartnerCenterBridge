@@ -1,15 +1,12 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Security.AccessControl;
-using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using PartnerCenterBridge.Api.Auth;
@@ -20,9 +17,10 @@ using PartnerCenterBridge.Data;
 namespace PartnerCenterBridge.Tests;
 
 /// <summary>
-/// "Skip -- use without an account" in the Local Workbench: the first-run choice, launch-secret
-/// sign-in with backoff, protected storage, conversion to a password account, and the guardrails
-/// (never in the Server profile, never with a non-loopback --listen).
+/// "Skip -- use without an account" in the Local Workbench and the one-time launch tickets behind
+/// it: the first-run choice (which, like the first account, needs a setup ticket), ticket sign-in
+/// (single use, expiry, wrong tickets never blocking a valid one), conversion to a password account,
+/// and the guardrails (never in the Server profile, never with a non-loopback --listen).
 /// </summary>
 public sealed class WorkbenchOwnerTests : IDisposable
 {
@@ -62,8 +60,12 @@ public sealed class WorkbenchOwnerTests : IDisposable
         return factory;
     }
 
-    private LocalWorkbenchOptions LocalOptions(WebApplicationFactory<Program> factory) =>
-        factory.Services.GetRequiredService<LocalWorkbenchOptions>();
+    private static WorkbenchOwnerService Owner(WebApplicationFactory<Program> factory) =>
+        factory.Services.GetRequiredService<WorkbenchOwnerService>();
+
+    /// <summary>A ticket as the running process hands it out (its browser launch, console or the hand-off pipe).</summary>
+    private static string Ticket(WebApplicationFactory<Program> factory, TicketPurpose purpose = TicketPurpose.SignIn) =>
+        Owner(factory).Mint(purpose);
 
     private static async Task<JsonElement> JsonAsync(HttpResponseMessage response)
     {
@@ -72,11 +74,17 @@ public sealed class WorkbenchOwnerTests : IDisposable
         return JsonDocument.Parse(body).RootElement.Clone();
     }
 
-    private static Task<HttpResponseMessage> SkipAsync(HttpClient client) =>
-        client.PostAsJsonAsync("/api/auth/setup/no-account", new { confirm = true });
+    private static Task<HttpResponseMessage> SkipAsync(HttpClient client, string? ticket) =>
+        client.PostAsJsonAsync("/api/auth/setup/no-account", new { confirm = true, ticket });
 
-    private static Task<HttpResponseMessage> LaunchAsync(HttpClient client, string? secret) =>
-        client.PostAsJsonAsync("/api/auth/launch", new { secret });
+    private static Task<HttpResponseMessage> SkipAsync(WebApplicationFactory<Program> factory, HttpClient client) =>
+        SkipAsync(client, Ticket(factory, TicketPurpose.Setup));
+
+    private static Task<HttpResponseMessage> RegisterAsync(HttpClient client, string email, string? ticket = null) =>
+        client.PostAsJsonAsync("/api/auth/register", new { email, password = Password, displayName = email.Split('@')[0], ticket });
+
+    private static Task<HttpResponseMessage> LaunchAsync(HttpClient client, string? ticket) =>
+        client.PostAsJsonAsync("/api/auth/launch", new { ticket });
 
     private static HttpRequestMessage Authed(HttpMethod method, string path, string token, object? body = null)
     {
@@ -95,10 +103,11 @@ public sealed class WorkbenchOwnerTests : IDisposable
         var status = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.True(status.GetProperty("needsFirstUser").GetBoolean());
         Assert.True(status.GetProperty("canSkipAccount").GetBoolean());
+        Assert.True(status.GetProperty("setupTicketRequired").GetBoolean());
         Assert.False(status.GetProperty("accountless").GetBoolean());
         Assert.Equal(Environment.UserName, status.GetProperty("windowsUser").GetString());
 
-        var auth = await JsonAsync(await SkipAsync(client));
+        var auth = await JsonAsync(await SkipAsync(factory, client));
         var user = auth.GetProperty("user");
         Assert.Equal(Environment.UserName + " (this computer)", user.GetProperty("displayName").GetString());
         Assert.Equal(WorkbenchOwnerService.OwnerEmail, user.GetProperty("email").GetString());
@@ -110,22 +119,71 @@ public sealed class WorkbenchOwnerTests : IDisposable
         status = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.False(status.GetProperty("needsFirstUser").GetBoolean());
         Assert.False(status.GetProperty("canSkipAccount").GetBoolean());
+        Assert.False(status.GetProperty("setupTicketRequired").GetBoolean());
         Assert.True(status.GetProperty("accountless").GetBoolean());
 
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
         Assert.True(await db.AuditEvents.AnyAsync(e => e.EventType == AuditEventType.WorkbenchOwnerCreated));
-        Assert.True(File.Exists(LocalOptions(factory).LaunchSecretPath));
+        // Nothing reusable is written to disk: sign-in uses tickets the running process mints.
+        Assert.False(File.Exists(Path.Combine(_dataDir, "launch-secret.protected")));
+    }
+
+    // --- Finding 2: first-run setup must prove it came from this workbench's own process ---
+
+    [Fact]
+    public async Task First_run_setup_needs_the_setup_ticket_in_the_local_profile()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+
+        // Another Windows user on the same machine can reach loopback, but has no ticket.
+        var skip = await SkipAsync(client, null);
+        Assert.Equal(HttpStatusCode.Forbidden, skip.StatusCode);
+        Assert.Contains("PartnerCenterBridge.exe", await skip.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.Forbidden, (await RegisterAsync(client, "intruder@example.com")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await RegisterAsync(client, "intruder@example.com", new string('A', 43))).StatusCode);
+        // A sign-in ticket is not a setup ticket.
+        Assert.Equal(HttpStatusCode.Forbidden, (await SkipAsync(client, Ticket(factory, TicketPurpose.SignIn))).StatusCode);
+        using (var scope = factory.Services.CreateScope())
+            Assert.False(await scope.ServiceProvider.GetRequiredService<BridgeDbContext>().AppUsers.AnyAsync());
+
+        // The ticket this process handed out works, once.
+        var ticket = Ticket(factory, TicketPurpose.Setup);
+        var admin = await JsonAsync(await RegisterAsync(client, "admin@example.com", ticket));
+        Assert.True(admin.GetProperty("user").GetProperty("isSystemAdmin").GetBoolean());
+        // Setup is over: later accounts need no ticket (open registration, no instance role) ...
+        var second = await JsonAsync(await RegisterAsync(client, "second@example.com"));
+        Assert.False(second.GetProperty("user").GetProperty("isSystemAdmin").GetBoolean());
+        // ... and the used ticket is gone.
+        Assert.NotEqual(TicketCheck.Accepted, Owner(factory).Consume(ticket, TicketPurpose.Setup, out _));
+    }
+
+    [Fact]
+    public async Task Setup_ticket_is_single_use_and_expires()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+        var owner = Owner(factory);
+
+        var ticket = owner.Mint(TicketPurpose.Setup);
+        Assert.Equal(TicketCheck.Accepted, owner.Consume(ticket, TicketPurpose.Setup, out _));
+        Assert.Equal(TicketCheck.Rejected, owner.Consume(ticket, TicketPurpose.Setup, out _));
+
+        var expired = owner.Mint(TicketPurpose.Setup);
+        _clock.Now += WorkbenchOwnerService.SetupLifetime + TimeSpan.FromSeconds(1);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SkipAsync(client, expired)).StatusCode);
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
     }
 
     [Fact]
     public async Task Skip_is_refused_once_any_user_exists()
     {
-        var client = Host().CreateClient();
-        (await client.PostAsJsonAsync("/api/auth/register",
-            new { email = "admin@example.com", password = Password, displayName = "Admin" })).EnsureSuccessStatusCode();
+        var factory = Host();
+        var client = factory.CreateClient();
+        (await RegisterAsync(client, "admin@example.com", Ticket(factory, TicketPurpose.Setup))).EnsureSuccessStatusCode();
 
-        Assert.Equal(HttpStatusCode.Conflict, (await SkipAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await SkipAsync(factory, client)).StatusCode);
         var status = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.False(status.GetProperty("canSkipAccount").GetBoolean());
         Assert.False(status.GetProperty("accountless").GetBoolean());
@@ -135,13 +193,12 @@ public sealed class WorkbenchOwnerTests : IDisposable
     [Fact]
     public async Task Skip_twice_and_registering_while_accountless_are_refused()
     {
-        var client = Host().CreateClient();
-        (await SkipAsync(client)).EnsureSuccessStatusCode();
-        Assert.Equal(HttpStatusCode.Conflict, (await SkipAsync(client)).StatusCode);
+        var factory = Host();
+        var client = factory.CreateClient();
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
+        Assert.Equal(HttpStatusCode.Conflict, (await SkipAsync(factory, client)).StatusCode);
 
-        var register = await client.PostAsJsonAsync("/api/auth/register",
-            new { email = "second@example.com", password = Password, displayName = "Second" });
-        Assert.Equal(HttpStatusCode.Conflict, register.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await RegisterAsync(client, "second@example.com")).StatusCode);
         // No password login for the owner, whatever is typed.
         var login = await client.PostAsJsonAsync("/api/auth/login", new { email = WorkbenchOwnerService.OwnerEmail, password = Password });
         Assert.Equal(HttpStatusCode.Unauthorized, login.StatusCode);
@@ -152,13 +209,16 @@ public sealed class WorkbenchOwnerTests : IDisposable
     {
         var factory = Host();
         var client = factory.CreateClient();
+        var ticket = Ticket(factory, TicketPurpose.Setup);
 
         // A cross-site form/text POST (no CORS preflight) cannot make the choice.
-        var text = await client.PostAsync("/api/auth/setup/no-account", new StringContent("{\"confirm\":true}", Encoding.UTF8, "text/plain"));
+        var text = await client.PostAsync("/api/auth/setup/no-account",
+            new StringContent($"{{\"confirm\":true,\"ticket\":\"{ticket}\"}}", Encoding.UTF8, "text/plain"));
         Assert.Equal(HttpStatusCode.UnsupportedMediaType, text.StatusCode);
         var empty = await client.PostAsync("/api/auth/setup/no-account", null);
         Assert.False(empty.IsSuccessStatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/setup/no-account", new { confirm = false })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/auth/setup/no-account", new { confirm = false, ticket })).StatusCode);
 
         using var scope = factory.Services.CreateScope();
         Assert.False(await scope.ServiceProvider.GetRequiredService<BridgeDbContext>().AppUsers.AnyAsync());
@@ -167,20 +227,25 @@ public sealed class WorkbenchOwnerTests : IDisposable
     [Fact]
     public async Task Skip_is_refused_with_a_non_loopback_listen_address()
     {
-        var client = Host((HostingKeys.Listen, "192.168.1.10")).CreateClient();
+        var factory = Host((HostingKeys.Listen, "192.168.1.10"));
+        var client = factory.CreateClient();
 
         var status = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.True(status.GetProperty("needsFirstUser").GetBoolean());
         Assert.False(status.GetProperty("canSkipAccount").GetBoolean());
-        var response = await SkipAsync(client);
+        var response = await SkipAsync(factory, client);
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Contains("--listen", await response.Content.ReadAsStringAsync());
+        // The first account still needs the setup ticket with --listen.
+        Assert.Equal(HttpStatusCode.Forbidden, (await RegisterAsync(client, "admin@example.com")).StatusCode);
+        (await RegisterAsync(client, "admin@example.com", Ticket(factory, TicketPurpose.Setup))).EnsureSuccessStatusCode();
     }
 
     [Fact]
     public async Task Accountless_workbench_refuses_to_start_with_a_non_loopback_listen_address()
     {
-        (await SkipAsync(Host().CreateClient())).EnsureSuccessStatusCode();
+        var first = Host();
+        (await SkipAsync(first, first.CreateClient())).EnsureSuccessStatusCode();
         foreach (var factory in _factories) factory.Dispose();
         _factories.Clear();
         SqliteConnection.ClearAllPools();
@@ -191,7 +256,7 @@ public sealed class WorkbenchOwnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Server_profile_never_exposes_the_no_account_mode()
+    public async Task Server_profile_never_exposes_the_no_account_mode_and_keeps_open_bootstrap()
     {
         var sqlite = Path.Combine(_dataDir, "server.db");
         Directory.CreateDirectory(_dataDir);
@@ -211,53 +276,89 @@ public sealed class WorkbenchOwnerTests : IDisposable
         Assert.Equal("Server", status.GetProperty("profile").GetString());
         Assert.True(status.GetProperty("needsFirstUser").GetBoolean());
         Assert.False(status.GetProperty("canSkipAccount").GetBoolean());
+        Assert.False(status.GetProperty("setupTicketRequired").GetBoolean());
         Assert.False(status.GetProperty("accountless").GetBoolean());
         Assert.Equal(JsonValueKind.Null, status.GetProperty("windowsUser").ValueKind);
-        Assert.Equal(HttpStatusCode.NotFound, (await SkipAsync(client)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await SkipAsync(client, null)).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await LaunchAsync(client, "anything")).StatusCode);
 
         var service = new WorkbenchOwnerService(new HostingInfo(HostingProfile.Server, null), TimeProvider.System,
             NullLogger<WorkbenchOwnerService>.Instance);
         Assert.NotNull(service.UnavailableReason);
-        Assert.Equal(LaunchCheck.Rejected, service.Check("anything", out _));
+        Assert.Throws<InvalidOperationException>(() => service.Mint(TicketPurpose.SignIn));
+        Assert.Equal(TicketCheck.Rejected, service.Consume(new string('A', 43), TicketPurpose.SignIn, out _));
+
+        // The container deployment's first run is unchanged: bootstrap relies on network controls.
+        var admin = await JsonAsync(await RegisterAsync(client, "admin@example.com"));
+        Assert.True(admin.GetProperty("user").GetProperty("isSystemAdmin").GetBoolean());
     }
 
+    // --- Findings 1 and 5: one-time sign-in tickets ---
+
     [Fact]
-    public async Task Launch_accepts_the_persisted_secret_and_backs_off_after_wrong_ones()
+    public async Task Sign_in_ticket_works_once_and_expires()
     {
         var factory = Host();
         var client = factory.CreateClient();
-        (await SkipAsync(client)).EnsureSuccessStatusCode();
-        var secret = LocalLaunchSecretStore.TryRead(LocalOptions(factory));
-        Assert.NotNull(secret);
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
 
-        var ok = await JsonAsync(await LaunchAsync(client, secret));
+        var ticket = Ticket(factory);
+        var ok = await JsonAsync(await LaunchAsync(client, ticket));
         Assert.True(ok.GetProperty("user").GetProperty("isWorkbenchOwner").GetBoolean());
         var token = ok.GetProperty("accessToken").GetString()!;
         Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(Authed(HttpMethod.Get, "/api/auth/me", token))).StatusCode);
+        // A copied, bookmarked or replayed link does nothing the second time.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, ticket)).StatusCode);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, "")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, secret + "x")).StatusCode);
-        // The third wrong secret started a backoff: even the right one waits, without being compared.
-        var throttled = await LaunchAsync(client, secret);
-        Assert.Equal(HttpStatusCode.TooManyRequests, throttled.StatusCode);
-        Assert.NotNull(throttled.Headers.RetryAfter);
-
-        _clock.Now += TimeSpan.FromSeconds(2);
-        Assert.Equal(HttpStatusCode.OK, (await LaunchAsync(client, secret)).StatusCode);
-
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
-        Assert.Equal(3, await db.AuditEvents.CountAsync(e => e.EventType == AuditEventType.LoginFailed && e.ActorName == "launch link"));
+        var late = Ticket(factory);
+        _clock.Now += WorkbenchOwnerService.SignInLifetime + TimeSpan.FromSeconds(1);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, late)).StatusCode);
+        // A setup ticket does not sign in.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, Ticket(factory, TicketPurpose.Setup))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await LaunchAsync(client, Ticket(factory))).StatusCode);
     }
 
     [Fact]
-    public async Task Launch_backoff_doubles_while_wrong_secrets_continue()
+    public async Task Wrong_tickets_never_block_a_valid_one()
     {
         var factory = Host();
         var client = factory.CreateClient();
-        (await SkipAsync(client)).EnsureSuccessStatusCode();
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
+        var ticket = Ticket(factory);
+
+        var codes = new List<HttpStatusCode>();
+        foreach (var wrong in new[] { "", null, "short", new string('A', 43), new string('x', 10_000), "not/base64url+chars/aaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ticket + "x" })
+            codes.Add((await LaunchAsync(client, wrong)).StatusCode);
+        Assert.All(codes, code => Assert.Contains(code, new[] { HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests }));
+        Assert.Contains(HttpStatusCode.TooManyRequests, codes);
+
+        // In the middle of the backoff, the real ticket still signs in.
+        Assert.Equal(HttpStatusCode.OK, (await LaunchAsync(client, ticket)).StatusCode);
+
+        // Only the failures before the backoff were recorded, so floods do not grow the audit log.
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BridgeDbContext>();
+        Assert.Equal(WorkbenchOwnerService.FreeFailures,
+            await db.AuditEvents.CountAsync(e => e.EventType == AuditEventType.LoginFailed && e.ActorName == "launch link"));
+    }
+
+    [Fact]
+    public async Task Oversized_launch_bodies_are_refused_before_model_binding()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+        var huge = await client.PostAsync("/api/auth/launch",
+            new StringContent("{\"ticket\":\"" + new string('A', 64 * 1024) + "\"}", Encoding.UTF8, "application/json"));
+        Assert.False(huge.IsSuccessStatusCode);
+        Assert.NotEqual(HttpStatusCode.OK, huge.StatusCode);
+    }
+
+    [Fact]
+    public async Task Launch_backoff_doubles_while_wrong_tickets_continue()
+    {
+        var factory = Host();
+        var client = factory.CreateClient();
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
 
         for (var i = 0; i < WorkbenchOwnerService.FreeFailures; i++)
             Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, "wrong")).StatusCode);
@@ -266,6 +367,7 @@ public sealed class WorkbenchOwnerTests : IDisposable
         Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, "wrong")).StatusCode); // 4th failure: 2s
         _clock.Now += TimeSpan.FromSeconds(1.5);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await LaunchAsync(client, "wrong")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await LaunchAsync(client, Ticket(factory))).StatusCode);
     }
 
     [Fact]
@@ -273,9 +375,8 @@ public sealed class WorkbenchOwnerTests : IDisposable
     {
         var factory = Host();
         var client = factory.CreateClient();
-        (await SkipAsync(client)).EnsureSuccessStatusCode();
-        var token = (await JsonAsync(await LaunchAsync(client, LocalLaunchSecretStore.TryRead(LocalOptions(factory)))))
-            .GetProperty("accessToken").GetString()!;
+        (await SkipAsync(factory, client)).EnsureSuccessStatusCode();
+        var token = (await JsonAsync(await LaunchAsync(client, Ticket(factory)))).GetProperty("accessToken").GetString()!;
 
         var tenants = await JsonAsync(await client.SendAsync(Authed(HttpMethod.Get, "/api/tenants", token)));
         Assert.Empty(tenants.EnumerateArray());
@@ -312,7 +413,7 @@ public sealed class WorkbenchOwnerTests : IDisposable
     {
         var factory = Host();
         var client = factory.CreateClient();
-        var token = (await JsonAsync(await SkipAsync(client))).GetProperty("accessToken").GetString()!;
+        var token = (await JsonAsync(await SkipAsync(factory, client))).GetProperty("accessToken").GetString()!;
 
         var pat = await JsonAsync(await client.SendAsync(Authed(HttpMethod.Post, "/api/mcp-tokens", token, new { name = "Claude" })));
         var patJwt = pat.GetProperty("jwt").GetString()!;
@@ -327,9 +428,8 @@ public sealed class WorkbenchOwnerTests : IDisposable
     {
         var factory = Host();
         var client = factory.CreateClient();
-        var token = (await JsonAsync(await SkipAsync(client))).GetProperty("accessToken").GetString()!;
-        var options = LocalOptions(factory);
-        var secret = LocalLaunchSecretStore.TryRead(options)!;
+        var token = (await JsonAsync(await SkipAsync(factory, client))).GetProperty("accessToken").GetString()!;
+        var pending = Ticket(factory);
 
         Assert.Equal(HttpStatusCode.BadRequest, (await client.SendAsync(Authed(HttpMethod.Post, "/api/auth/owner/protect", token,
             new { email = "me@example.com", password = "short" }))).StatusCode);
@@ -342,22 +442,25 @@ public sealed class WorkbenchOwnerTests : IDisposable
         Assert.Equal("me@example.com", protectedUser.GetProperty("user").GetProperty("email").GetString());
         Assert.Equal("Maya", protectedUser.GetProperty("user").GetProperty("displayName").GetString());
         Assert.True(protectedUser.GetProperty("user").GetProperty("isSystemAdmin").GetBoolean());
+        var fresh = protectedUser.GetProperty("accessToken").GetString()!;
 
-        Assert.False(File.Exists(options.LaunchSecretPath));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, secret)).StatusCode);
+        // Outstanding tickets are dropped, and any ticket minted later is refused: there is no owner.
+        Assert.Equal(0, Owner(factory).OutstandingTickets);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, pending)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, Ticket(factory))).StatusCode);
         var login = await JsonAsync(await client.PostAsJsonAsync("/api/auth/login", new { email = "me@example.com", password = Password }));
         Assert.Equal("Maya", login.GetProperty("user").GetProperty("displayName").GetString());
 
         var status = await client.GetFromJsonAsync<JsonElement>("/api/system/status");
         Assert.False(status.GetProperty("accountless").GetBoolean());
         // Only once: the account is an ordinary one now.
-        Assert.Equal(HttpStatusCode.Conflict, (await client.SendAsync(Authed(HttpMethod.Post, "/api/auth/owner/protect", token,
+        Assert.Equal(HttpStatusCode.Conflict, (await client.SendAsync(Authed(HttpMethod.Post, "/api/auth/owner/protect", fresh,
             new { email = "other@example.com", password = Password }))).StatusCode);
         // And the workbench is multi-user again.
-        (await client.PostAsJsonAsync("/api/auth/register",
-            new { email = "second@example.com", password = Password, displayName = "Second" })).EnsureSuccessStatusCode();
-        Assert.Null(await LocalWorkbenchLifetime.ResolveLaunchUrlAsync(
-            factory.Services.GetRequiredService<IServiceScopeFactory>(), options, CancellationToken.None));
+        (await RegisterAsync(client, "second@example.com")).EnsureSuccessStatusCode();
+        var link = await LocalWorkbenchLifetime.CreateBrowserLinkAsync(
+            factory.Services.GetRequiredService<IServiceScopeFactory>(), CancellationToken.None);
+        Assert.Equal(new BrowserLink("http://localhost:5199", BrowserLinkKind.Plain), link);
 
         using var scope = factory.Services.CreateScope();
         Assert.True(await scope.ServiceProvider.GetRequiredService<BridgeDbContext>().AuditEvents
@@ -365,79 +468,78 @@ public sealed class WorkbenchOwnerTests : IDisposable
     }
 
     [Fact]
-    public async Task Launch_secret_survives_a_restart_and_the_browser_url_carries_it_in_the_fragment()
+    public async Task Browser_link_carries_a_fresh_ticket_in_the_fragment_and_tickets_die_with_the_process()
     {
-        string secret;
+        string oldTicket;
         {
             var first = Host();
-            (await SkipAsync(first.CreateClient())).EnsureSuccessStatusCode();
-            secret = LocalLaunchSecretStore.TryRead(LocalOptions(first))!;
+            var firstLink = await LocalWorkbenchLifetime.CreateBrowserLinkAsync(
+                first.Services.GetRequiredService<IServiceScopeFactory>(), CancellationToken.None);
+            Assert.Equal(BrowserLinkKind.Setup, firstLink.Kind);
+            Assert.StartsWith("http://localhost:5199/#ticket=", firstLink.Url);
+            (await SkipAsync(first.CreateClient(), firstLink.Url.Split("#ticket=")[1])).EnsureSuccessStatusCode();
+            oldTicket = Ticket(first);
         }
 
         var second = Host();
         var client = second.CreateClient();
-        var options = LocalOptions(second);
-        var url = await LocalWorkbenchLifetime.ResolveLaunchUrlAsync(
-            second.Services.GetRequiredService<IServiceScopeFactory>(), options, CancellationToken.None);
-        Assert.Equal($"http://localhost:5199/#launch={secret}", url);
-        Assert.Equal(url, options.LaunchUrl(secret));
-        Assert.Equal(HttpStatusCode.OK, (await LaunchAsync(client, secret)).StatusCode);
+        // Tickets live only in the process that minted them.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await LaunchAsync(client, oldTicket)).StatusCode);
+
+        var link = await LocalWorkbenchLifetime.CreateBrowserLinkAsync(
+            second.Services.GetRequiredService<IServiceScopeFactory>(), CancellationToken.None);
+        Assert.Equal(BrowserLinkKind.SignIn, link.Kind);
+        Assert.StartsWith("http://localhost:5199/#ticket=", link.Url);
+        var ticket = link.Url.Split("#ticket=")[1];
+        Assert.Equal(WorkbenchOwnerService.TicketLength, ticket.Length);
+        Assert.Matches("^[A-Za-z0-9_-]+$", ticket);
+        var token = (await JsonAsync(await LaunchAsync(client, ticket))).GetProperty("accessToken").GetString()!;
+        Assert.NotEqual(link, await LocalWorkbenchLifetime.CreateBrowserLinkAsync(
+            second.Services.GetRequiredService<IServiceScopeFactory>(), CancellationToken.None));
+
+        // Tickets are never written anywhere under the data root.
+        foreach (var file in Directory.GetFiles(_dataDir, "*", SearchOption.AllDirectories))
+        {
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(stream);
+            Assert.DoesNotContain(ticket, await reader.ReadToEndAsync());
+        }
 
         // The diagnostics auth check says what this mode means.
-        var token = (await JsonAsync(await LaunchAsync(client, secret))).GetProperty("accessToken").GetString()!;
         var diagnostics = await JsonAsync(await client.SendAsync(Authed(HttpMethod.Get, "/api/system/diagnostics", token)));
         var auth = diagnostics.GetProperty("checks").EnumerateArray().Single(c => c.GetProperty("id").GetString() == "auth");
         Assert.Equal("Ok", auth.GetProperty("status").GetString());
-        Assert.StartsWith("No account (launch secret, this Windows user only)", auth.GetProperty("detail").GetString());
+        Assert.StartsWith("No account (one-time launch links", auth.GetProperty("detail").GetString());
     }
 
     [Fact]
-    public void Launch_secret_is_256_bits_protected_at_rest_and_stable()
+    public void Tickets_are_256_bit_base64url_and_bounded_in_number()
     {
-        var options = LocalWorkbenchOptions.FromConfiguration(new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [HostingKeys.DataDir] = _dataDir, [HostingKeys.Port] = "5199" }).Build());
-        LocalDataDirectory.Ensure(options);
-        Assert.Null(LocalLaunchSecretStore.TryRead(options));
+        var clock = new ManualClock();
+        var options = new LocalWorkbenchOptions { DataRoot = _dataDir, Port = 5199 };
+        var service = new WorkbenchOwnerService(new HostingInfo(HostingProfile.Local, options), clock,
+            NullLogger<WorkbenchOwnerService>.Instance);
 
-        var secret = LocalLaunchSecretStore.GetOrCreate(options);
-        Assert.Equal(43, secret.Length); // 32 bytes, base64url without padding
-        Assert.DoesNotContain('+', secret);
-        Assert.DoesNotContain('/', secret);
-        Assert.Equal(secret, LocalLaunchSecretStore.GetOrCreate(options));
-        Assert.Equal(secret, LocalLaunchSecretStore.TryRead(options));
-        Assert.DoesNotContain(secret, File.ReadAllText(options.LaunchSecretPath));
-        if (OperatingSystem.IsWindows())
-        {
-            // The key ring that protects it is itself encrypted with DPAPI for this Windows user.
-            var keyXml = Directory.GetFiles(options.KeysPath, "*.xml").Select(File.ReadAllText).ToList();
-            Assert.NotEmpty(keyXml);
-            Assert.All(keyXml, xml => Assert.Contains("DpapiXmlDecryptor", xml));
-        }
+        var tickets = Enumerable.Range(0, WorkbenchOwnerService.MaxOutstanding + 4).Select(_ => service.Mint(TicketPurpose.SignIn)).ToList();
+        Assert.All(tickets, t => Assert.Equal(43, t.Length));
+        Assert.Equal(tickets.Count, tickets.Distinct().Count());
+        Assert.Equal(WorkbenchOwnerService.MaxOutstanding, service.OutstandingTickets);
+        // The oldest were dropped to make room; the newest still work.
+        Assert.Equal(TicketCheck.Rejected, service.Consume(tickets[0], TicketPurpose.SignIn, out _));
+        Assert.Equal(TicketCheck.Accepted, service.Consume(tickets[^1], TicketPurpose.SignIn, out _));
 
-        LocalLaunchSecretStore.Delete(options);
-        Assert.Null(LocalLaunchSecretStore.TryRead(options));
-        Assert.NotEqual(secret, LocalLaunchSecretStore.GetOrCreate(options)); // rotated
-        Assert.Empty(Directory.GetFiles(_dataDir, "*.tmp"));
+        service.RevokeTickets();
+        Assert.Equal(0, service.OutstandingTickets);
     }
 
     [Fact]
-    public void Launch_secret_shared_explicitly_is_refused_like_the_signing_key()
+    public void Legacy_launch_secret_file_is_deleted_at_startup()
     {
-        if (!OperatingSystem.IsWindows()) return;
-        var options = LocalWorkbenchOptions.FromConfiguration(new Microsoft.Extensions.Configuration.ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?> { [HostingKeys.DataDir] = _dataDir, [HostingKeys.Port] = "5199" }).Build());
+        var options = new LocalWorkbenchOptions { DataRoot = _dataDir, Port = 5199 };
         LocalDataDirectory.Ensure(options);
-        LocalLaunchSecretStore.GetOrCreate(options);
-        Assert.Empty(LocalDataDirectory.Ensure(options));
-
-        var file = new FileInfo(options.LaunchSecretPath);
-        var security = file.GetAccessControl();
-        security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinUsersSid, null),
-            FileSystemRights.Read, AccessControlType.Allow));
-        file.SetAccessControl(security);
-
-        var error = Assert.Throws<InvalidOperationException>(() => LocalDataDirectory.Ensure(options));
-        Assert.Contains("launch-secret.protected", error.Message);
+        File.WriteAllText(options.LegacyLaunchSecretPath, "old");
+        LocalDataDirectory.Ensure(options);
+        Assert.False(File.Exists(options.LegacyLaunchSecretPath));
     }
 
     [Fact]

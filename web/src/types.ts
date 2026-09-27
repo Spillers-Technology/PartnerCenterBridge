@@ -268,12 +268,14 @@ export interface SystemStatus {
   version: string;
   authMode: AuthMode;
   needsFirstUser: boolean;
-  /** Local Workbench used without an account: sign-in only through the launch link the exe opens. */
+  /** Local Workbench used without an account: sign-in only through the one-time link the exe opens. */
   accountless?: boolean;
   /** First run may offer "Skip -- use without an account" (Local profile, loopback only). */
   canSkipAccount?: boolean;
   /** The Windows user the workbench runs as; only sent when one of the two flags above is true. */
   windowsUser?: string | null;
+  /** Local Workbench first run: creating the first account (or choosing no account) needs the exe's one-time setup link. */
+  setupTicketRequired?: boolean;
 }
 
 export type DiagnosticStatus = "Ok" | "Warning" | "Error" | "NotConfigured";

@@ -84,3 +84,41 @@ describe("Register", () => {
     expect(screen.queryByRole("button", { name: /Skip/ })).not.toBeInTheDocument();
   });
 });
+
+describe("Register on a Local Workbench first run", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("shows guidance instead of the form without the exe's setup ticket", () => {
+    render(
+      <ThemeProvider theme={theme}>
+        <Register setup setupTicketRequired skipAccount={{ windowsUser: "maya" }} onAuthenticated={vi.fn()} onGoLogin={vi.fn()} />
+      </ThemeProvider>
+    );
+    expect(screen.getByText("Open Partner Center Bridge from PartnerCenterBridge.exe to finish setup.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Skip/ })).not.toBeInTheDocument();
+  });
+
+  it("sends the setup ticket with the first account and with the no-account choice", async () => {
+    vi.mocked(api.auth.register).mockResolvedValue({ accessToken: "tok", user: { id: "u1" } as never });
+    vi.mocked(api.auth.setupNoAccount).mockResolvedValue({ accessToken: "owner", user: { id: "o1" } as never });
+    const user = userEvent.setup();
+    render(
+      <ThemeProvider theme={theme}>
+        <ConfirmDialogProvider>
+          <Register setup setupTicketRequired setupTicket="tkt" skipAccount={{ windowsUser: "maya" }} onAuthenticated={vi.fn()} onGoLogin={vi.fn()} />
+        </ConfirmDialogProvider>
+      </ThemeProvider>
+    );
+
+    await user.type(screen.getByLabelText("Display name"), "Maya Chen");
+    await user.type(screen.getByLabelText("Email"), "maya@contoso.com");
+    await user.type(screen.getByLabelText("Password (12+ characters)"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create administrator account" }));
+    expect(api.auth.register).toHaveBeenCalledWith("maya@contoso.com", "correct-horse-battery", "Maya Chen", "tkt");
+
+    await user.click(screen.getByRole("button", { name: "Skip -- use without an account on this computer" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Use without an account" }));
+    await waitFor(() => expect(api.auth.setupNoAccount).toHaveBeenCalledWith("tkt"));
+  });
+});
