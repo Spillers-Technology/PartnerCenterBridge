@@ -11,7 +11,7 @@ or an action it cannot perform says so, with the reason, instead of pretending t
 **contract** declares a desired state (starting with Win32 app templates) and the bridge
 reconciles every tenant on the contract to it.
 
-> **Maturity (v0.9.0), feature by feature:**
+> **Maturity (v0.9.2), feature by feature:**
 >
 > | Capability | Status |
 > |---|---|
@@ -23,6 +23,9 @@ reconciles every tenant on the contract to it.
 > | Config snapshots: section/whole-tenant diff, exportable patches, optional git sync | **Beta** |
 > | MCP server (Streamable HTTP at `/mcp`) with a per-tenant human approval queue | **Beta** |
 > | Local Workbench: single `.exe`, SQLite, local accounts, no server to stand up | **Beta** |
+> | Guided PowerShell 7 and Exchange module setup in the Local Workbench | **Beta** |
+> | Windows tray, branded executable and matching app/site favicons | **Beta** |
+> | Direct Microsoft admin sign-in per tenant, encrypted caches and reconnect | **Beta** - Local Workbench; app registration and consent required |
 > | Person workspace (profile/licenses/groups/auth/mailbox/devices/history in one read) | **Beta** |
 > | Access Parity: copy a source user's missing cloud group memberships to a target, additive-only | **Beta** |
 > | Offboarding policy v2: per-contract policy, ordered plan/apply/verify, ticket evidence | **Beta** |
@@ -67,6 +70,12 @@ Two independent auth planes:
 - **Microsoft plane** — a multi-tenant Entra app under the **Secure Application Model** with a
   GDAP relationship per customer. `SamTokenService` exchanges the stored (encrypted, auto-rotated)
   SAM refresh token for a per-tenant Graph token on demand.
+  The loopback-only Local Workbench also supports **Tenants > Add tenant with Microsoft**:
+  each operator/tenant pair gets its own encrypted MSAL cache, silent renewal, and **Reconnect**
+  for the remembered username when interaction is required. The publisher supplies one multitenant
+  public client ID with release builds; technicians do not register an app per customer tenant.
+  See [direct sign-in and publisher setup](https://spillerstech.us/PartnerCenterBridge/local-workbench.html#direct-microsoft-sign-in).
+  Direct sign-in covers Graph; Partner Center and Exchange retain their separate credentials.
 
 ```
 web/ (React+Vite+TS)  ──►  src/PartnerCenterBridge.Api  ──►  Core (contracts / desired state / reconcile / workflows / operations)
@@ -182,27 +191,30 @@ Both modes share the same API, the same EF Core model, and the same workflow/ope
 only the hosting profile (`Hosting:Profile`), the persistence provider, and the auth defaults
 differ.
 
-### Local Workbench (single `.exe`, no server to stand up)
+### Desktop Workbench (single `.exe`, no server to stand up)
 
 A self-contained Windows binary that embeds the API and the built SPA and runs entirely on one
 machine: SQLite instead of Postgres, loopback-only Kestrel, and self-registered Local accounts.
-There is nothing else to install or configure to click through the app.
+Double-clicking opens a branded WPF window with the existing web app inside WebView2. The API
+uses an available loopback port and closes with the window. Microsoft Edge WebView2 Runtime is
+required; the application reports a missing runtime with an installation hint.
 
 ```
 PartnerCenterBridge.exe [command] [options]
 
 Commands:
-  (none)          Start the web app (API + UI).
+  (none)          Open the Desktop Workbench (API + UI in one process).
   doctor          Check configuration and dependencies, print the results, and exit
                   (exit 0 = no errors, 1 = at least one error). Does not start the server.
   bootstrap-sam   Run the interactive Secure Application Model bootstrap (device code) and exit.
 
 Options:
   --local             Use the Local Workbench profile (baked in by default for this build).
-  --port <N>          Port to listen on (default 5080).
+  --browser           Use the browser and notification-area tray instead of the desktop window.
+  --port <N>          Start the CLI/browser host on a chosen port (default 5080).
   --data-dir <path>   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
   --listen <address>  Bind to another address instead of 127.0.0.1 (exposes the app to the network).
-  --no-browser        Do not open the browser after startup. A workbench used without an
+  --no-browser        Run the local API without a browser or desktop window. A workbench used without an
                       account prints its sign-in link instead: that link grants full
                       access to this workbench, so do not share it.
   --version           Print the version and exit.
@@ -229,19 +241,25 @@ Options:
   `[::1]`) is redirected (GET/HEAD) or rejected with 421 (everything else) so passkeys, which are
   bound to one origin, always see the same host. `--listen <addr>` exposes the app to the network
   and prints a standing warning; it is off by default.
-- **Second launch on an occupied port**: the exe asks the running instance for a fresh link over
+- **Second launch**: Desktop mode focuses the existing window for the same Windows user. In browser
+  mode on an occupied port, the exe asks the running instance for a fresh link over
   a Windows named pipe restricted to the current user and verifies the pipe server's owner. It
   opens the returned link and exits 0. If it cannot verify the running instance, it reports the
   port collision without opening a URL or exposing a ticket.
 - **Build it**: `./scripts/publish-local.ps1` (needs the .NET 8 SDK and Node for the SPA build) →
   `artifacts/local/win-x64/PartnerCenterBridge.exe`. Equivalent to `dotnet publish
-  src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
+  src/PartnerCenterBridge.Desktop -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
   -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
-  -p:DebugType=embedded -p:PcbLocalWorkbench=true`. `-SkipSpaBuild` embeds an existing `web/dist`
+  -p:DebugType=embedded -p:PcbLocalWorkbench=true -p:PcbDesktop=true`. `-SkipSpaBuild` embeds an existing `web/dist`
   as-is instead of rebuilding it.
 
 Full detail, including diagnostics and Exchange as an optional dependency:
 [Local Workbench](https://spillerstech.us/PartnerCenterBridge/local-workbench.html).
+
+The Windows executable is a GUI application. In PowerShell automation, use
+`Start-Process .\PartnerCenterBridge.exe -ArgumentList 'doctor' -NoNewWindow -Wait -PassThru`
+to wait for completion and inspect `ExitCode`; use `-RedirectStandardOutput` and
+`-RedirectStandardError` when capturing diagnostic output.
 
 **Download a signed build** instead of building it yourself: every tagged release publishes
 `PartnerCenterBridge-vX.Y.Z-win-x64.zip` (the exe, `LICENSE`, and a `README-FIRST.txt`) and its
@@ -395,7 +413,9 @@ workspace's `mailbox` section, and any offboarding item that needs Exchange (`co
 probes `pwsh` and the module out-of-process (cached 60 seconds) and the app-only cert (checked
 fresh every time), and prints the exact fix for whichever piece is missing first, in the order
 you'd fix them: install PowerShell 7, then the module, then configure the app registration and
-certificate.
+certificate. In the Windows Local Workbench, an instance Administrator can install PowerShell 7
+and the module directly from Home or Settings after confirmation. Declining keeps a persistent
+blocked check; a successful install refreshes the probe and enables Exchange without a restart.
 
 The Exchange organization to connect to is read from Microsoft Graph for each tenant (its
 verified initial `*.onmicrosoft.com` domain, cross-checked against the tenant's own Entra id) the

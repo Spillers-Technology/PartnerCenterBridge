@@ -54,6 +54,7 @@ jobs:
 
           web_ver="$(jq -r .version web/package.json)"
           csproj_ver="$(grep -oP '(?<=<Version>)[^<]+(?=</Version>)' src/PartnerCenterBridge.Api/PartnerCenterBridge.Api.csproj)"
+          desktop_ver="$(grep -oP '(?<=<Version>)[^<]+(?=</Version>)' src/PartnerCenterBridge.Desktop/PartnerCenterBridge.Desktop.csproj)"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             dry_run="${DRY_RUN_INPUT:-true}"
@@ -70,6 +71,10 @@ jobs:
           fi
           if [ "$tag" != "v$csproj_ver" ]; then
             echo "Tag $tag does not match PartnerCenterBridge.Api.csproj <Version> v$csproj_ver" >&2
+            exit 1
+          fi
+          if [ "$tag" != "v$desktop_ver" ]; then
+            echo "Tag $tag does not match PartnerCenterBridge.Desktop.csproj <Version> v$desktop_ver" >&2
             exit 1
           fi
 
@@ -144,7 +149,13 @@ jobs:
 
       - name: Publish Local Workbench
         shell: pwsh
-        run: ./scripts/publish-local.ps1
+        env:
+          PCB_MICROSOFT_CLIENT_ID: ${{ vars.MICROSOFT_SIGN_IN_CLIENT_ID }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:PCB_MICROSOFT_CLIENT_ID)) {
+            throw 'Set release environment variable MICROSOFT_SIGN_IN_CLIENT_ID to the publisher-owned multitenant public-client registration. Released builds must let technicians sign in without registering their own app.'
+          }
+          ./scripts/publish-local.ps1
 
       - name: Stage exe for signing
         shell: pwsh
@@ -173,8 +184,13 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/smoke-local.ps1 -ExePath dist/PartnerCenterBridge.exe `
+            -RequireMicrosoftSignIn `
             -DataDir (Join-Path $env:RUNNER_TEMP 'pcb-release-smoke') `
             -LogDir $env:RUNNER_TEMP
+
+      - name: Smoke test signed desktop startup
+        shell: pwsh
+        run: ./scripts/smoke-desktop.ps1 -ExePath dist/PartnerCenterBridge.exe -DataDir (Join-Path $env:RUNNER_TEMP 'pcb-release-desktop-smoke')
 
       - name: Package release zip
         shell: pwsh

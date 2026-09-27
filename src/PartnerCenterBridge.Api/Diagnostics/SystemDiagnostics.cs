@@ -9,9 +9,9 @@ namespace PartnerCenterBridge.Api.Diagnostics;
 public enum SystemCheckStatus { Ok, Warning, Error, NotConfigured }
 
 /// <summary>How to fix a non-Ok check: a shell command to run and/or an SPA route to open.</summary>
-public sealed record SystemCheckFix(string Label, string? Command, string? Route);
+public sealed record SystemCheckFix(string Label, string? Command, string? Route, string? InstallId = null);
 
-public sealed record SystemCheck(string Id, string Label, SystemCheckStatus Status, string Detail, SystemCheckFix? Fix);
+public sealed record SystemCheck(string Id, string Label, SystemCheckStatus Status, string Detail, SystemCheckFix? Fix, bool Optional = false);
 
 public sealed record SystemCapabilities(bool Graph, bool Exchange, bool PartnerCenter);
 
@@ -37,9 +37,12 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
     private readonly AuthModeInfo _authMode;
     private readonly ISamStatusService _sam;
     private readonly IExchangeDependencyProbe _exchange;
+    private readonly IDependencySetupService _setup;
+    private readonly DirectTenantConnection? _direct;
 
     public SystemDiagnostics(HostingInfo hosting, PersistenceInfo persistence, BridgeDbContext db, IConfiguration cfg,
-        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange)
+        AuthModeInfo authMode, ISamStatusService sam, IExchangeDependencyProbe exchange, IDependencySetupService setup,
+        DirectTenantConnection? direct = null)
     {
         _hosting = hosting;
         _persistence = persistence;
@@ -48,6 +51,8 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         _authMode = authMode;
         _sam = sam;
         _exchange = exchange;
+        _setup = setup;
+        _direct = direct;
     }
 
     public async Task<SystemDiagnosticsReport> RunAsync(CancellationToken ct)
@@ -59,14 +64,39 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
         var databaseUsable = database.Status is SystemCheckStatus.Ok;
         checks.Add(await AuthAsync(databaseUsable, ct));
         var (samCheck, samReady) = await SamAsync(databaseUsable, ct);
+        var directReady = false;
+        if (databaseUsable && _direct is { Available: true })
+        {
+            try
+            {
+                var connections = await _direct.ListAsync(ct);
+                directReady = await _direct.GetClientIdAsync(ct) is not null && connections.Any(c => !c.ReconnectRequired);
+                checks.Add(new("microsoft-sign-in", "Microsoft tenant sign-in",
+                    directReady ? SystemCheckStatus.Ok : SystemCheckStatus.NotConfigured,
+                    directReady ? $"{connections.Count(c => !c.ReconnectRequired)} tenant connection(s) available for this operator"
+                        : "Add a Microsoft admin connection or reconnect your account in Tenants",
+                    new SystemCheckFix("Add tenant with Microsoft", null, "/settings/microsoft")));
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                checks.Add(new("microsoft-sign-in", "Microsoft tenant sign-in", SystemCheckStatus.Error,
+                    "Saved connections cannot be decrypted. Restore the original Data Protection key ring.", null));
+            }
+        }
+        if (directReady && !samReady)
+            samCheck = samCheck with { Detail = samCheck.Detail + ". SAM is optional for directly connected Graph tenants; it is still required for Partner Center." };
+        if (_hosting.Local is not null && !samReady && samCheck.Status == SystemCheckStatus.NotConfigured)
+            samCheck = samCheck with { Label = "Partner Center / GDAP (optional)", Optional = true,
+                Detail = "No partner connection configured. Add Microsoft 365 tenants with their own admin accounts in Microsoft connections, or configure this optional MSP integration.",
+                Fix = new SystemCheckFix("Partner connection settings", null, MicrosoftSettingsRoute) };
         checks.Add(samCheck);
         checks.Add(await TenantsAsync(databaseUsable, ct));
 
         var exchange = await _exchange.GetAsync(ct);
-        checks.AddRange(ExchangeChecks(exchange));
+        checks.AddRange(ExchangeChecks(exchange, _hosting.Local is not null, _setup));
 
         return new SystemDiagnosticsReport(checks, new SystemCapabilities(
-            Graph: samReady, Exchange: exchange.Ready, PartnerCenter: samReady));
+            Graph: samReady || directReady, Exchange: exchange.Ready, PartnerCenter: samReady));
     }
 
     private bool DatabaseExists => _persistence.DatabaseFilePath is null || File.Exists(_persistence.DatabaseFilePath);
@@ -206,23 +236,32 @@ public sealed class SystemDiagnostics : ISystemDiagnostics
             : new(id, label, SystemCheckStatus.Ok, $"{active} active tenant(s)", null);
     }
 
-    private static IEnumerable<SystemCheck> ExchangeChecks(ExchangeDependencyState state)
+    private static IEnumerable<SystemCheck> ExchangeChecks(ExchangeDependencyState state, bool local, IDependencySetupService setup)
     {
         yield return state.PwshAvailable
             ? new("pwsh", "PowerShell 7", SystemCheckStatus.Ok, $"PowerShell {state.PwshVersion} at {state.PwshPath}", null)
-            : new("pwsh", "PowerShell 7", SystemCheckStatus.NotConfigured,
-                (state.PwshError ?? "pwsh not found") + " (only needed for Exchange Online operations)",
-                new SystemCheckFix("Install PowerShell 7",
-                    OperatingSystem.IsWindows() ? "winget install --id Microsoft.PowerShell --source winget" : null, null));
+            : new("pwsh", "PowerShell 7", local && setup.IsDeclined(DependencyIds.Pwsh) ? SystemCheckStatus.Error : SystemCheckStatus.NotConfigured,
+                (state.PwshError ?? "pwsh not found") + (local && setup.IsDeclined(DependencyIds.Pwsh)
+                    ? ". Installation was declined; Exchange Online remains blocked until PowerShell 7 is installed."
+                    : " (only needed for Exchange Online operations)"),
+                new SystemCheckFix(state.PwshCommand is "pwsh" or "pwsh.exe" ? "Install PowerShell 7" : "Correct Exchange:PwshPath in pcb.local.json and restart",
+                    OperatingSystem.IsWindows() && (state.PwshCommand is "pwsh" or "pwsh.exe")
+                        ? "winget install --id Microsoft.PowerShell --source winget" : null,
+                    null,
+                    local && OperatingSystem.IsWindows() && (state.PwshCommand is "pwsh" or "pwsh.exe") ? DependencyIds.Pwsh : null));
 
         yield return !state.PwshAvailable
             ? new("exchange-module", "Exchange Online module", SystemCheckStatus.NotConfigured, "Needs PowerShell 7 first",
                 new SystemCheckFix("Install PowerShell 7, then the module", InstallModuleCommand, null))
             : state.ModuleAvailable
                 ? new("exchange-module", "Exchange Online module", SystemCheckStatus.Ok, $"ExchangeOnlineManagement {state.ModuleVersion}", null)
-                : new("exchange-module", "Exchange Online module", SystemCheckStatus.NotConfigured,
-                    "pwsh found, " + (state.ModuleError ?? "ExchangeOnlineManagement not installed"),
-                    new SystemCheckFix("Install module", InstallModuleCommand, null));
+                : new("exchange-module", "Exchange Online module",
+                    local && setup.IsDeclined(DependencyIds.ExchangeModule) ? SystemCheckStatus.Error : SystemCheckStatus.NotConfigured,
+                    "pwsh found, " + (state.ModuleError ?? "ExchangeOnlineManagement not installed") +
+                    (local && setup.IsDeclined(DependencyIds.ExchangeModule)
+                        ? ". Installation was declined; Exchange Online remains blocked until the module is installed." : ""),
+                    new SystemCheckFix("Install module", InstallModuleCommand, null,
+                        local ? DependencyIds.ExchangeModule : null));
 
         var usesCertificateThumbprint = state.CertificatePath.StartsWith("Cert:", StringComparison.OrdinalIgnoreCase);
         yield return state.AppConfigured

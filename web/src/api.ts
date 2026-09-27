@@ -78,6 +78,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  microsoftConnections: {
+    list: () => request<{ available: boolean; configured: boolean; canConfigure?: boolean; connections: { id: string; tenantId: string; displayName: string; username: string; reconnectRequired: boolean }[] }>("/api/microsoft-connections"),
+    setup: (clientId: string) => request<void>("/api/microsoft-connections/setup", { method: "PUT", body: JSON.stringify({ clientId }) }),
+    connect: (tenantId?: string) => request<Tenant>("/api/microsoft-connections", { method: "POST", body: JSON.stringify({ tenantId }) })
+  },
   health: () => request<{ status: string }>("/health"),
 
   dashboard: () => request<Dashboard>("/api/dashboard"),
@@ -85,7 +90,11 @@ export const api = {
   /** Workbench host status + diagnostics (0.9.0+). Older servers answer 404. */
   system: {
     status: () => request<SystemStatus>("/api/system/status"),
-    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics")
+    diagnostics: () => request<SystemDiagnostics>("/api/system/diagnostics"),
+    installDependency: (id: "pwsh" | "exchange-module") =>
+      request<{ installed: boolean; detail: string }>(`/api/system/dependencies/${id}/install`, { method: "POST" }),
+    declineDependency: (id: "pwsh" | "exchange-module") =>
+      request<void>(`/api/system/dependencies/${id}/decision`, { method: "PUT", body: JSON.stringify({ declined: true }) })
   },
 
   /** Instance-level Secure Application Model credential (requires instance.sam.manage). */

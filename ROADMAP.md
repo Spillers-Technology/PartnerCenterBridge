@@ -2,14 +2,8 @@
 
 Things we want to come back to. Not scheduled, not sequenced -- just tracked so they don't get lost.
 
-## Next (0.9.1)
+## Next
 
-- **Dependency installer.** Offer to install PowerShell 7 and the `ExchangeOnlineManagement`
-  module from Settings and from first launch, instead of only reporting them missing. Runs through
-  an allowlisted set of commands (no arbitrary shell-out), shows a loud, persistent blocked state
-  when the operator declines rather than quietly leaving Exchange features disabled, and turns the
-  dependent features on automatically once the probe next reports them present -- no restart or
-  manual re-check needed.
 - **Onboarding policy.** A contract-defined new-user plan, mirroring offboarding policy v2's
   plan -> apply -> verify loop with structured evidence, instead of the current one-shot
   provisioning templates. Today a new hire isn't recorded as a run anywhere PCB tracks history --
@@ -27,12 +21,24 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
 
 ## Tenant sign-in: later phases
 
+The v0.9.1 Local Workbench now includes a separate system-browser delegated connection per
+operator and tenant, encrypted MSAL caches, silent renewal, and account-specific reconnect.
+The broader SAM health/rotation work below remains separate; direct sign-in does not implement
+the partner reconnect flow, app-only direct connections, or WAM.
+
 Phases 2-4 of `docs/specs/tenant-sign-in-review.md`'s phased design, after Phase 1 above lands:
 GDAP customers arriving with actionable state and one-click remediation (verify access, grant
 consent, request a missing role, complete group assignment, configure Exchange); direct-customer
 application connections (app-only, certificate-based, independent of the partner SAM connection);
 and WAM as a separate desktop token provider for delegated connections, kept apart from the
 existing SAM refresh-token extractor and server automation.
+
+The v0.9.2 Desktop Workbench is a thin WebView2 host for the same API. It does not acquire
+Microsoft tokens itself. `ITokenProvider` and `DirectTenantConnection` are the current selection
+seam: direct delegated connections are selected by tenant and local operator; the partner/SAM
+fallback remains separate. Before adding direct app-only or WAM, introduce an explicit connection
+catalog with capability metadata and deterministic selection per tenant/operation, including a
+clear ambiguity/consent result. Keep WAM in a provider below that catalog, never in the WPF UI.
 
 ## Mobile UX testing
 

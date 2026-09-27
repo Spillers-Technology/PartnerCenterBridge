@@ -1,6 +1,6 @@
 /* Partner Center Bridge site: one stylesheet for the landing page and every docs page.
-   Light and dark follow prefers-color-scheme. The accent is the app's own indigo
-   (#818cf8 on dark, a deeper #4f46e5 on light so it keeps contrast on white). */
+   Light and dark follow prefers-color-scheme. The workbench brand uses azure on navy,
+   with a darker azure accent on light surfaces for readable text and controls. */
 
 /* ---------- Tokens ---------- */
 :root {
@@ -91,6 +91,23 @@
     --header-bg: rgba(11, 17, 32, 0.82);
   }
 }
+
+/* Workbench brand: deep navy, azure, slate and mist. */
+:root {
+  --accent: #007fa8; --accent-hover: #006a8d; --accent-text: #006d94;
+  --accent-soft: #e5f8ff; --accent-line: #9de5fa;
+  --hero-glow: rgba(0, 194, 255, .14);
+  --code-inline-text: #006d94;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #071426; --bg-soft: #0b1e33; --surface: #10243b; --surface-2: #152e47;
+    --accent: #00c2ff; --accent-hover: #67dcff; --accent-text: #67dcff;
+    --accent-ink: #071426; --accent-soft: rgba(0,194,255,.1); --accent-line: #195c79;
+    --header-bg: rgba(7,20,38,.9); --code-inline-text: #67dcff;
+  }
+}
+.brand-icon { object-fit: contain; flex: 0 0 auto; }
 
 /* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -734,4 +751,46 @@ p { text-wrap: pretty; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* A workbench, not another portal: compact chrome and a wide product-led opening. */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: 36px;
+  padding: 84px max(32px, calc((100vw - 1280px) / 2)) 0;
+  background: radial-gradient(ellipse at 78% 38%, rgba(0,194,255,.14), transparent 52%), var(--bg);
+}
+.hero .hero-copy { width: 100%; max-width: none; padding: 0; text-align: left; }
+.hero .eyebrow { display: block; margin: 28px 0 14px; letter-spacing: .18em; font-size: .7rem; }
+.hero h1 { font-size: clamp(2.7rem, 4.8vw, 4.7rem); line-height: 1.04; letter-spacing: -.055em; margin-bottom: 24px; }
+.hero .hero-lead { font-size: 1.08rem; line-height: 1.8; margin-bottom: 26px; }
+.hero .hero-actions { justify-content: flex-start; gap: 12px; }
+.hero .hero-actions .btn { font-size: .87rem; }
+.hero .hero-meta { justify-content: flex-start; gap: 10px 18px; font-size: .75rem; margin-top: 22px; }
+.hero .hero-shot { width: 100%; padding: 0; margin: 0; overflow: visible; }
+.hero .hero-shot .frame { border: 1px solid var(--border-strong); border-radius: 16px; overflow: hidden; box-shadow: 0 32px 80px -28px rgba(0, 45, 80, .5); }
+.hero .hero-shot .frame img { width: 100%; max-width: 100%; }
+.hero .hero-fade { display: none; }
+.hero .works-with { grid-column: 1 / -1; width: 100%; max-width: none; margin-top: 36px; padding: 26px 0; border-top: 1px solid var(--border); }
+.section { padding-top: 88px; padding-bottom: 88px; }
+.section-head h2 { letter-spacing: -.035em; }
+.brand { gap: 10px; }
+.brand-name { letter-spacing: -.045em; font-weight: 750; }
+@media (max-width: 1050px) {
+  .hero { grid-template-columns: 1fr; padding: 54px 24px 0; gap: 36px; }
+  .hero .hero-copy { max-width: 720px; margin: auto; }
+  .hero .hero-shot { max-width: 850px; margin: auto; }
+  .hero h1 { font-size: clamp(2.8rem, 8vw, 4.6rem); }
+  .hero .works-with { margin-top: 0; }
+}
+@media (max-width: 520px) {
+  .hero { padding: 36px 18px 0; gap: 28px; }
+  .hero .hero-actions { flex-direction: column; align-items: stretch; }
+  .hero .hero-meta { display: grid; gap: 8px; }
+  .hero .hero-shot .frame { border-radius: 10px; }
+  .brand-name { font-size: .94rem; }
+  .brand-icon { width: 32px; height: 32px; }
+  .section { padding-top: 56px; padding-bottom: 56px; }
 }

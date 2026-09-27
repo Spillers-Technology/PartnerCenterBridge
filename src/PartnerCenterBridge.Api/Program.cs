@@ -23,6 +23,12 @@ using PartnerCenterBridge.Graph.ConfigSections;
 using PartnerCenterBridge.Graph.Workflows;
 using PartnerCenterBridge.PartnerCenter;
 
+return await Program.RunAsync(args);
+
+public partial class Program
+{
+    public static async Task<int> RunAsync(string[] args)
+    {
 // --- Command line ------------------------------------------------------------
 // Hosting flags (--local, --port, --data-dir, --listen, --no-browser) and the doctor /
 // bootstrap-sam commands are parsed here; plain --Section:Key=value configuration passes through.
@@ -66,7 +72,9 @@ builder.Services.AddBridgeDataProtection(cfg, hosting);
 builder.Services.Configure<PartnerOptions>(cfg.GetSection(PartnerOptions.SectionName));
 builder.Services.Configure<IntuneOptions>(cfg.GetSection(IntuneOptions.SectionName));
 builder.Services.AddScoped<ISamTokenStore, ProtectedSamTokenStore>();
-builder.Services.AddScoped<ITokenProvider, SamTokenService>();
+builder.Services.AddScoped<SamTokenService>();
+builder.Services.AddScoped<DirectTenantConnection>();
+builder.Services.AddScoped<ITokenProvider>(sp => sp.GetRequiredService<DirectTenantConnection>());
 builder.Services.AddScoped<SamBootstrapService>();
 builder.Services.AddScoped<IGraphTenantClientFactory, GraphTenantClientFactory>();
 builder.Services.AddScoped<IGraphUserService, GraphUserService>();
@@ -212,7 +220,7 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 
 // Enums cross the wire as their names ("Active", "Ok"), matching the SPA's string unions --
 // except Fido2NetLib's, which need their own WebAuthn-spec wire values (see AppJsonStringEnumConverter).
-builder.Services.AddControllers().AddJsonOptions(o =>
+builder.Services.AddControllers().AddApplicationPart(typeof(Program).Assembly).AddJsonOptions(o =>
     o.JsonSerializerOptions.Converters.Add(new PartnerCenterBridge.Api.AppJsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
@@ -303,6 +311,7 @@ if (hosting.Local is { } runningLocal && isKestrel)
         await app.StopAsync();
         return 1;
     }
+    if (app.Configuration.GetValue("Hosting:Desktop", false)) DesktopHostSession.Started(app.Services, runningLocal);
     await app.WaitForShutdownAsync();
     return 0;
 }
@@ -311,4 +320,5 @@ await app.RunAsync();
 return 0;
 
 /// <summary>Exposed so the integration test host (WebApplicationFactory) can reference the entry point.</summary>
-public partial class Program;
+    }
+}

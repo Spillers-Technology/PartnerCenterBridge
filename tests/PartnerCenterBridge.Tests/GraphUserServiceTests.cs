@@ -11,6 +11,32 @@ namespace PartnerCenterBridge.Tests;
 
 public class GraphUserServiceTests : IDisposable
 {
+    private sealed class RenewingTokens : PartnerCenterBridge.PartnerCenter.ITokenProvider
+    {
+        public Task<string> GetAccessTokenAsync(string tenantId, string resource, CancellationToken ct = default) => Task.FromResult("initial");
+        public Task<Func<CancellationToken, Task<string>>> CreateTokenSourceAsync(string tenantId, string resource, CancellationToken ct = default)
+        {
+            var sequence = 0;
+            return Task.FromResult<Func<CancellationToken, Task<string>>>(_ => Task.FromResult("renewed-" + ++sequence));
+        }
+    }
+
+    [Fact]
+    public async Task Multi_step_operation_acquires_current_token_before_each_graph_request()
+    {
+        _server.Given(Request.Create().WithPath("/users").WithHeader("Authorization", "Bearer renewed-1").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(201).WithBodyAsJson(new { id = "u1" }));
+        _server.Given(Request.Create().WithPath("/users/u1/assignLicense").WithHeader("Authorization", "Bearer renewed-2").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new { id = "u1" }));
+        var service = new GraphUserService(new RenewingTokens(), new SingleHttpClientFactory(),
+            Options.Create(new IntuneOptions { GraphBetaBaseUrl = _server.Url! }), NullLogger<GraphUserService>.Instance);
+        var result = await service.CreateUserAsync(Tenant(), new NewHireRequest
+        {
+            DisplayName = "Ada", UserPrincipalName = "ada@contoso.com", MailNickname = "ada", LicenseSkuIds = { "sku-1" }
+        });
+        Assert.True(result.Succeeded, string.Join("; ", result.Steps.Select(step => step.Detail)));
+    }
+
     private readonly WireMockServer _server = WireMockServer.Start();
 
     public void Dispose() => _server.Stop();

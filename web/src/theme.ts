@@ -3,10 +3,10 @@ import { createTheme } from "@mui/material/styles";
 export const theme = createTheme({
   palette: {
     mode: "dark",
-    background: { default: "#0f172a", paper: "#1e293b" },
+    background: { default: "#071426", paper: "#10243b" },
     divider: "#334155",
     text: { primary: "#e2e8f0", secondary: "#94a3b8" },
-    primary: { light: "#a5b4fc", main: "#818cf8", dark: "#6366f1", contrastText: "#0b1020" },
+    primary: { light: "#67dcff", main: "#00c2ff", dark: "#0094d6", contrastText: "#0b1020" },
     success: { main: "#4ade80" },
     warning: { main: "#fbbf24" },
     error: { main: "#f87171" }
@@ -22,7 +22,7 @@ export const theme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         colorDefault: {
-          backgroundColor: "#1e293b",
+          backgroundColor: "#10243b",
           color: "#e2e8f0",
           borderBottom: "1px solid #334155"
         }

@@ -305,7 +305,7 @@ const AUTHENTICATED_VIEWS = {
   },
   microsoft: async (page) => {
     await gotoRoute(page, "/settings/microsoft");
-    await page.getByText("Connected", { exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Add tenant with Microsoft", exact: true }).waitFor({ timeout: 20_000 });
   },
   workbench: async (page) => {
     // The long command in the Exchange module's quest chip is the overflow risk on this page.

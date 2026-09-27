@@ -1,6 +1,10 @@
 import { Fragment, useEffect, useState } from "react";
 import { Link as RouterLink } from "react-router";
 import Alert from "@mui/material/Alert";
+import Accordion from "@mui/material/Accordion";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import ExpandMore from "@mui/icons-material/ExpandMore";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Chip from "@mui/material/Chip";
@@ -19,6 +23,7 @@ import TableRow from "@mui/material/TableRow";
 import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import { api } from "../api";
+import { MicrosoftConnections } from "./MicrosoftConnections";
 import { humanizeEnum, Timestamp } from "../format";
 import { hasInstancePermission } from "../permissions";
 import { useAsyncAction } from "../hooks/useAsyncAction";
@@ -283,7 +288,7 @@ export function Tenants({
         </Typography>
         {canManageRegistry && (
           <Button
-            variant="contained"
+            variant="outlined"
             onClick={() => {
               setLastAction("sync");
               void syncAction.run();
@@ -294,6 +299,7 @@ export function Tenants({
           </Button>
         )}
       </Stack>
+      {canManageRegistry && <MicrosoftConnections onConnected={() => { void loadAction.run(); onProfileChanged(); }} />}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -366,7 +372,7 @@ export function Tenants({
                 <TableCell colSpan={5}>
                   <Typography variant="body2" color="text.secondary">
                     {canManageRegistry
-                      ? "No tenants yet. Sync from Partner Center or add one below."
+                      ? "No tenants yet. Connect a tenant using the options on this page."
                       : "No tenants have been shared with you yet."}
                   </Typography>
                 </TableCell>
@@ -376,7 +382,9 @@ export function Tenants({
         </Table>
       </TableContainer>
 
-      {canManageRegistry && <Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
+      {canManageRegistry && <Accordion>
+      <AccordionSummary expandIcon={<ExpandMore />}><Typography>Advanced: register a partner-managed tenant manually</Typography></AccordionSummary>
+      <AccordionDetails><Box component="fieldset" sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
         <Typography component="legend" variant="subtitle1">
           Add a tenant
         </Typography>
@@ -416,7 +424,7 @@ export function Tenants({
             {addTenantAction.busy ? "Adding..." : "Add tenant"}
           </Button>
         </Stack>
-      </Box>}
+      </Box></AccordionDetails></Accordion>}
     </Box>
   );
 }

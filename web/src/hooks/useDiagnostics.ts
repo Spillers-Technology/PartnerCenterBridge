@@ -13,8 +13,8 @@ export type DiagnosticsState =
 export function useDiagnostics() {
   const [state, setState] = useState<DiagnosticsState>({ status: "loading", data: null, error: null });
 
-  const load = useCallback(async () => {
-    setState({ status: "loading", data: null, error: null });
+  const load = useCallback(async (showLoading = true) => {
+    if (showLoading) setState({ status: "loading", data: null, error: null });
     try {
       const data = await api.system.diagnostics();
       setState({ status: "ready", data, error: null });
@@ -26,7 +26,9 @@ export function useDiagnostics() {
 
   useEffect(() => {
     void load();
+    const timer = window.setInterval(() => void load(false), 60_000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
-  return { ...state, reload: load };
+  return { ...state, reload: () => load() };
 }

@@ -280,8 +280,9 @@ export interface SystemStatus {
 
 export type DiagnosticStatus = "Ok" | "Warning" | "Error" | "NotConfigured";
 /** A concrete fix for a failing check: a command to run and/or an SPA route to open. */
-export interface DiagnosticFix { label: string; command?: string | null; route?: string | null }
+export interface DiagnosticFix { label: string; command?: string | null; route?: string | null; installId?: "pwsh" | "exchange-module" | null }
 export interface DiagnosticCheck {
+  optional?: boolean;
   id: string;
   label: string;
   status: DiagnosticStatus;

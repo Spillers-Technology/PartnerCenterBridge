@@ -3,6 +3,8 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
@@ -108,12 +110,13 @@ public sealed class LocalWorkbenchHostTests : IDisposable
         using (var json = JsonDocument.Parse(await admin.Content.ReadAsStringAsync()))
         {
             var ids = json.RootElement.GetProperty("checks").EnumerateArray().Select(c => c.GetProperty("id").GetString()).ToArray();
-            Assert.Equal(new[] { "hosting", "database", "data-protection", "auth", "sam", "tenants", "pwsh", "exchange-module", "exchange-app" }, ids);
+            Assert.Equal(new[] { "hosting", "database", "data-protection", "auth", "microsoft-sign-in", "sam", "tenants", "pwsh", "exchange-module", "exchange-app" }, ids);
             var database = json.RootElement.GetProperty("checks")[1];
             Assert.Equal("Ok", database.GetProperty("status").GetString());
             Assert.Contains("SQLite", database.GetProperty("detail").GetString());
-            var sam = json.RootElement.GetProperty("checks")[4];
+            var sam = json.RootElement.GetProperty("checks").EnumerateArray().Single(c => c.GetProperty("id").GetString() == "sam");
             Assert.Equal("NotConfigured", sam.GetProperty("status").GetString());
+            Assert.True(sam.GetProperty("optional").GetBoolean());
             Assert.Equal(SystemDiagnostics.MicrosoftSettingsRoute, sam.GetProperty("fix").GetProperty("route").GetString());
             Assert.False(json.RootElement.GetProperty("capabilities").GetProperty("graph").GetBoolean());
         }
@@ -126,6 +129,80 @@ public sealed class LocalWorkbenchHostTests : IDisposable
             Assert.True(json.RootElement.TryGetProperty("capabilities", out var capabilities));
             Assert.True(capabilities.TryGetProperty("exchange", out _));
         }
+    }
+
+    [Fact]
+    public async Task Direct_connection_enables_Graph_for_its_operator_without_enabling_Partner_Center()
+    {
+        var factory = Host(("MicrosoftSignIn:ClientId", "11111111-1111-1111-1111-111111111111"),
+            ("Exchange:PwshPath", "pcb-definitely-missing-pwsh"));
+        var client = factory.CreateClient();
+        var adminToken = await RegisterAsync(client, "admin@example.com", SetupTicket(factory));
+        var otherToken = await RegisterAsync(client, "other@example.com");
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<PartnerCenterBridge.Data.BridgeDbContext>();
+            var user = await db.AppUsers.SingleAsync(u => u.Email == "admin@example.com");
+            var tenant = new PartnerCenterBridge.Core.Entities.Tenant { TenantId = Guid.NewGuid().ToString(), DisplayName = "Direct tenant" };
+            db.Tenants.Add(tenant);
+            db.TenantAccessGrants.Add(new() { UserId = user.Id, TenantId = tenant.Id, Role = PartnerCenterBridge.Core.TenantRole.Owner });
+            var protector = scope.ServiceProvider.GetRequiredService<IDataProtectionProvider>().CreateProtector("PartnerCenterBridge.DirectTenant.v1");
+            db.Secrets.Add(new() { Name = $"direct:{user.Id}:{tenant.TenantId}", ProtectedValue = protector.Protect(
+                JsonSerializer.Serialize(new DirectConnectionState("account", "admin@contoso.com", "cache"))) });
+            await db.SaveChangesAsync();
+        }
+        var admin = await client.SendAsync(Get("/api/system/diagnostics", adminToken));
+        admin.EnsureSuccessStatusCode();
+        var report = await admin.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(report.GetProperty("capabilities").GetProperty("graph").GetBoolean());
+        Assert.False(report.GetProperty("capabilities").GetProperty("partnerCenter").GetBoolean());
+        var other = await client.SendAsync(Get("/api/system/diagnostics", otherToken));
+        other.EnsureSuccessStatusCode();
+        var otherReport = await other.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(otherReport.GetProperty("capabilities").GetProperty("graph").GetBoolean());
+    }
+
+    [Fact]
+    public async Task Dependency_decision_requires_admin_and_survives_restart()
+    {
+        const string missingPwsh = "pcb-definitely-missing-pwsh";
+        var factory = Host(("Exchange:PwshPath", missingPwsh));
+        var client = factory.CreateClient();
+        var adminToken = await RegisterAsync(client, "admin@example.com", SetupTicket(factory));
+        var userToken = await RegisterAsync(client, "user@example.com");
+        var url = "/api/system/dependencies/pwsh/decision";
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.PutAsJsonAsync(url, new { declined = true })).StatusCode);
+        using (var user = new HttpRequestMessage(HttpMethod.Put, url) { Content = JsonContent.Create(new { declined = true }) })
+        {
+            user.Headers.Authorization = new AuthenticationHeaderValue("Bearer", userToken);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.SendAsync(user)).StatusCode);
+        }
+        using (var invalid = new HttpRequestMessage(HttpMethod.Post, "/api/system/dependencies/arbitrary/install"))
+        {
+            invalid.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            Assert.Equal(HttpStatusCode.NotFound, (await client.SendAsync(invalid)).StatusCode);
+        }
+        using (var admin = new HttpRequestMessage(HttpMethod.Put, url) { Content = JsonContent.Create(new { declined = true }) })
+        {
+            admin.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminToken);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.SendAsync(admin)).StatusCode);
+        }
+
+        var report = await client.SendAsync(Get("/api/system/diagnostics", adminToken));
+        report.EnsureSuccessStatusCode();
+        using (var json = JsonDocument.Parse(await report.Content.ReadAsStringAsync()))
+        {
+            var pwsh = json.RootElement.GetProperty("checks").EnumerateArray()
+                .Single(c => c.GetProperty("id").GetString() == "pwsh");
+            Assert.Equal("Error", pwsh.GetProperty("status").GetString());
+            Assert.Contains("declined", pwsh.GetProperty("detail").GetString());
+            Assert.Contains("pcb.local.json", pwsh.GetProperty("fix").GetProperty("label").GetString());
+        }
+
+        Assert.Contains("pwsh", File.ReadAllText(Path.Combine(_dataDir, "dependency-decisions.json")));
+        var restarted = Host(("Exchange:PwshPath", missingPwsh));
+        Assert.True(restarted.Services.GetRequiredService<IDependencySetupService>().IsDeclined("pwsh"));
     }
 
     [Fact]

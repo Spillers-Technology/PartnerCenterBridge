@@ -29,7 +29,8 @@ param(
     [string]$ExePath = (Join-Path (Split-Path -Parent $PSScriptRoot) "artifacts/local/win-x64/PartnerCenterBridge.exe"),
     [string]$DataDir = (Join-Path ([System.IO.Path]::GetTempPath()) "pcb-smoke"),
     [string]$LogDir = [System.IO.Path]::GetTempPath(),
-    [int]$Port = 5199
+    [int]$Port = 5199,
+    [switch]$RequireMicrosoftSignIn
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,6 +89,25 @@ try {
             throw "PCB is listening on a non-loopback address: $($listener.LocalAddress)"
         }
     }
+    if ($RequireMicrosoftSignIn) {
+        # Consume the first-run ticket entirely in memory. Never print the ticket or JWT.
+        $ticketDeadline = (Get-Date).AddSeconds(10)
+        $ticket = $null
+        while ((Get-Date) -lt $ticketDeadline) {
+            $launchText = Get-Content (Join-Path $LogDir 'pcb-smoke-stdout.log') -Raw -ErrorAction SilentlyContinue
+            if ($launchText -match '#ticket=([A-Za-z0-9_-]+)') { $ticket = $Matches[1]; break }
+            Start-Sleep -Milliseconds 200
+        }
+        if (-not $ticket) { throw 'First-run setup ticket was not available to the CLI smoke test.' }
+        $session = Invoke-RestMethod "$baseUrl/api/auth/setup/no-account" -Method Post -ContentType 'application/json' `
+            -Body (@{ confirm = $true; ticket = $ticket } | ConvertTo-Json)
+        $connectionHeaders = @{ Authorization = "Bearer $($session.accessToken)" }
+        $connections = Invoke-RestMethod "$baseUrl/api/microsoft-connections" -Headers $connectionHeaders
+        if (-not $connections.available -or -not $connections.configured) {
+            throw 'Published workbench does not expose configured Microsoft tenant sign-in.'
+        }
+        Write-Host 'Bundled Microsoft sign-in configuration passed (no live consent requested).'
+    }
     Write-Host "First launch checks passed (health, status profile, SPA fallback, loopback-only bind)."
 } finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
@@ -102,6 +122,10 @@ $proc2 = Start-Pcb
 try {
     if (-not (Wait-Healthy)) { throw "PCB did not report healthy within 60s (second launch)" }
     if (-not (Test-Path $dbPath)) { throw "pcb.db missing after second run: $dbPath" }
+    if ($RequireMicrosoftSignIn) {
+        $connections = Invoke-RestMethod "$baseUrl/api/microsoft-connections" -Headers $connectionHeaders
+        if (-not $connections.configured) { throw 'Microsoft sign-in configuration was lost after restart.' }
+    }
     Write-Host "Second launch checks passed (pcb.db persisted, health answers)."
 } finally {
     Stop-Process -Id $proc2.Id -Force -ErrorAction SilentlyContinue

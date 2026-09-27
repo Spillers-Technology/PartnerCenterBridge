@@ -18,8 +18,9 @@ vi.mock("./api", async (importOriginal) => {
       auth: { mode: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn(), logout: vi.fn(), launch: vi.fn(), setupNoAccount: vi.fn(), protectOwner: vi.fn() },
       totp: { challenge: vi.fn() },
       passkey: { loginOptions: vi.fn(), loginVerify: vi.fn() },
-      system: { status: vi.fn(), diagnostics: vi.fn() },
+      system: { status: vi.fn(), diagnostics: vi.fn(), installDependency: vi.fn(), declineDependency: vi.fn() },
       sam: { status: vi.fn(), seed: vi.fn() },
+      microsoftConnections: { list: vi.fn(), connect: vi.fn(), setup: vi.fn() },
       people: { get: vi.fn() },
       dashboard: vi.fn(),
       pendingActions: { list: vi.fn() },
@@ -125,6 +126,8 @@ describe("App routing", () => {
     vi.mocked(api.auth.mode).mockResolvedValue({ mode: "Dev" });
     vi.mocked(api.system.status).mockResolvedValue({ profile: "Server", version: "0.9.0", authMode: "Dev", needsFirstUser: false });
     vi.mocked(api.system.diagnostics).mockResolvedValue({ checks: [], capabilities: { graph: true, exchange: true, partnerCenter: true } });
+    vi.mocked(api.microsoftConnections.list).mockResolvedValue({ available: false, configured: false, connections: [] });
+    vi.mocked(api.sam.status).mockResolvedValue({ bootstrapped: false });
     vi.mocked(api.dashboard).mockResolvedValue({
       stats: { tenants: 1, tenantsNoDelegation: 0, deployments: 0, deploymentsFailed: 0, deploymentsUpdateAvailable: 0, runsLast24h: 0, runsFailedLast7d: 0 },
       needsAttention: [],
@@ -335,6 +338,23 @@ describe("App routing", () => {
     expect(within(list).getByRole("link", { name: "Connect Microsoft" })).toHaveAttribute("href", "/settings/microsoft");
   });
 
+  it("offers a confirmed local dependency install and refreshes diagnostics", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.system.diagnostics).mockResolvedValueOnce({
+      checks: [{ id: "exchange-module", label: "Exchange Online module", status: "NotConfigured",
+        fix: { label: "Install module", command: "pwsh -c Install-Module", installId: "exchange-module" } }],
+      capabilities: { graph: true, exchange: false, partnerCenter: true }
+    }).mockResolvedValue({ checks: [], capabilities: { graph: true, exchange: true, partnerCenter: true } });
+    vi.mocked(api.system.installDependency).mockResolvedValue({ installed: true, detail: "ExchangeOnlineManagement is ready." });
+    renderApp("/settings/workbench");
+    await user.click(await screen.findByRole("button", { name: "Install Exchange module" }));
+    expect(screen.getByText(/download ExchangeOnlineManagement/)).toBeInTheDocument();
+    expect(api.system.installDependency).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^Install$/ }));
+    await waitFor(() => expect(api.system.installDependency).toHaveBeenCalledWith("exchange-module"));
+    await waitFor(() => expect(screen.getByText("Exchange Online: available")).toBeInTheDocument());
+  });
+
   it("shows a setup checklist on Home when checks still need attention", async () => {
     vi.mocked(api.system.diagnostics).mockResolvedValue({
       checks: [
@@ -347,6 +367,24 @@ describe("App routing", () => {
     expect(await screen.findByRole("heading", { name: "Finish setting up" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Connect Microsoft" })).toBeInTheDocument();
     expect(screen.queryByText("Database")).not.toBeInTheDocument();
+  });
+
+  it("does not present optional partner setup as required onboarding", async () => {
+    vi.mocked(api.system.diagnostics).mockResolvedValue({
+      checks: [{ id: "sam", label: "Optional partner connection", status: "NotConfigured", optional: true }],
+      capabilities: { graph: true, exchange: true, partnerCenter: false }
+    });
+    renderApp("/");
+    await pageHeading("Home");
+    expect(screen.queryByRole("heading", { name: "Finish setting up" })).not.toBeInTheDocument();
+  });
+
+  it("leads Microsoft settings with tenant sign-in and keeps token recovery hidden", async () => {
+    vi.mocked(api.microsoftConnections.list).mockResolvedValue({ available: true, configured: true, connections: [] });
+    renderApp("/settings/microsoft");
+    expect(await screen.findByRole("button", { name: "Add tenant with Microsoft" })).toBeVisible();
+    expect(screen.queryByRole("textbox", { name: "Refresh token" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/dotnet run --project/)).not.toBeInTheDocument();
   });
 
   it("badges Activity with the pending-approvals count", async () => {
@@ -400,7 +438,7 @@ describe("App routing", () => {
       localStorage.setItem("pcb.local.accessToken", "tok");
       vi.mocked(api.auth.me).mockResolvedValue({ ...ME, instancePermissions: [] });
       renderApp("/settings/microsoft");
-      expect(await screen.findByText("Needs the SAM credentials role")).toBeInTheDocument();
+      expect(await screen.findByText("Partner connection access")).toBeInTheDocument();
       expect(api.sam.status).not.toHaveBeenCalled();
     });
 

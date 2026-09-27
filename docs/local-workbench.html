@@ -18,7 +18,7 @@
 <meta property="og:image:width" content="1440">
 <meta property="og:image:height" content="960">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%234f46e5'/%3E%3Cpath d='M5 15.5 12 6l3.2 4.4L18 7.5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M6 17.5h12' stroke='white' stroke-width='1.8' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
@@ -31,7 +31,7 @@
 <header class="site-header">
   <div class="wrap topbar">
     <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
       <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
     </a>
     <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
@@ -101,7 +101,9 @@
 
 <h2 id="first-run-walkthrough">First run, click by click</h2>
 <p>
-  Start the exe, and it opens your browser to <code>http://localhost:5080</code> once it's healthy.
+  Start the exe, and it opens a desktop window containing the workbench once its local API is healthy.
+  The API chooses an available loopback port automatically. The Windows WebView2 Runtime is
+  required; the window explains how to install it if it is missing.
   A brand-new install has no accounts yet, so <code>GET /api/system/status</code> reports
   <code>needsFirstUser</code> and the first screen asks one question instead of showing a sign-in
   form: create an administrator account (recommended), or <strong>Skip &mdash; use without an
@@ -127,7 +129,10 @@
 <p>
   Each open check links straight to the screen that fixes it -- <a href="#diagnostics">the same
   checks</a> <code>doctor</code> and <code>/settings/workbench</code> report -- or, for the Exchange
-  Online module, gives you the exact <code>Install-Module</code> command to copy and run. Nothing
+  Online module, offers an Install action on Windows and keeps the exact command available to copy.
+  Installation requires an instance Administrator's confirmation. If you choose Not now, the check
+  remains visibly blocked across restarts; a successful install refreshes the dependency check and
+  makes Exchange features available without restarting the app. Nothing
   here is guessed at: a missing GDAP relationship, an unbootstrapped SAM connection, or a missing
   PowerShell module all show up by name, with their fix, instead of a generic "not configured."
 </p>
@@ -151,7 +156,7 @@
 <pre><code>PartnerCenterBridge.exe [command] [options]
 
 Commands:
-  (none)          Start the web app (API + UI).
+  (none)          Open the desktop window (API + UI in one process).
   doctor          Check configuration and dependencies, print the results and exit
                   (exit code 0 = no errors, 1 = at least one error). Does not start the server.
   bootstrap-sam   Run the interactive Secure Application Model bootstrap (device code) and exit.
@@ -159,22 +164,77 @@ Commands:
 Options:
   --local             Use the Local Workbench profile. The Local Workbench build uses it by
                       default, so you will not normally need to pass it.
-  --port &lt;N&gt;          Port to listen on (default 5080).
+  --browser           Open the classic browser and tray host instead of the desktop window.
+  --port &lt;N&gt;          CLI/browser host port (default 5080).
   --data-dir &lt;path&gt;   Data directory (default %LOCALAPPDATA%\PartnerCenterBridge).
   --listen &lt;address&gt;  Bind to another address instead of 127.0.0.1. Exposes the app to the
                       network; only use it when you understand the consequences.
-  --no-browser        Do not open the browser after startup. A workbench used without an
+  --no-browser        Run the local API without a browser or desktop window. A workbench used without an
                       account prints its sign-in link instead: that link grants full
                       access to this workbench, so do not share it.
   --version           Print the version and exit.
   -h, --help          Print this help and exit.
 
 Any --Section:Key=value argument is passed through as configuration.</code></pre>
+<p>The executable is a Windows GUI application. For PowerShell scripts that need to wait and read
+  its exit code, use <code>Start-Process .\PartnerCenterBridge.exe -ArgumentList 'doctor' -NoNewWindow -Wait -PassThru</code>.
+  Capture diagnostics with <code>-RedirectStandardOutput</code> and <code>-RedirectStandardError</code>.</p>
 <p>
   On first launch the process creates its data directory, opens (and migrates) the SQLite
-  database, prints a small banner with the URL and data path, waits for its own <code>/health</code>
-  endpoint to answer, and then opens your browser there once. Stop it with Ctrl+C in that window.
+  database, waits for its own <code>/health</code> endpoint to answer, and then loads the app in
+  WebView2. Close the window to stop it. CLI mode prints the URL and data path to the terminal.
 </p>
+
+<h2 id="tray">Browser and tray mode</h2>
+<p>Run <code>PartnerCenterBridge.exe --browser</code> to use the browser-hosted mode. The workbench
+  keeps running in the Windows notification area after you close its browser tab.
+  Double-click its bridge icon to open a fresh workbench window. Right-click for <strong>Open workbench</strong>,
+  <strong>Open logs</strong>, or <strong>Exit PartnerCenterBridge</strong>. An Explorer-launched console is
+  detached after the tray icon is ready; an existing terminal is left intact. Use <code>--no-browser</code>
+  or <code>--Hosting:Tray=false</code> for console operation.</p>
+
+<h2 id="direct-microsoft-sign-in">Add tenants with Microsoft sign-in</h2>
+<p>In a loopback-only Local Workbench, an operator with tenant registry permission can choose
+  <strong>Settings &gt; Microsoft connections &gt; Add tenant with Microsoft</strong> (also available
+  on Tenants). The system browser opens Microsoft's account
+  picker. Sign in with an administrator of the organization, complete MFA and consent, and the tenant
+  appears using its directory name and verified domains. Repeat for each tenant. Existing tenants
+  require Owner access in the workbench before an admin connection can be attached.</p>
+<p>Technicians do not need to register an application in every customer tenant. Production builds
+  include PartnerCenterBridge's publisher-owned public client ID; each customer tenant decides
+  whether to grant consent. This is the same principle used by Microsoft Graph PowerShell's
+  <a href="https://learn.microsoft.com/powershell/microsoftgraph/authentication-commands">default application registration</a>.
+  The publisher registration is bundled in the Windows build; no technician app setup is required.</p>
+<p><strong>Publisher setup (once):</strong> register an application in Microsoft Entra with accounts in any
+  organizational directory. Add the <strong>Mobile and desktop applications</strong> platform with
+  <code>http://localhost</code> as a redirect URI. Configure delegated Microsoft Graph permissions:
+  <code>Organization.Read.All</code> is required to discover the tenant; add only the delegated
+  permissions needed by your chosen operations and obtain tenant admin consent. The desktop flow
+  uses authorization code with PKCE and requires no client secret. Supply the public ID with
+  <code>./scripts/publish-local.ps1 -MicrosoftClientId YOUR-APPLICATION-ID</code>, or set
+  <code>PCB_MICROSOFT_CLIENT_ID</code> for local builds. For releases, set the release environment
+  variable <code>MICROSOFT_SIGN_IN_CLIENT_ID</code>. Release packaging requires it.</p>
+<p>An Administrator may optionally supply a custom app under <strong>Advanced: use your own Microsoft
+  application</strong> in Microsoft connections. It is saved to protected local storage and takes
+  effect immediately. Existing <code>MicrosoftSignIn:ClientId</code> configuration remains supported.
+  The app ID cannot be switched while account connections exist, because their OAuth caches belong
+  to the original app.</p>
+<p>The application requests the registration's Graph <code>.default</code> permissions. A successful
+  sign-in does not grant roles or bypass tenant policy: Graph actions require both the delegated
+  permission and the signed-in administrator's appropriate role. Guest administration should
+  reconnect an already registered target tenant to select its tenant authority.</p>
+<p>MSAL silently renews tokens as needed. Each local operator and tenant has a separate encrypted
+  cache that survives restarts; neither tokens nor refresh tokens are sent to the SPA. When Microsoft
+  requires interaction, the connection shows <strong>Reconnect</strong> with its remembered username.
+  Reconnection targets the same tenant and account, including any claims challenge. Cancellation or
+  signing in as a different account leaves the saved connection intact.</p>
+<p>Direct sign-in covers Microsoft Graph. Partner Center still uses SAM/GDAP, and Exchange Online
+  still uses its app-only certificate. A direct-only tenant never silently borrows the partner's
+  identity. Sharing a tenant does not share the admin token cache. Unattended jobs without a local
+  operator identity cannot use these direct connections. Server-hosted interactive sign-in is not
+  included in this release.</p>
+<p>See Microsoft's <a href="https://learn.microsoft.com/en-us/entra/msal/dotnet/acquiring-tokens/acquire-token-silently">silent token acquisition guidance</a>
+  for why consent changes, revocation, and Conditional Access can require another sign-in.</p>
 
 <h2 id="where-data-lives">Where data lives</h2>
 <p>
@@ -291,7 +351,8 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
 <h2 id="exchange-online-as-an-optional-dependency">Exchange Online as an optional dependency</h2>
 <p>
   Mailbox operations (mailbox archive repair, offboarding's mailbox conversion and forwarding)
-  need three things that nothing else in the app requires: <code>pwsh</code> on PATH, the
+  need three things that nothing else in the app requires: <code>pwsh</code> on PATH or at a standard
+  Windows installation location, the
   <code>ExchangeOnlineManagement</code> module installed for it, and an app-only certificate. On
   Windows, prefer <code>Exchange:CertificateThumbprint</code>: a certificate already imported into
   <code>Cert:\CurrentUser\My</code> (or, failing that, <code>Cert:\LocalMachine\My</code>) with its
@@ -352,15 +413,16 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   self-contained, trimmed-symbols exe to <code>artifacts/local/win-x64/PartnerCenterBridge.exe</code>.
   Equivalent command:
 </p>
-<pre><code>dotnet publish src/PartnerCenterBridge.Api -c Release -r win-x64 --self-contained `
+<pre><code>dotnet publish src/PartnerCenterBridge.Desktop -c Release -r win-x64 --self-contained `
   -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true `
-  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true `
+  -p:EnableCompressionInSingleFile=true -p:DebugType=embedded -p:PcbLocalWorkbench=true -p:PcbDesktop=true `
   -o artifacts/local/win-x64</code></pre>
 <p>
   <code>.github/workflows/ci.yml</code> runs this on every PR and push to <code>main</code>
   (Windows runner), then smoke-tests the published exe: health check, the
   <code>/api/system/status</code> profile, the SPA fallback for a deep link, loopback-only
-  binding, and a stop/restart to confirm <code>pcb.db</code> persists. It also runs
+  binding, and a stop/restart to confirm <code>pcb.db</code> persists. A separate GUI smoke test
+  checks that the desktop window starts its API and creates a WebView2 profile. It also runs
   <code>doctor</code> non-gating (Exchange and SAM are expected unconfigured in CI) and uploads
   the exe as a 14-day build artifact.
 </p>
@@ -382,7 +444,7 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   <div class="wrap footer-grid">
     <div class="footer-about">
       <a class="brand" href="index.html">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect class="brand-mark-bg" width="24" height="24" rx="6" fill="#4f46e5"/><path class="brand-mark-fg" d="M5 15.5 12 6l3.2 4.4L18 7.5" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path class="brand-mark-fg" d="M6 17.5h12" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
         <span class="brand-name">Partner Center Bridge</span>
       </a>
       <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>

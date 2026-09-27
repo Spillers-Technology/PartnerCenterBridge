@@ -312,7 +312,7 @@ const diagnostics = {
     {
       id: "exchange-module", label: "Exchange Online module", status: "NotConfigured",
       detail: "pwsh found, ExchangeOnlineManagement not installed",
-      fix: { label: "Install module", command: "pwsh -c \"Install-Module ExchangeOnlineManagement -Scope CurrentUser\"", route: null },
+      fix: { label: "Install module", command: "pwsh -c \"Install-Module ExchangeOnlineManagement -Scope CurrentUser\"", route: null, installId: "exchange-module" },
     },
   ],
   capabilities: { graph: true, exchange: false, partnerCenter: true },
@@ -513,11 +513,16 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
 
   if (method === "GET" && apiPath === "/dashboard") return json(route, dashboard);
   if (method === "GET" && apiPath === "/system/status") {
-    return json(route, { profile: "Server", version: "0.9.0", authMode: authModeOverride || "Dev", needsFirstUser });
+    return json(route, { profile: "Server", version: "0.9.2", authMode: authModeOverride || "Dev", needsFirstUser });
   }
   if (method === "GET" && apiPath === "/system/diagnostics") return json(route, diagnostics);
   if (method === "GET" && apiPath === "/admin/sam/status") return json(route, { bootstrapped: true });
   if (method === "GET" && apiPath === "/tenants") return json(route, tenants);
+  if (method === "GET" && apiPath === "/microsoft-connections") return json(route, {
+    available: true, configured: true,
+    connections: [{ id: tenants[0].id, tenantId: tenants[0].tenantId, displayName: tenants[0].displayName,
+      username: "admin@contoso.com", reconnectRequired: false }]
+  });
   if (method === "POST" && apiPath === "/tenants/sync") return json(route, tenants);
   if (method === "GET" && apiPath === "/contracts") return json(route, contracts);
   if (method === "GET" && apiPath === "/apptemplates") return json(route, templates);

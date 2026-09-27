@@ -131,7 +131,7 @@ public sealed class LocalWorkbenchLifetime : BackgroundService
         _log.LogInformation("Local Workbench listening at {Url} (data {DataRoot})", _options.CanonicalUrl, _options.DataRoot);
     }
 
-    internal static async Task<bool> WaitForHealthAsync(LocalWorkbenchOptions options, CancellationToken ct)
+    public static async Task<bool> WaitForHealthAsync(LocalWorkbenchOptions options, CancellationToken ct)
     {
         using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
         for (var attempt = 0; attempt < 40 && !ct.IsCancellationRequested; attempt++)

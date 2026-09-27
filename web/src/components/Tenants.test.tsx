@@ -95,7 +95,7 @@ describe("Tenants", () => {
     const user = userEvent.setup();
     const { onProfileChanged } = renderTenants();
 
-    await screen.findByText("No tenants yet. Sync from Partner Center or add one below.");
+    await screen.findByText("No tenants yet. Connect a tenant using the options on this page.");
 
     await user.click(screen.getByRole("button", { name: "Sync from Partner Center" }));
 
@@ -109,7 +109,8 @@ describe("Tenants", () => {
     const user = userEvent.setup();
     const { onProfileChanged } = renderTenants();
 
-    await screen.findByText("No tenants yet. Sync from Partner Center or add one below.");
+    await screen.findByText("No tenants yet. Connect a tenant using the options on this page.");
+    await user.click(screen.getByRole("button", { name: /Advanced: register a partner-managed tenant/ }));
 
     await user.type(screen.getByLabelText("Entra tenant id (GUID)"), "guid-9");
     await user.type(screen.getByLabelText("Display name"), "Fabrikam");
@@ -168,11 +169,12 @@ describe("Tenants", () => {
     const user = userEvent.setup();
     renderTenants();
 
-    await screen.findByText("No tenants yet. Sync from Partner Center or add one below.");
+    await screen.findByText("No tenants yet. Connect a tenant using the options on this page.");
 
     await user.click(screen.getByRole("button", { name: "Sync from Partner Center" }));
     expect(await screen.findByText("sync failed")).toBeInTheDocument();
 
+    await user.click(screen.getByRole("button", { name: /Advanced: register a partner-managed tenant/ }));
     await user.type(screen.getByLabelText("Entra tenant id (GUID)"), "guid-9");
     await user.type(screen.getByLabelText("Display name"), "Fabrikam");
     await user.click(screen.getByRole("button", { name: "Add tenant" }));

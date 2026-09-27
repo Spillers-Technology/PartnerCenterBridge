@@ -10,8 +10,27 @@ Double-click PartnerCenterBridge.exe, or from a terminal:
 
     PartnerCenterBridge.exe
 
-It opens your browser to http://localhost:5080 once it's healthy. Pass
---port <N> to use a different port, or --no-browser to skip opening one.
+It opens a desktop window containing the same PartnerCenterBridge web app.
+The local API uses an automatically selected loopback port and closes with
+the window. Microsoft Edge WebView2 Runtime is required; Windows 11 normally
+includes it. Install the Evergreen Runtime if the app asks for it.
+
+For the classic browser and tray mode, run PartnerCenterBridge.exe --browser.
+Pass --port <N> --no-browser for a headless local API, or run doctor/help from
+a terminal. These modes use the same data folder and application services.
+
+Microsoft tenant sign-in
+------------------------
+Settings -> Microsoft connections -> Add tenant with Microsoft connects any
+Microsoft 365 organization with its own admin account. Microsoft handles the
+username, password, MFA and consent. Repeat to connect more tenants.
+Release builds include PCB's public application ID; technicians do not need
+to register an application in every customer tenant. No client secret is used.
+The optional Partner Center/GDAP integration is separate from direct sign-in.
+
+Tokens are encrypted per local operator and tenant and renewed silently.
+If Microsoft requires another sign-in, use Reconnect beside the remembered
+username. Exchange Online still uses its separate certificate configuration.
 
 Data folder
 -----------
