@@ -224,22 +224,17 @@ var app = builder.Build();
 if (cli.Command == CliCommand.Doctor)
     return await DiagnosticsExtensions.RunDoctorAsync(app.Services, Console.Out);
 
-// Local profile, second launch: if the port already hosts a Partner Center Bridge, hand over to it.
+// Local profile, second launch: if the port is taken, ask the running instance over the
+// current-user-only hand-off pipe (LaunchHandOff) for a fresh one-time link. Whatever answers on the
+// HTTP port is not trusted: unless the pipe verifies as this Windows user's own Partner Center
+// Bridge, nothing is opened or printed beyond "port in use".
 // Skipped under a non-Kestrel server (the integration test host binds nothing).
 var isKestrel = app.Services.GetRequiredService<IServer>().GetType().Assembly.GetName().Name == "Microsoft.AspNetCore.Server.Kestrel.Core";
-if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel)
+if (hosting.Local is { } local && cli.Command == CliCommand.Run && isKestrel
+    && await PortPreflight.CheckAsync(local) == PortState.InUse)
 {
-    var preflight = await PortPreflight.CheckDetailedAsync(local);
-    switch (preflight.State)
-    {
-        case PortState.ThisApp:
-            Console.WriteLine($"Partner Center Bridge is already running at {local.CanonicalUrl}.");
-            if (local.OpenBrowser) BrowserLauncher.TryOpen(local.CanonicalUrl);
-            return 0;
-        case PortState.OtherProgram:
-            Console.Error.WriteLine($"Port {local.Port} is in use by another program; use --port <N> to pick a different one.");
-            return 1;
-    }
+    return await SecondLaunch.RunAsync(local, Console.Out, Console.Error,
+        url => BrowserLauncher.TryOpen(url, app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("PartnerCenterBridge.SecondLaunch")));
 }
 
 // Apply schema at startup (the active provider's migrations) so a fresh database is usable immediately.

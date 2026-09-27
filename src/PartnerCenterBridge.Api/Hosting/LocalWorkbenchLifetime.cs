@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
-using System.Text.Json;
 using PartnerCenterBridge.Api.Auth;
 using PartnerCenterBridge.Data;
 
@@ -163,42 +162,22 @@ public static class BrowserLauncher
     }
 }
 
-public enum PortState { Free, ThisApp, OtherProgram }
-
-/// <summary>The preflight outcome; <see cref="Accountless"/> is what a running instance reported in its status.</summary>
-public sealed record PortPreflightResult(PortState State, bool Accountless = false);
+public enum PortState { Free, InUse }
 
 /// <summary>
-/// Before the Local profile binds its port: is it free, already a Partner Center Bridge (a second
-/// launch -- just open the browser there), or someone else's (fail with an actionable message)?
+/// Before the Local profile binds its port: is it free on every address we bind? If not, Program.cs
+/// asks whoever holds it over the verified hand-off pipe (<see cref="LaunchHandOff"/>) whether it is
+/// this user's own Partner Center Bridge. What answers on the HTTP port is never trusted as identity.
 /// </summary>
 public static class PortPreflight
 {
-    public const string InstanceHeader = "X-PCB-Instance";
-    public const string InstanceHeaderValue = "PartnerCenterBridge";
-
-    public static async Task<PortState> CheckAsync(LocalWorkbenchOptions options, CancellationToken ct = default) =>
-        (await CheckDetailedAsync(options, ct)).State;
-
-    public static async Task<PortPreflightResult> CheckDetailedAsync(LocalWorkbenchOptions options, CancellationToken ct = default)
+    public static async Task<PortState> CheckAsync(LocalWorkbenchOptions options, CancellationToken ct = default)
     {
         // Browsers resolve "localhost" to ::1 first, so something on [::1]:port would shadow us even
-        // though our 127.0.0.1 bind succeeds.
+        // if only our 127.0.0.1 bind were checked.
         if (options.ListenAddresses.All(address => CanBind(address, options.Port)) && !await AcceptsConnectionAsync(IPAddress.IPv6Loopback, options.Port, ct))
-            return new PortPreflightResult(PortState.Free);
-        return await ProbeBridgeAsync(options, ct) ?? new PortPreflightResult(PortState.OtherProgram);
-    }
-
-    /// <summary>
-    /// Reads a <c>/api/system/status</c> body: ThisApp (with its accountless flag) when it is a
-    /// Partner Center Bridge status, else null. Instances older than the flag report false.
-    /// </summary>
-    public static PortPreflightResult? ParseStatus(string body)
-    {
-        using var json = JsonDocument.Parse(body);
-        if (json.RootElement.ValueKind != JsonValueKind.Object || !json.RootElement.TryGetProperty("profile", out _)) return null;
-        var accountless = json.RootElement.TryGetProperty("accountless", out var flag) && flag.ValueKind == JsonValueKind.True;
-        return new PortPreflightResult(PortState.ThisApp, accountless);
+            return PortState.Free;
+        return PortState.InUse;
     }
 
     private static bool CanBind(IPAddress address, int port)
@@ -232,26 +211,7 @@ public static class PortPreflight
             return false;
         }
     }
-
-    private static async Task<PortPreflightResult?> ProbeBridgeAsync(LocalWorkbenchOptions options, CancellationToken ct)
-    {
-        try
-        {
-            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
-            using var response = await http.SendAsync(LoopbackProbe.Get(options, "/api/system/status"), ct);
-            if (!response.IsSuccessStatusCode
-                || !response.Headers.TryGetValues(InstanceHeader, out var values)
-                || !values.Contains(InstanceHeaderValue))
-                return null;
-            return ParseStatus(await response.Content.ReadAsStringAsync(ct));
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            return null;
-        }
-    }
 }
-
 /// <summary>
 /// Requests to our own listener. They go to the bound IP (127.0.0.1 unless --listen chose another)
 /// with the canonical Host header: resolving "localhost" first tries [::1], and on Windows a refused

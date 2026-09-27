@@ -41,7 +41,6 @@ public class SystemController : ControllerBase
     [AllowAnonymous]
     public async Task<SystemStatusDto> Status([FromServices] WorkbenchOwnerService owner, CancellationToken ct)
     {
-        Response.Headers[PortPreflight.InstanceHeader] = PortPreflight.InstanceHeaderValue;
         var needsFirstUser = _authMode.IsLocal && !await _db.AppUsers.AnyAsync(ct);
         // Never in the Server profile: there, owner.Local is null.
         var localOwnerPlane = _authMode.IsLocal && owner.Local is not null;

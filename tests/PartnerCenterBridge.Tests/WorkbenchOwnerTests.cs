@@ -609,16 +609,4 @@ public sealed class WorkbenchOwnerTests : IDisposable
         LocalDataDirectory.Ensure(options);
         Assert.False(File.Exists(options.LegacyLaunchSecretPath));
     }
-
-    [Fact]
-    public void Second_launch_reads_the_accountless_flag_from_the_running_instance()
-    {
-        Assert.Equal(new PortPreflightResult(PortState.ThisApp, true),
-            PortPreflight.ParseStatus("{\"profile\":\"Local\",\"accountless\":true}"));
-        Assert.Equal(new PortPreflightResult(PortState.ThisApp, false),
-            PortPreflight.ParseStatus("{\"profile\":\"Local\",\"accountless\":false}"));
-        // An instance that predates the flag.
-        Assert.Equal(new PortPreflightResult(PortState.ThisApp, false), PortPreflight.ParseStatus("{\"profile\":\"Local\"}"));
-        Assert.Null(PortPreflight.ParseStatus("{\"status\":\"ok\"}"));
-    }
 }

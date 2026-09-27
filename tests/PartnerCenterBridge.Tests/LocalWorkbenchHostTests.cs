@@ -76,7 +76,6 @@ public sealed class LocalWorkbenchHostTests : IDisposable
 
         var response = await client.GetAsync("/api/system/status");
         response.EnsureSuccessStatusCode();
-        Assert.Equal(PortPreflight.InstanceHeaderValue, response.Headers.GetValues(PortPreflight.InstanceHeader).Single());
         using (var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync()))
         {
             var root = json.RootElement;
