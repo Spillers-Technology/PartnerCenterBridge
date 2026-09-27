@@ -2,6 +2,16 @@
 
 Reviewed branch `feat/ops-workbench`, commit `9ab8ab9bfed717348c9ead8c1eb373acfb8b0687`, on September 26, 2026.
 
+**Status (2026-09-26):** Since this review, two of the High-severity findings in section 2 have
+been addressed on `feat/ops-workbench`: "Exchange target is not bound to the Entra tenant ID" and
+"Exchange writes the PFX password to plaintext temporary JSON." See commits `6aac52c` (Bind
+Exchange Online to the tenant's Entra id) and `4e1324e` (Keep the Exchange certificate password
+off disk), merged via `88f991a`. As a result, the `tenant.DefaultDomain ?? tenant.TenantId`
+behavior quoted in section 1.8 below is now historical -- the Exchange organization is instead
+resolved from Microsoft Graph and verified against the tenant's Entra id before any operation
+runs. The rest of this review, including every other finding in section 2, is unchanged and still
+applies.
+
 This was a read-only review. No files changed. Findings below distinguish repository behavior, verified Microsoft guidance, and proposed design. No live tenant credentials, consent grants, GDAP relationships, or Conditional Access policies were inspected; this establishes what the implementation supports, not which deployed customers currently satisfy its prerequisites.
 
 **Recommendation:** retain GDAP/SAM for delegated customer administration, make connection health and consent coverage explicit, and add guided system-browser authentication first. Add certificate-based app-only connections for direct customers. Evaluate WAM as a separate desktop token provider, not as a replacement dialog for the existing SAM refresh-token extractor. Do not make embedded WebView2 the default Microsoft sign-in mechanism.
