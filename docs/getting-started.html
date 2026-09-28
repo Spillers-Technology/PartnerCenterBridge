@@ -356,8 +356,8 @@ this list with the roles on that customer's GDAP relationship.</p>
 </div>
 <div class="callout">Treat this as the minimum. Because tokens are requested with
 <code>/.default</code>, the bridge can only ever use what is consented on the app. Adding a
-permission later means re-consenting in the partner tenant (customer tenants inherit via
-GDAP + the multi-tenant consent).</div>
+permission later may require renewed consent. Verify consent and GDAP roles for each affected
+customer; a partner-side permission change alone does not establish customer access.</div>
 </details>
 
 <h2 id="add-tenants">5. Add your customer tenants</h2>

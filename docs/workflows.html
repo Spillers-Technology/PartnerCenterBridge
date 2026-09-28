@@ -207,7 +207,8 @@ nudge</strong>, which this problem routinely needs.</p>
 <ul>
   <li>Diagnose must be read-only and explain <em>why</em> (<span class="badge warn">Warning</span>
       findings carry the reason, not just the fact).</li>
-  <li>Remediation steps are idempotent; re-running a workflow is always safe.</li>
+  <li>Make remediation idempotent where possible and explain repeat effects. A password reset
+      or session revocation can affect the user again; a rerun is not automatically harmless.</li>
   <li>Use <code>WorkflowRunResult.Ephemeral</code> for show-once secrets - it is excluded from
       persistence and notifications by construction.</li>
   <li>Cover it with WireMock tests; no live tenant needed.</li>

@@ -15,14 +15,15 @@ diagnosis transparency, or harden the auth planes are especially welcome.
 ## Local development
 
 ```bash
-docker compose up --build     # Postgres + API (:5080) + SPA (:8081), auth disabled
+docker compose up --build     # Postgres + API (:5080) + SPA (:8082), auth disabled
 dotnet test                   # xUnit + WireMock; no real tenant needed
 cd web && npm install && npm run dev
 ```
 
-Real Microsoft Graph / Exchange Online calls require a partner tenant with GDAP relationships
-and a seeded SAM token (see the README). The test suite covers orchestration against WireMock,
-so most changes don't need a live tenant.
+The test suite covers orchestration against WireMock, so most changes don't need a live tenant.
+For live calls, the Windows workbench supports direct Microsoft tenant sign-in; server deployments
+use the partner SAM/GDAP connection. Exchange Online has separate certificate setup. See the
+[connection guide](https://spillerstech.us/PartnerCenterBridge/getting-started.html#connect-microsoft).
 
 ## Adding a workflow
 

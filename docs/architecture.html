@@ -145,10 +145,15 @@ completely separate:</p>
   <tr><td><code>Api</code></td>
       <td>Controllers, operator auth (OIDC, Local, or Dev), the MCP server, DI wiring, deploy +
           provisioning orchestration, workflow dispatch + run recording.</td></tr>
+  <tr><td><code>Desktop</code></td>
+      <td>Windows WPF/WebView2 shell: starts the API in-process, opens the workbench window,
+          and handles desktop lifecycle and single-instance activation.</td></tr>
+  <tr><td><code>Data.Sqlite</code></td>
+      <td>SQLite provider and migrations for the desktop workbench's shared EF Core model.</td></tr>
   <tr><td><code>web/</code></td>
       <td>React SPA: Home, People, Tenants, Operations (Access Parity, onboard/offboard, deploy,
           workflows, contracts, templates), Activity, Settings, plus sign-in, registration and
-          account security for Local mode. Routing/IA rework is in progress on this branch.</td></tr>
+          account security for Local mode.</td></tr>
 </table>
 </div>
 
@@ -181,8 +186,8 @@ completely separate:</p>
   for SQLite -- so a model change needs a migration generated for both. Migrations for whichever
   provider is active apply automatically at startup. The SQLite provider sets
   <code>PRAGMA journal_mode=WAL</code>, <code>synchronous=NORMAL</code>, <code>foreign_keys=ON</code>,
-  and a 5-second busy timeout on every connection, so a single-user desktop workload does not trip
-  <code>SQLITE_BUSY</code>.
+  and a 5-second busy timeout on every connection to reduce lock contention in desktop use.
+  A sufficiently long competing write can still time out with <code>SQLITE_BUSY</code>.
 </p>
 
 <h2 id="operations-and-evidence-model">Operations and evidence model</h2>

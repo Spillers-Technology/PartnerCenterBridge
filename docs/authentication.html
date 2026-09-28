@@ -96,8 +96,8 @@
   Those encrypted, per-operator Graph connections are separate from the workbench login described below.</p>
 <p class="lead">
   The operator plane -- <em>who is allowed to use the bridge, and against which tenants</em> --
-  is independent of the Microsoft plane (the SAM app that gives the bridge access to customer
-  tenants; see <a href="architecture.html">Architecture</a>). This page covers the operator
+  is independent of the Microsoft plane (direct tenant admin connections or the optional partner
+  SAM connection; see <a href="architecture.html">Architecture</a>). This page covers the operator
   plane's three modes, and the self-service account model that ships with the local one.
 </p>
 
@@ -108,14 +108,14 @@
 </figure>
 
 <h2 id="three-modes">Three modes</h2>
-<p>Set with <code>Auth:Mode</code>. Nothing else in the app changes based on the mode --
-controllers use the same <code>[Authorize]</code> attribute and the same
-<code>User.Identity.Name</code> regardless of which one issued the token.</p>
+<p>Set with <code>Auth:Mode</code>. Controllers share the same authentication plumbing, but
+  access rules differ by mode: Local accounts use explicit tenant grants, while OIDC retains
+  the all-access operator model described below.</p>
 <div class="table-wrap">
 <table>
   <tr><th>Mode</th><th>Who can sign in</th><th>When to use it</th></tr>
   <tr>
-    <td><span class="badge accent">Oidc</span> (default)</td>
+    <td><span class="badge accent">Oidc</span> (server default)</td>
     <td>Anyone your OIDC provider (Authentik, or any standard OIDC IdP) authenticates. Every
         signed-in user has full, unrestricted access to every tenant -- this mode predates the
         tenant-sharing model below and keeps that original all-access behavior.</td>
@@ -139,7 +139,7 @@ controllers use the same <code>[Authorize]</code> attribute and the same
 
 <div class="callout">
   <strong>Local Workbench defaults:</strong> the single-exe <a href="local-workbench.html">Local
-  Workbench</a> always runs with <code>Auth:Mode=Local</code> (it refuses to start with
+  Workbench</a> defaults to <code>Auth:Mode=Local</code> (it refuses to start with
   <code>Dev</code>) and generates its own <code>Auth:Local:SigningKey</code> on first launch,
   stored encrypted with the same Data Protection key ring as the SAM token. The first account
   registered becomes the instance Administrator. Everything below about Local accounts, sharing,

@@ -92,11 +92,11 @@
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
 <h1>Local Workbench</h1>
 <p class="lead">
-  A single self-contained <code>PartnerCenterBridge.exe</code> that embeds the API and the built
-  SPA, stores its data in SQLite under your user profile, and runs with no server, no Postgres,
-  and no external identity provider to stand up first. Everything else in the app -- workflows,
-  operations, contracts, the audit trail -- is the same code path as the Server profile; only the
-  hosting profile, the persistence provider, and the auth defaults differ.
+  Download and double-click <code>PartnerCenterBridge.exe</code> to open the Windows desktop
+  workbench. Add Microsoft 365 tenants with their admin accounts, then manage people and run
+  operations from one window. Your workbench data stays under your Windows user profile;
+  no server or external identity provider needs to be set up first. The desktop app uses the
+  same workflow and operation code as the server edition.
 </p>
 
 <h2 id="first-run-walkthrough">First run, click by click</h2>
@@ -104,9 +104,8 @@
   Start the exe, and it opens a desktop window containing the workbench once its local API is healthy.
   The API chooses an available loopback port automatically. The Windows WebView2 Runtime is
   required; the window explains how to install it if it is missing.
-  A brand-new install has no accounts yet, so <code>GET /api/system/status</code> reports
-  <code>needsFirstUser</code> and the first screen asks one question instead of showing a sign-in
-  form: create an administrator account (recommended), or <strong>Skip &mdash; use without an
+  A brand-new install has no accounts yet. The first screen asks you to create an administrator
+  account, or choose <strong>Skip &mdash; use without an
   account on this computer</strong>. There is no multi-step setup wizard to click through first.
 </p>
 <figure class="doc-figure">

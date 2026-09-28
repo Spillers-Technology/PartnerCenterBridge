@@ -96,7 +96,8 @@
   one Windows machine, the <a href="getting-started.html">Windows download</a> is simpler: SQLite,
   no server, no Docker. Both run the same API, EF Core model and workflow/operation catalog. Only
   the hosting profile (<code>Hosting:Profile</code>), the persistence provider
-  (<code>Persistence:Provider</code>) and the auth defaults differ.
+  (<code>Persistence:Provider</code>), and the auth defaults differ. Direct interactive tenant
+  sign-in is available only in the loopback-only Windows workbench; server deployments use partner credentials.
 </p>
 
 <h2 id="which-one">Windows program or server?</h2>
@@ -107,6 +108,7 @@
   <tr><td>Database</td><td>SQLite in <code>%LOCALAPPDATA%\PartnerCenterBridge</code></td><td>PostgreSQL</td></tr>
   <tr><td>Sign-in</td><td>Local accounts (passkeys, password, TOTP), or no account on an already-secured PC</td><td>Your OIDC provider, or Local accounts (<code>Auth:Mode=Local</code>)</td></tr>
   <tr><td>Network</td><td>Loopback only by default</td><td>Behind your ingress / reverse proxy</td></tr>
+  <tr><td>Microsoft connection</td><td>Direct tenant admin sign-in, or optional partner SAM/GDAP</td><td>Partner SAM/GDAP; no interactive direct tenant sign-in in this release</td></tr>
   <tr><td>Install</td><td>Download, unzip, run</td><td>Published images on <code>ghcr.io</code>, or build from source</td></tr>
 </table>
 </div>
@@ -144,9 +146,10 @@ cd web &amp;&amp; npm install &amp;&amp; npm run dev</code></pre>
 
 <h3 id="connecting-microsoft-on-a-server">Connecting Microsoft on a server</h3>
 <p>
-  A server needs the same partner app registration, GDAP relationships, consent and
-  <a href="getting-started.html#app-registration-permissions">delegated permissions</a> as the
-  Windows program (see <a href="getting-started.html#connect-microsoft">Connect Microsoft</a>).
+  A server uses a partner app registration, GDAP relationships, consent and
+  <a href="getting-started.html#app-registration-permissions">delegated permissions</a>.
+  The Windows app's direct tenant sign-in flow is not available on the server.
+  See <a href="getting-started.html#partner-connection">partner connection setup</a>.
   Supply the <code>Partner</code> section through environment variables, the compose
   <code>.env</code> file, or the Kubernetes config and SOPS secret below, then seed the SAM token
   once. From a clone, <code>dotnet run --project src/PartnerCenterBridge.Api -- bootstrap-sam</code>
