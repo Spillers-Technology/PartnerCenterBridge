@@ -753,7 +753,25 @@ p { text-wrap: pretty; }
   *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
-/* A workbench, not another portal: compact chrome and a wide product-led opening. */
+/* Desktop presentation and tenant connection choices. */
+.connection-section { background: linear-gradient(180deg, var(--bg), var(--surface)); }
+.connection-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.connection-card { display: flex; flex-direction: column; align-items: flex-start; padding: clamp(24px, 3vw, 40px); border: 1px solid var(--border); border-radius: 24px; background: var(--surface); box-shadow: 0 18px 50px -32px rgba(0, 45, 80, .4); }
+.connection-direct { border-color: var(--accent-line); background: radial-gradient(ellipse at top right, var(--hero-glow), transparent 70%), var(--surface); }
+.connection-card h3 { font-size: clamp(1.35rem, 2vw, 1.75rem); letter-spacing: -.035em; margin: 20px 0 16px; }
+.connection-card p { color: var(--muted); }
+.connection-card .btn { margin-top: auto; white-space: normal; }
+.connection-card small { display: block; color: var(--muted); line-height: 1.7; margin-top: 18px; }
+.partner-setup { border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin: 24px 0; }
+.partner-setup summary { cursor: pointer; color: var(--text); font-weight: 650; }
+.partner-setup[open] summary { margin-bottom: 24px; }
+.hero .frame .desktop-titlebar { height: 48px; padding: 10px 16px; background: var(--surface); }
+.hero .hero-shot .frame .desktop-titlebar img { width: 24px; height: 24px; max-width: 24px; flex: 0 0 auto; }
+.desktop-titlebar .frame-url { margin: 0; padding: 0; background: transparent; color: var(--text); font-family: var(--font); }
+.desktop-window-controls { margin-left: auto; color: var(--muted); white-space: nowrap; letter-spacing: 8px; }
+@media (max-width: 720px) { .connection-grid { grid-template-columns: 1fr; } }
+
+/* Compact chrome and a wide product-led opening. */
 .hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);

@@ -205,7 +205,10 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   whether to grant consent. This is the same principle used by Microsoft Graph PowerShell's
   <a href="https://learn.microsoft.com/powershell/microsoftgraph/authentication-commands">default application registration</a>.
   The publisher registration is bundled in the Windows build; no technician app setup is required.</p>
-<p><strong>Publisher setup (once):</strong> register an application in Microsoft Entra with accounts in any
+<details class="partner-setup">
+<summary>For distributors: use a custom Microsoft application</summary>
+<p>The official download already includes the publisher registration. These instructions are only
+  for a custom distribution. Register an application in Microsoft Entra with accounts in any
   organizational directory. Add the <strong>Mobile and desktop applications</strong> platform with
   <code>http://localhost</code> as a redirect URI. Configure delegated Microsoft Graph permissions:
   <code>Organization.Read.All</code> is required to discover the tenant; add only the delegated
@@ -219,6 +222,7 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   effect immediately. Existing <code>MicrosoftSignIn:ClientId</code> configuration remains supported.
   The app ID cannot be switched while account connections exist, because their OAuth caches belong
   to the original app.</p>
+</details>
 <p>The application requests the registration's Graph <code>.default</code> permissions. A successful
   sign-in does not grant roles or bypass tenant policy: Graph actions require both the delegated
   permission and the signed-in administrator's appropriate role. Guest administration should
@@ -279,11 +283,12 @@ Any --Section:Key=value argument is passed through as configuration.</code></pre
   tenant.
 </p>
 <ul>
-  <li>The exe opens your browser with a <strong>single-use launch link</strong> minted by the
+  <li>The desktop window receives a <strong>single-use launch link</strong> minted by the
       running process. The ticket expires after two minutes and is consumed when used. Running
       <code>PartnerCenterBridge.exe</code> again requests a fresh link over a Windows named pipe
       restricted to your user; the second process verifies the running process's owner before
-      opening that link. A copied or bookmarked link cannot be reused.</li>
+      opening that link in browser mode. Normal desktop launches focus the existing window.
+      A copied or bookmarked link cannot be reused.</li>
   <li>With <code>--no-browser</code>, the launch link is printed to this console window instead of
       being opened -- never written to the log file, so it never lands in <code>logs\</code>.</li>
   <li>Opening a bookmark later does not sign you in (there is no sign-in form to use without an
