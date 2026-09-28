@@ -108,9 +108,11 @@ completely separate:</p>
   <tr>
     <td><strong>Microsoft plane</strong></td>
     <td>The bridge acting in customer tenants</td>
-    <td>A multi-tenant Entra app under the <strong>Secure Application Model</strong>.
-        <code>SamTokenService</code> exchanges the stored (encrypted, auto-rotated) SAM refresh
-        token for a per-tenant Graph token on demand, scoped by that customer's GDAP roles.</td>
+    <td>On Windows, <strong>direct Microsoft tenant sign-in</strong> uses the bundled public-client
+        registration and protected per-operator/tenant MSAL caches. Graph access follows the
+        signed-in admin's roles and consent. Optional partner connections use a separate Entra app
+        under the <strong>Secure Application Model</strong>: <code>SamTokenService</code> exchanges
+        its encrypted, rotating refresh token, scoped by each customer's GDAP roles.</td>
   </tr>
 </table>
 </div>

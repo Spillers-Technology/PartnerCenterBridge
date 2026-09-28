@@ -60,12 +60,12 @@
     <a class="hero-pill" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">
       <span class="badge accent">v0.9.2</span> Signed Windows download &rarr;
     </a>
-    <p class="eyebrow">Your connected admin workbench</p>
+    <p class="eyebrow">Microsoft 365. On your desktop.</p>
     <h1 id="hero-title">Many tenants.<br><span class="accent">One place to work.</span></h1>
     <p class="hero-lead">
-      Bring your Microsoft 365 administration together. Find a person, manage a tenant,
-      and work through everyday fixes with a clear record of what changed.
-      <strong>Your tools, your tenants, your workbench.</strong>
+      Open the Windows app. Sign in with a tenant's Microsoft 365 admin account.
+      Find a person, manage access, and work through everyday fixes with a clear record of what changed.
+      <strong>Start with one tenant. Add more whenever you need them.</strong>
     </p>
     <div class="hero-actions">
       <a class="btn btn-primary btn-lg" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">
@@ -76,7 +76,7 @@
     </div>
     <ul class="hero-meta" aria-label="Download details">
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>v0.9.2 &middot; Windows x64 &middot; about 107 MB</li>
-      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Install missing Exchange dependencies from the setup checklist</li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Desktop app &middot; no server setup</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Signed by Joseph Spillers</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg><a href="getting-started.html#download-and-verify">SHA-256 checksum</a> with every release</li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>Free and open source (MIT)</li>
@@ -84,7 +84,7 @@
   </div>
   <div class="hero-shot">
     <div class="frame">
-      <div class="frame-bar" aria-hidden="true"><i></i><i></i><i></i><span class="frame-url">PartnerCenterBridge Desktop</span></div>
+      <div class="frame-bar desktop-titlebar" aria-hidden="true"><img src="assets/brand/logo-128.png" alt="" width="24" height="24"><span class="frame-url">PartnerCenterBridge</span><span class="desktop-window-controls">&minus; &square; &times;</span></div>
       <button class="lightbox-trigger" type="button" data-lightbox data-lightbox-caption="Home: find a person, finish setting up, and the four most common actions">
         <img src="assets/screenshots/pcbridge-dashboard.jpg" width="1440" height="960" alt="Partner Center Bridge Home screen: a Find a person search box, a Finish setting up checklist with an Install Exchange module button and a tenant without GDAP delegation, action cards for Onboard, Offboard, Mirror access and Run a known fix, and tenant and run statistics.">
       </button>
@@ -101,6 +101,37 @@
   </div>
 </section>
 
+<section class="section connection-section" id="connect-your-tenants" aria-labelledby="connection-title">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow">Your choice of connection</p>
+      <h2 id="connection-title">One tenant today. A whole customer list tomorrow.</h2>
+      <p>Use each tenant's admin account, or connect your existing Microsoft partner organization.</p>
+    </div>
+    <div class="connection-grid">
+      <article class="connection-card connection-direct">
+        <span class="badge accent">Start here</span>
+        <h3>Sign in to a Microsoft 365 tenant</h3>
+        <p>Choose <strong>Add tenant with Microsoft</strong>. Microsoft opens sign-in in your browser;
+          use that organization's admin account and approve the requested access. The tenant appears in your workbench.</p>
+        <p>Add another tenant the same way. Accounts are remembered with protected local token storage;
+          tokens refresh silently when possible, with an account-specific reconnect when needed.</p>
+        <a class="btn btn-primary" href="getting-started.html#direct-tenant-sign-in">See the tenant sign-in flow &rarr;</a>
+        <small>No partner membership, GDAP relationship, or customer app registration needed. Tenant consent and admin roles still apply.</small>
+      </article>
+      <article class="connection-card">
+        <span class="badge">Optional partner integration</span>
+        <h3>Connect Partner Center</h3>
+        <p>Already manage customers through CSP and GDAP? Connect your partner app and Secure Application Model credentials,
+          then sync your customer list from Partner Center.</p>
+        <p>Keep delegated partner access alongside tenants connected with their own admin accounts.</p>
+        <a class="btn btn-secondary" href="getting-started.html#partner-connection">See partner setup &rarr;</a>
+        <small>Partner Center uses SAM/GDAP. Certificate-based Exchange workflows have their own setup.</small>
+      </article>
+    </div>
+  </div>
+</section>
+
 <!-- ============ Problem ============ -->
 <section class="section" id="who-its-for" aria-labelledby="who-title">
   <div class="wrap">
@@ -114,7 +145,7 @@
       <li>
         <span class="num">01</span>
         <h3>One portal at a time</h3>
-        <p>Partner Center lists your customers, but finding a person or checking an app still means
+        <p>You know which tenant needs help, but finding a person or checking an app still means
           opening each tenant's admin portal separately.</p>
       </li>
       <li>
@@ -399,11 +430,13 @@
       <div class="limits-box">
         <h3>What it needs from you</h3>
         <ul>
-          <li>A CSP partner tenant, a multi-tenant Entra app, GDAP with each customer, and a one-time
-            <a href="sam-bootstrap.html">SAM bootstrap</a>.</li>
+          <li>A Microsoft 365 tenant admin account and consent for the operations you use.
+            Add each organization through Microsoft sign-in.</li>
+          <li>For optional partner access: your CSP partner app, customer GDAP relationships,
+            and a one-time <a href="sam-bootstrap.html">SAM bootstrap</a>.</li>
           <li>For mailbox features: PowerShell 7, the <code>ExchangeOnlineManagement</code> module
             and an app-only certificate.</li>
-          <li>64-bit Windows for the download. Only <code>win-x64</code> is published; other
+          <li>64-bit Windows and Microsoft Edge WebView2 Runtime for the desktop app. Only <code>win-x64</code> is published; other
             platforms can <a href="deployment.html">run it as a server</a>.</li>
         </ul>
       </div>
@@ -452,7 +485,7 @@
     <div class="section-head">
       <p class="eyebrow">Get started</p>
       <h2 id="start-title">Up and running in minutes.</h2>
-      <p>No server, database or identity provider to stand up. Just the program and your partner tenant.</p>
+      <p>A Windows desktop app and a Microsoft 365 tenant admin account. Add partner integration whenever you need it.</p>
     </div>
     <ol class="steps">
       <li class="step">
@@ -464,17 +497,17 @@
       </li>
       <li class="step">
         <span class="step-num">Step 2</span>
-        <h3>Run it</h3>
-        <p>Unzip and start it. It opens <code>http://localhost:5080</code>; create the administrator,
-          or skip the account on an already-secured machine.</p>
-        <pre data-copy><code>.\PartnerCenterBridge.exe</code></pre>
+        <h3>Open the desktop app</h3>
+        <p>Unzip and double-click <code>PartnerCenterBridge.exe</code>. The workbench opens in its own
+          window. Create a local account, or choose to use it without an account on your secured computer.</p>
+        <p>Microsoft Edge WebView2 Runtime is required; the app guides you if it is missing.</p>
       </li>
       <li class="step">
         <span class="step-num">Step 3</span>
-        <h3>Connect Microsoft</h3>
-        <p>Add your partner app's details, run the one-time SAM bootstrap as an MFA'd admin agent,
-          then sync your customers from Partner Center.</p>
-        <pre data-copy><code>.\PartnerCenterBridge.exe bootstrap-sam</code></pre>
+        <h3>Add your first tenant</h3>
+        <p>Open <strong>Tenants</strong>, choose <strong>Add tenant with Microsoft</strong>, and sign in
+          with that tenant's admin account. Repeat for each organization you administer.</p>
+        <p><a href="#connect-your-tenants">Using Partner Center? Connect it as an optional integration.</a></p>
       </li>
     </ol>
     <div class="hero-actions" style="margin-top:36px" id="docs">
@@ -500,7 +533,7 @@
       </figure></li>
       <li><figure>
         <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-tenants.jpg" width="1440" height="960" loading="lazy" alt="Tenants list with delegation status and assigned contract for each customer."></button></div>
-        <figcaption><strong>Tenants and contracts</strong>Sync customers from Partner Center and see delegation status at a glance.</figcaption>
+        <figcaption><strong>Tenants and contracts</strong>Add tenants through Microsoft sign-in, or sync your partner customer list.</figcaption>
       </figure></li>
       <li><figure>
         <div class="shot"><button class="lightbox-trigger" type="button" data-lightbox><img src="assets/screenshots/pcbridge-palette.jpg" width="1440" height="960" loading="lazy" alt="Command palette filtered to con, showing Find person, Contracts, Microsoft connection, a tenant and two recent runs."></button></div>
@@ -617,7 +650,7 @@
   <div class="wrap">
     <div class="cta">
       <h2 id="cta-title">Try it on your next ticket.</h2>
-      <p>Download the signed Windows program, connect your partner tenant, and see the plan before
+      <p>Open the signed Windows desktop app, add your first Microsoft 365 tenant, and see the plan before
         anything changes.</p>
       <div class="hero-actions">
         <a class="btn btn-primary btn-lg" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">

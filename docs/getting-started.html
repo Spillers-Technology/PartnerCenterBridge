@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get started - Partner Center Bridge docs</title>
-<meta name="description" content="Download the signed Windows build of Partner Center Bridge, verify it, run it, create the administrator, and connect Microsoft 365 through GDAP and the Secure Application Model.">
+<meta name="description" content="Open the signed Windows desktop app and add Microsoft 365 tenants with their admin accounts. Partner Center and GDAP integration are optional.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
@@ -12,7 +12,7 @@
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="Partner Center Bridge">
 <meta property="og:title" content="Get started - Partner Center Bridge docs">
-<meta property="og:description" content="Download the signed Windows build of Partner Center Bridge, verify it, run it, create the administrator, and connect Microsoft 365 through GDAP and the Secure Application Model.">
+<meta property="og:description" content="Open the signed Windows desktop app and add Microsoft 365 tenants with their admin accounts. Partner Center and GDAP integration are optional.">
 <meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/getting-started.html">
 <meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-dashboard.jpg">
 <meta property="og:image:width" content="1440">
@@ -92,9 +92,9 @@
 <p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Get started</span></p>
 <h1>Get started</h1>
 <p class="lead">
-  Partner Center Bridge ships as one signed Windows program. Download it, run it, create the
-  administrator account (or skip it on an already-secured machine), and connect it to your partner
-  tenant. There is no server, database or
+  Partner Center Bridge ships as one signed Windows desktop app. Download it, double-click it,
+  create a local account (or skip it on an already-secured machine), and add a Microsoft 365 tenant
+  with its admin account. There is no server, database or
   identity provider to set up first. If your team wants one shared instance instead, see
   <a href="deployment.html">Run as a server</a>.
 </p>
@@ -115,8 +115,9 @@
   <li><strong>Microsoft Edge WebView2 Runtime.</strong> The desktop window uses it to show the app.
       If missing, the app shows an installation hint. A current browser remains useful for
       Microsoft account sign-in and the optional browser/tray mode.</li>
-  <li><strong>To work in customer tenants:</strong> a CSP partner tenant, a multi-tenant Entra app
-      registration, and a GDAP relationship with each customer. See
+  <li><strong>To connect a tenant:</strong> its Microsoft 365 admin account, the roles needed for
+      your operations, and permission to consent under that organization's policy. The Windows
+      app includes its sign-in registration. CSP/GDAP is an optional alternative. See
       <a href="#connect-microsoft">Connect Microsoft</a>.</li>
   <li><strong>For mailbox features only:</strong> PowerShell 7, the
       <code>ExchangeOnlineManagement</code> module and an app-only certificate. Everything else works
@@ -175,7 +176,7 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
       share tenants with them. See <a href="authentication.html">Authentication</a>.</li>
   <li><strong>Skip &mdash; use without an account on this computer.</strong> An explicit choice
       for a machine that is already secured: screen lock, disk encryption, and no shared Windows
-      account. The program opens your browser with a single-use setup link. After choosing this
+      account. The desktop window receives a single-use setup link. After choosing this
       option, it uses a single-use sign-in link that expires after two minutes; run the exe again
       for a fresh one. Opening a bookmark later just tells you to start it from
       <code>PartnerCenterBridge.exe</code> again. Registering a password, a passkey, or TOTP is
@@ -203,8 +204,32 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
 
 <h2 id="connect-microsoft">4. Connect Microsoft</h2>
 <span id="2-connect-real-tenants"></span>
+<h3 id="direct-tenant-sign-in">Add a tenant with its admin account</h3>
+<p>The Windows desktop app can connect directly to one Microsoft 365 organization, or several.
+  You do not need Partner Center, a CSP membership, a GDAP relationship, or your own app registration
+  for this flow. The publisher's multitenant sign-in registration is included.</p>
+<ol>
+  <li>Open <strong>Tenants</strong> and choose <strong>Add tenant with Microsoft</strong>.
+      The same button is in <strong>Settings &gt; Microsoft connections</strong>.</li>
+  <li>Sign in through Microsoft's system-browser prompt with the organization's admin account,
+      complete MFA if requested, and approve consent according to its policies.</li>
+  <li>Return to the desktop app. The connected tenant is now available to administer.
+      Repeat <strong>Add tenant with Microsoft</strong> for another organization.</li>
+</ol>
+<p>Each account's token cache is protected locally and survives restarts. Tokens renew silently
+  when possible. If Microsoft requires interaction again, use that connection's reconnect action
+  to sign back in with the remembered account. Access still depends on consent, tenant policy,
+  and the signed-in admin's roles. Some organizations restrict unverified publishers.</p>
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-microsoft-connections.jpg" alt="Microsoft connections showing Add tenant with Microsoft and a connected admin account." loading="lazy">
+  </button>
+</figure>
+<p>Direct sign-in covers Microsoft Graph operations. Exchange Online certificate authentication
+  remains separate; see <a href="#exchange-online">Exchange Online setup</a> below.</p>
+<h3 id="partner-connection">Optional: connect your partner organization</h3>
 <p>
-  To act in customer tenants, the bridge uses the same CSP setup most MSPs already have. It reaches
+  If you use CSP, the bridge also supports your existing partner setup. It reaches
   each tenant through your GDAP relationship and a multi-tenant app under the Secure Application
   Model. Nothing is installed in the customer tenant.
 </p>
@@ -219,7 +244,7 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
   <tr>
     <td><strong>GDAP relationship</strong> per customer, with roles covering what you use
         (Intune administration, user management, Exchange recipient management)</td>
-    <td>Scopes what the bridge can touch in each tenant. No GDAP, no access: the tenant
+    <td>Scopes partner-delegated access in each tenant. Without GDAP, this partner connection cannot administer it: the tenant
         shows as <span class="badge err">NoDelegation</span>.</td>
   </tr>
   <tr>
@@ -241,7 +266,9 @@ $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
 </table>
 </div>
 
-<h3 id="configure-the-partner-app">Tell the bridge about your app registration</h3>
+<details class="partner-setup">
+<summary>Partner app configuration, SAM bootstrap, and delegated permissions</summary>
+<h3 id="configure-the-partner-app">Tell the bridge about your partner app registration</h3>
 <p>
   The Windows build reads optional settings from <code>pcb.local.json</code> in its data folder.
   Create <code>%LOCALAPPDATA%\PartnerCenterBridge\pcb.local.json</code> with your app's details, then
@@ -331,14 +358,16 @@ this list with the roles on that customer's GDAP relationship.</p>
 <code>/.default</code>, the bridge can only ever use what is consented on the app. Adding a
 permission later means re-consenting in the partner tenant (customer tenants inherit via
 GDAP + the multi-tenant consent).</div>
+</details>
 
 <h2 id="add-tenants">5. Add your customer tenants</h2>
 <p>
-  Open <strong>Tenants</strong> and choose <strong>Sync from Partner Center</strong> to pull in your
-  customer list, or add a tenant by hand. Adding tenants is an Administrator task, and the
+  Open <strong>Tenants</strong> and choose <strong>Add tenant with Microsoft</strong> to connect
+  an organization through its admin account. If you configured the optional partner integration,
+  choose <strong>Sync from Partner Center</strong> to pull in your customer list. Adding tenants is an Administrator task, and the
   Administrator who adds a tenant becomes its <strong>Owner</strong>. Each tenant shows its
-  delegation status, so a customer without a GDAP relationship is flagged
-  <span class="badge err">NoDelegation</span> instead of failing later.
+  connection status. GDAP delegation applies to partner-connected tenants; directly connected
+  tenants use the signed-in admin's consent and roles.
 </p>
 <figure class="doc-figure">
   <button class="lightbox-trigger" type="button" data-lightbox>
