@@ -71,8 +71,9 @@ Release process is **automated** from a pushed tag. Three workflows exist:
      (`scripts/smoke-local.ps1`, the same script `ci.yml`'s `local-workbench` job uses), and
      packages `PartnerCenterBridge-vX.Y.Z-win-x64.zip` (exe + `LICENSE` + `README-FIRST.txt`)
      plus its `.sha256`.
-  4. `images` -- builds and pushes both container images to GHCR, tagged `vX.Y.Z` and `latest`
-     (not `latest` for a prerelease tag containing `-`). Skips the push on a dry run.
+  4. `images` -- builds and pushes both container images to GHCR, tagged `X.Y.Z` (no `v` prefix,
+     unlike the git tag) and `latest` (not `latest` for a prerelease tag containing `-`). Skips
+     the push on a dry run.
   5. `publish` -- creates the GitHub release from `releases/vX.Y.Z.md` (fails if that file is
      missing), attaches the zip and checksum, marks it prerelease if the tag contains `-`, then
      downloads the published assets back and re-checks the checksum. Skipped on a dry run.
@@ -101,7 +102,7 @@ The steps that are still yours:
    `release.yml` and does everything listed above.
 6. Once it finishes, verify the result: download the release zip and check its signature
    (`Get-AuthenticodeSignature`) and checksum (`sha256sum -c` or `Get-FileHash`), confirm both
-   `docker pull ghcr.io/spillers-technology/partnercenterbridge-{api,web}:vX.Y.Z` work, and open
+   `docker pull ghcr.io/spillers-technology/partnercenterbridge-{api,web}:X.Y.Z` work (no `v`), and open
    the docs site to confirm the Pages deploy landed.
 
 Before the first tag under this pipeline: **Settings > Pages > Source** must be set to
