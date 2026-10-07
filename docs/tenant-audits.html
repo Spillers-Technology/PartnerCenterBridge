@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tenant audits - Partner Center Bridge docs</title>
+<meta name="description" content="Read-only tenant health checks: dormant licensed users, stale and privileged accounts, MFA, guests, licensing, mailbox forwarding, Intune hygiene and Conditional Access, with CSV, JSON and Markdown export.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://spillerstech.us/PartnerCenterBridge/tenant-audits.html">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Partner Center Bridge">
+<meta property="og:title" content="Tenant audits - Partner Center Bridge docs">
+<meta property="og:description" content="Read-only tenant health checks: dormant licensed users, stale and privileged accounts, MFA, guests, licensing, mailbox forwarding, Intune hygiene and Conditional Access, with CSV, JSON and Markdown export.">
+<meta property="og:url" content="https://spillerstech.us/PartnerCenterBridge/tenant-audits.html">
+<meta property="og:image" content="https://spillerstech.us/PartnerCenterBridge/assets/screenshots/pcbridge-tenant-audits.jpg">
+<meta property="og:image:width" content="1440">
+<meta property="og:image:height" content="960">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/brand/favicon.ico" sizes="any">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="assets/lightbox.css">
+</head>
+<body>
+<a class="skip-link" href="#content">Skip to content</a>
+<!-- @header: shared across every page; keep in sync -->
+<header class="site-header">
+  <div class="wrap topbar">
+    <a class="brand" href="index.html" aria-label="Partner Center Bridge home">
+      <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
+      <span class="brand-name">Partner Center Bridge</span><span class="brand-tag">Docs</span>
+    </a>
+    <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="site-nav" hidden><span class="bars" aria-hidden="true"></span>Menu</button>
+    <nav class="site-nav" id="site-nav" aria-label="Primary">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#how-it-works">How it works</a>
+      <a href="index.html#security">Security</a>
+      <a href="getting-started.html" aria-current="page">Docs</a>
+      <a href="index.html#faq">FAQ</a>
+      <span class="nav-sep" aria-hidden="true"></span>
+      <a class="nav-icon" href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.87-1.37-3.87-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.56-.29-5.25-1.28-5.25-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.27 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg><span>GitHub</span></a>
+      <a class="nav-download" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>Download</span></a>
+    </nav>
+  </div>
+</header>
+<!-- /@header -->
+
+<div class="docs-shell">
+  <!-- @sidebar: generated from the shared page list; keep in sync -->
+  <aside class="docs-sidebar" aria-label="Documentation">
+    <button class="sidebar-toggle" type="button" aria-expanded="false" aria-controls="docs-nav" hidden><span><span class="label">Docs</span>Tenant audits</span><span class="chev" aria-hidden="true"></span></button>
+    <nav class="docs-nav" id="docs-nav" aria-label="Documentation pages">
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Get started</p>
+        <ul>
+          <li><a href="getting-started.html">Get started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Guides</p>
+        <ul>
+          <li><a href="operations.html">Operations</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html" aria-current="page">Tenant audits</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-group">
+        <p class="docs-nav-title">Reference</p>
+        <ul>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
+        </ul>
+      </div>
+      <div class="docs-nav-download">
+        <p><strong>Partner Center Bridge for Windows</strong>Signed, self-contained, no server needed.</p>
+        <a class="btn btn-primary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download</a>
+      </div>
+    </nav>
+  </aside>
+  <!-- /@sidebar -->
+
+  <main id="content" class="docs-main">
+<article class="doc">
+<p class="doc-eyebrow"><a href="getting-started.html">Docs</a> <span aria-hidden="true">/</span> <span>Guides</span></p>
+<h1>Tenant audits</h1>
+<p class="lead">
+  A tenant audit is a set of <strong>read-only health checks</strong> against one Microsoft 365
+  tenant: licensed accounts nobody uses, admins without strong MFA, mail forwarded outside the
+  company, devices that stopped checking in, sign-in protection gaps. Each check reports
+  structured findings with the evidence behind them, a sentence of business context, and a
+  recommendation. Results are kept as history and export to CSV, JSON or Markdown.
+</p>
+
+<figure class="doc-figure">
+  <button class="lightbox-trigger" type="button" data-lightbox>
+    <img src="assets/screenshots/pcbridge-tenant-audits.jpg" alt="Tenant audit results: a High-risk summary with Fail, Warn, Unknown, Info, Pass and Not run counts, export buttons, and the Dormant licensed users finding with a table of users, licenses, last successful sign-in and days inactive." loading="lazy">
+  </button>
+</figure>
+
+<div class="callout">
+  <strong>Read-only, and not a compliance audit.</strong> An audit reads tenant configuration
+  through Microsoft Graph and Exchange Online and changes nothing. It is a technician's health
+  check and assessment, not a certification against any compliance framework. Results reflect
+  what Microsoft's APIs reported at the time of the run.
+</div>
+
+<h2 id="run-an-audit">Run an audit</h2>
+<ol>
+  <li>Open <strong>Tenants</strong>, pick the tenant, and choose the <strong>Audits</strong> tab
+    (or <strong>Run a health check</strong> on its Overview).</li>
+  <li>Keep <strong>Full tenant health check</strong> ticked, or untick it and choose categories:
+    Identity hygiene, Licensing, Exchange / Mail, Endpoint / Intune, Tenant security.</li>
+  <li>Set the thresholds the selected checks use. <strong>Inactive for</strong> defaults to 90
+    days (30, 60, 90, 180 or a custom 7-730); <strong>Device not synced for</strong> defaults to 30
+    days (14, 30, 60, 90 or a custom 7-365). Only thresholds the selection uses are shown.</li>
+  <li>Choose <strong>Run audit</strong>. A full audit usually takes under a minute; Exchange checks
+    start one PowerShell session, which adds a little time.</li>
+</ol>
+<p>
+  The result opens when the run finishes, and every run is saved. Use the <strong>Audit run</strong>
+  picker to reopen an earlier one. A <strong>Viewer</strong> on the tenant can run, read and export
+  audits; they read data and change nothing, which is the same reason a Viewer can plan Access Parity.
+</p>
+
+<h2 id="reading-results">Reading the results</h2>
+<p>Every finding has one severity:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Severity</th><th>Meaning</th></tr>
+  <tr><td><strong>Fail</strong></td><td>A clear risk to act on, for example a guest holding a privileged role or a mailbox forwarding outside the company.</td></tr>
+  <tr><td><strong>Warn</strong></td><td>Something that usually needs action or a documented reason, for example dormant licensed users.</td></tr>
+  <tr><td><strong>Unknown</strong></td><td>The data PCB could read does not prove either way, for example recent sign-in attempts with no recorded success.</td></tr>
+  <tr><td><strong>Info</strong></td><td>Inventory or context worth reviewing, such as the list of privileged role holders.</td></tr>
+  <tr><td><strong>Pass</strong></td><td>The check ran and found nothing. Every completed check reports at least a Pass, so a clean result is visible and exportable.</td></tr>
+</table>
+</div>
+<p>Separately, every check has a run status:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Status</th><th>Meaning</th></tr>
+  <tr><td><strong>Completed</strong></td><td>The check read what it needed. Its findings are above.</td></tr>
+  <tr><td><strong>Unavailable</strong></td><td>PCB could not run the check in this tenant: a missing Graph permission or admin role, a license the tenant does not have (for example Entra ID P1 for sign-in data), a product it does not use (Intune), Exchange Online not set up on this PCB, or no configuration snapshot to compare with. The reason and what is missing are shown. <strong>Unavailable says nothing about the tenant's health</strong>, so it is never counted as a pass.</td></tr>
+  <tr><td><strong>Failed to run</strong></td><td>The check was attempted and hit an unexpected error, such as throttling or a Microsoft outage. Run the audit again later.</td></tr>
+</table>
+</div>
+<p>
+  One check being unavailable or failing never stops the others. The summary rates the run as
+  <strong>High-risk findings</strong> (any Fail), <strong>Attention needed</strong> (any Warn),
+  <strong>Healthy</strong>, or <strong>Insufficient access</strong> (no check could run). There is
+  deliberately no numeric score: severity counts are easier to defend than a made-up number.
+</p>
+<p>
+  The severity chips filter the view. Passing checks are hidden until you select
+  <strong>Pass</strong>, and <strong>Not run</strong> shows the unavailable and failed checks. Each
+  check lists the scope it evaluated and its caveats under <em>Scope and notes</em>. Tables show
+  up to 100 rows per finding; the CSV and JSON exports always contain every row.
+</p>
+
+<h2 id="checks">Check catalog</h2>
+<p>The first release ships 25 checks. Each one is listed with how it grades its findings.</p>
+
+<h3 id="checks-identity">Identity hygiene</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>What it looks at</th><th>Grading</th></tr>
+  <tr><td>Stale enabled accounts</td><td>Enabled member accounts, licensed or not, with no successful sign-in within the inactivity threshold.</td><td>Warn: inactive or never signed in. Unknown: attempts without recorded success.</td></tr>
+  <tr><td>Inactive admin accounts</td><td>Users with active directory role assignments who have not signed in within the threshold.</td><td>Fail: privileged role (Global Administrator, Security Administrator...). Warn: other roles.</td></tr>
+  <tr><td>Privileged role review</td><td>Every active holder of a privileged role, including users who hold it through a role-assignable group, and apps.</td><td>Fail: guest with a privileged role. Warn: more than four Global Administrators; disabled account still holding a role. Info: inventory; fewer than two Global Administrators; apps with privileged roles.</td></tr>
+  <tr><td>MFA registration coverage</td><td>Enabled member users with no MFA-capable method registered.</td><td>Fail: admins. Warn: other users.</td></tr>
+  <tr><td>Admin authentication strength</td><td>The strongest method each admin has registered.</td><td>Fail: no second factor. Warn: phone or email codes only. Info: app-based but not phishing-resistant. Pass: phishing-resistant (FIDO2, passkey, Windows Hello for Business).</td></tr>
+  <tr><td>Guest account review</td><td>Every guest account, plus invitations pending for more than 30 days.</td><td>Warn: stale invitations. Info: guest inventory.</td></tr>
+  <tr><td>Stale guest accounts</td><td>Enabled guests with no successful sign-in within the threshold.</td><td>Warn.</td></tr>
+</table>
+</div>
+
+<h3 id="checks-licensing">Licensing</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>What it looks at</th><th>Grading</th></tr>
+  <tr><td><a href="#dormant-licensed-users">Dormant licensed users</a></td><td>Users holding licenses that may carry cost who have not signed in successfully within the threshold.</td><td>See below.</td></tr>
+  <tr><td>Disabled accounts with licenses</td><td>Sign-in-blocked accounts still holding licenses that may carry cost.</td><td>Warn.</td></tr>
+  <tr><td>Licensed shared mailboxes</td><td>Shared mailboxes (from Exchange Online) whose account holds a license (from Graph).</td><td>Warn: no archive and no litigation hold. Info: has an archive or hold, which needs a license.</td></tr>
+  <tr><td>Subscription seat utilization</td><td>Purchased versus assigned seats per subscription.</td><td>Fail: more assigned than active. Warn: seats in a warning or suspended state. Info: unassigned paid seats.</td></tr>
+</table>
+</div>
+
+<h3 id="checks-exchange">Exchange / Mail</h3>
+<p>These checks need <a href="getting-started.html#exchange-online">Exchange Online set up</a> on this PCB instance. Without it they are reported as unavailable.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>What it looks at</th><th>Grading</th></tr>
+  <tr><td>External mailbox forwarding</td><td>Mailbox forwarding settings (<code>ForwardingSmtpAddress</code>, <code>ForwardingAddress</code>) and the default outbound spam policy's automatic forwarding mode.</td><td>Fail: forwards outside the accepted domains. Warn: automatic external forwarding set to On. Info: internal forwards.</td></tr>
+  <tr><td>Mailbox delegation review</td><td>Full Access, Send As and Send on Behalf grants.</td><td>Info: delegations on user mailboxes and on shared/resource mailboxes, listed separately.</td></tr>
+  <tr><td>Shared mailbox sign-in</td><td>Shared mailboxes whose account can still sign in.</td><td>Warn.</td></tr>
+  <tr><td>Mailbox archive state</td><td>User mailboxes with no online archive, and mailboxes on litigation hold.</td><td>Info, with a link to the mailbox archive known fix.</td></tr>
+</table>
+</div>
+
+<h3 id="checks-devices">Endpoint / Intune</h3>
+<p>Tenants that do not use Intune report these checks as unavailable.</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>What it looks at</th><th>Grading</th></tr>
+  <tr><td>Stale managed devices</td><td>Devices whose last Intune check-in is older than the device threshold.</td><td>Warn. Unknown: no check-in time recorded.</td></tr>
+  <tr><td>Non-compliant devices</td><td>Intune compliance state.</td><td>Warn: non-compliant. Info: in grace period. Unknown: error or conflict.</td></tr>
+  <tr><td>Compliance policy coverage</td><td>Assigned compliance policies per platform in use, and the tenant setting for devices with no policy.</td><td>Fail: managed devices but no policies. Warn: a platform with no assigned policy; devices with no policy reported compliant. Info: unassigned policies.</td></tr>
+  <tr><td>Device encryption coverage</td><td>Devices reporting storage that is not encrypted.</td><td>Warn. Unknown: not reported.</td></tr>
+  <tr><td>Duplicate device records</td><td>Serial numbers on more than one device record, usually left over from re-enrollment.</td><td>Info (older records listed).</td></tr>
+</table>
+</div>
+
+<h3 id="checks-security">Tenant security</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>What it looks at</th><th>Grading</th></tr>
+  <tr><td>Sign-in protection baseline</td><td>Security defaults, or enabled Conditional Access requiring MFA for all users on all apps and blocking legacy authentication.</td><td>Pass: security defaults on, or both protections in place. Fail: no enabled policy and security defaults off, or nothing requires MFA. Warn: MFA for only some users or apps; legacy authentication not blocked. Info: report-only policies.</td></tr>
+  <tr><td>Conditional Access exclusions</td><td>Every user, group, role and guest exclusion on enabled policies.</td><td>Warn: exclusions from all-user MFA or block policies. Info: other exclusions.</td></tr>
+  <tr><td>User consent and directory defaults</td><td>The authorization policy: user app consent, guest invitations, app registration, tenant creation.</td><td>Warn: users can consent to any app; anyone can invite guests. Info: low-risk consent; permissive defaults.</td></tr>
+  <tr><td>App consent review</td><td>Non-Microsoft apps holding high-impact delegated permissions (mail, files, directory write and similar).</td><td>Warn: consented by an individual user. Info: admin-consented for everyone.</td></tr>
+  <tr><td>Configuration drift since last snapshot</td><td>Re-captures the <a href="config-snapshots.html">config snapshot</a> sections live and diffs them against the tenant's latest snapshot.</td><td>Warn: a Conditional Access policy was removed. Info: other changes. Unavailable until a snapshot exists.</td></tr>
+</table>
+</div>
+
+<h2 id="dormant-licensed-users">Dormant licensed users in detail</h2>
+<p>
+  This check finds license spend on accounts nobody uses. Each row shows the user, UPN, enabled
+  state, licenses, last successful sign-in, last sign-in attempt, days inactive, the field the
+  result is based on, the creation date, any admin roles and, when Exchange is set up, the mailbox
+  type. Each dormant user has a <strong>Plan offboarding</strong> link.
+</p>
+<h3 id="sign-in-semantics">What the sign-in data proves</h3>
+<p>Microsoft Entra records three different timestamps on each user, and PCB keeps them apart:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Field</th><th>Records</th></tr>
+  <tr><td><code>lastSuccessfulSignInDateTime</code></td><td>The last <em>successful</em> sign-in, interactive or not. Microsoft has recorded this only since December 2023.</td></tr>
+  <tr><td><code>lastSignInDateTime</code></td><td>The last interactive sign-in <em>attempt</em>, which may have failed.</td></tr>
+  <tr><td><code>lastNonInteractiveSignInDateTime</code></td><td>The last non-interactive attempt (an app or device refreshing a token), which may have failed.</td></tr>
+</table>
+</div>
+<p>Each licensed user lands in exactly one group, decided in this order:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Situation</th><th>Result</th><th>Why</th></tr>
+  <tr><td>A successful sign-in is recorded and is at least N days old</td><td><strong>Warn</strong>, dormant</td><td>Days inactive is measured from the last success.</td></tr>
+  <tr><td>A successful sign-in within N days</td><td>Not listed</td><td>In use.</td></tr>
+  <tr><td>No success recorded; the latest attempt of any kind is at least N days old</td><td><strong>Warn</strong>, dormant</td><td>Nothing at all has happened for N days, so measuring from the last attempt is conservative.</td></tr>
+  <tr><td>No success recorded, but an attempt within N days</td><td><strong>Unknown</strong></td><td>Attempts may have failed. That can mean a forgotten account or someone trying to get into it; PCB does not guess.</td></tr>
+  <tr><td>Nothing recorded, account older than N days</td><td><strong>Warn</strong>, no recorded sign-in</td><td>It never signed in, or not since Microsoft started recording. The wording says exactly that.</td></tr>
+  <tr><td>Nothing recorded, account created within N days</td><td><strong>Info</strong>, new account</td><td>Too new to call dormant, but a paid license is waiting on it.</td></tr>
+  <tr><td>Shared, room or equipment mailbox (Exchange set up)</td><td><strong>Info</strong>, listed separately</td><td>These never sign in by design, so sign-in age says nothing about them.</td></tr>
+</table>
+</div>
+<div class="callout warn">
+  <strong>What this does not prove.</strong> Sign-in activity shows sign-in to Microsoft Entra, not
+  use of Microsoft 365. Mail can still arrive in a dormant mailbox, and a service account that
+  authenticates only with app credentials never signs in as a user. Review the list before you
+  remove licenses; the recommendation says "review" for a reason.
+</div>
+<ul>
+  <li><strong>Which licenses count.</strong> A user is "licensed" when they hold at least one
+    license that may carry cost. A short, conservative list of free and viral SKUs (for example
+    <code>FLOW_FREE</code>, <code>POWER_BI_STANDARD</code>, <code>TEAMS_EXPLORATORY</code>) is
+    ignored. Anything else is treated as possibly paid, so the check can under-report savings but
+    never inflate them. Graph exposes no prices, so the check reports licenses, not costs.</li>
+  <li><strong>Group-based licensing</strong> shows as assigned. Removing it means changing the
+    user's group membership.</li>
+  <li><strong>Sign-in data unavailable.</strong> Without Entra ID P1/P2, or without permission to
+    read sign-in data, the check is <em>Unavailable</em> with the exact reason. It never falls back
+    to treating everyone as dormant or everyone as active.</li>
+  <li><strong>Optional enrichment.</strong> Admin roles and mailbox types are added when readable.
+    If they are not, the check still completes and says what it could not add.</li>
+</ul>
+
+<h2 id="permissions">Permissions and dependencies</h2>
+<p>
+  Every check declares what it needs, and the catalog shows the list. PCB does not pre-check
+  permissions, because Microsoft does not reliably expose them ahead of time. It reads the data
+  and turns Microsoft's "access denied", "license required" and "not applicable to this tenant"
+  answers into an Unavailable result that names what is missing. This is the same behavior as the
+  person workspace and the rest of the app.
+</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Graph permission (delegated)</th><th>Used by</th></tr>
+  <tr><td><code>User.Read.All</code> (or <code>User.ReadWrite.All</code> / <code>Directory.Read.All</code>)</td><td>Every identity and licensing check.</td></tr>
+  <tr><td><code>AuditLog.Read.All</code></td><td>Sign-in activity (dormant, stale and inactive-admin checks) and the authentication methods registration report (MFA checks).</td></tr>
+  <tr><td><code>Organization.Read.All</code></td><td>Subscriptions and license names.</td></tr>
+  <tr><td><code>RoleManagement.Read.Directory</code> (or <code>Directory.Read.All</code>)</td><td>Directory role holders.</td></tr>
+  <tr><td><code>Policy.Read.All</code></td><td>Conditional Access, security defaults, the authorization policy, drift.</td></tr>
+  <tr><td><code>Directory.Read.All</code></td><td>Delegated permission grants (app consent) and names of excluded users and groups.</td></tr>
+  <tr><td><code>DeviceManagementManagedDevices.Read.All</code></td><td>All Intune device checks.</td></tr>
+  <tr><td><code>DeviceManagementConfiguration.Read.All</code></td><td>Compliance policies and the "no policy" tenant setting; drift.</td></tr>
+</table>
+</div>
+<ul>
+  <li><strong>Direct tenant sign-in</strong>: the Windows app's built-in registration already
+    requests all of these. Graph also requires the signed-in admin's own roles. A
+    <strong>Global Reader</strong> can read everything the Graph checks need; sign-in data
+    additionally accepts Reports Reader or Security Reader.</li>
+  <li><strong>Partner Center / GDAP</strong>: the effective access is the intersection of your app
+    registration's consented permissions and the roles in the customer's GDAP relationship. Add the
+    optional audit permissions listed under <a href="getting-started.html#app-registration-permissions">app
+    registration permissions</a>, and include <strong>Global Reader</strong> (or narrower reader
+    roles) in the relationship.</li>
+  <li><strong>Licenses</strong>: sign-in activity, the MFA registration report and Conditional
+    Access need Microsoft Entra ID P1 or P2 in the customer tenant. Security defaults are read
+    without a license.</li>
+  <li><strong>Exchange Online</strong>: PCB's app-only Exchange connection (certificate, PowerShell 7
+    and the ExchangeOnlineManagement module). The Exchange app needs a role that can read mailbox and
+    permission data, for example <em>View-Only Organization Management</em>. The audit uses
+    <code>Get-</code> cmdlets only.</li>
+</ul>
+
+<h2 id="exports">Exports</h2>
+<p>
+  Every run exports from the result header, or from
+  <code>GET /api/tenants/{tenantId}/audits/{runId}/export?format=csv|json|markdown</code>. File
+  names carry the tenant, the run time and the run id, for example
+  <code>tenant-audit-contoso-ltd-20261007-1405-1a2b3c4d.csv</code>.
+</p>
+<h3 id="csv">CSV</h3>
+<p>
+  One row per affected item (user, device, mailbox, policy...). A finding with no items is one row,
+  and a check that did not run is one row with <code>Status</code> set to Unavailable or Error and
+  the reason in <code>Summary</code>, so nothing is silently missing. The fixed columns are:
+</p>
+<pre><code>AuditRunId, AuditName, TenantId, TenantName, Timestamp, Category, CheckId, CheckName,
+Status, Severity, FindingId, Finding, Summary, SubjectType, SubjectId, SubjectName, UPN,
+Evidence, DaysInactive, LastSuccessfulSignIn, LicenseSku, BusinessImpact, Recommendation, Details</code></pre>
+<ul>
+  <li><code>TenantId</code> is the Entra tenant id and <code>Timestamp</code> is the run start in
+    UTC ISO 8601, so files from many tenants combine cleanly in Excel or Power BI.</li>
+  <li><code>Status</code> is the check's run status; <code>Severity</code> is the finding's.</li>
+  <li>Check-specific values without their own column go in <code>Details</code> as
+    <code>Label=value</code> pairs separated by <code>; </code>.</li>
+  <li>RFC 4180 quoting and CRLF line endings. Saved as UTF-8 with a byte-order mark, so Excel reads
+    accented names correctly (Python reads it with <code>encoding="utf-8-sig"</code>, and PowerShell's
+    <code>Import-Csv</code> handles it as is).</li>
+  <li>Every value is a single line: line breaks and tabs inside values become spaces.</li>
+  <li>Spreadsheet formula injection is neutralized. A text value starting with <code>=</code>,
+    <code>+</code>, <code>-</code> or <code>@</code> is prefixed with an apostrophe, so a hostile
+    display name cannot run as a formula. Plain numbers, including negative ones, are left alone.</li>
+  <li>Ordering is deterministic (checks in catalog order, findings worst first, items by name), so
+    two exports of different runs diff cleanly.</li>
+</ul>
+<h3 id="json">JSON</h3>
+<p>
+  The complete stored report: run metadata, parameters, every check's status, reason, missing
+  requirements, findings, items with all their properties, and notes. Property names are camelCase
+  and enums are names. <code>schemaVersion</code> (currently 1) and each check's
+  <code>checkVersion</code> tell you which shape and grading produced the file.
+</p>
+<h3 id="markdown">Markdown</h3>
+<p>
+  Ticket and customer notes: a summary block, then each check worst first with its findings,
+  business impact, recommendation and up to 50 items per finding. Scope notes are folded into a
+  collapsible block, and the file states that it is a read-only health check, not a compliance
+  certification.
+</p>
+
+<h2 id="history">History and what is stored</h2>
+<p>
+  Each run is stored as one insert-only record, in the Local Workbench's SQLite file or the server's
+  PostgreSQL database. It holds the tenant, the operator, start and end times, the PCB version, the
+  report schema version, the resolved parameters, the requested checks and the summary counts as
+  columns, plus the full report as JSON. That answers which tenant, when, which checks, with which
+  thresholds, which checks were unavailable and why, what was found, and which version produced
+  it. Tokens and secrets are never stored. Deleting a tenant from PCB deletes its audit runs; there
+  is no other automatic retention.
+</p>
+
+<h2 id="remediation">From finding to fix</h2>
+<p>
+  Audits never change a tenant. Where PCB already has a reviewed way to act on a finding, the row
+  links to it and the existing flow takes over: plan, human review, apply, verify, evidence.
+</p>
+<ul>
+  <li>Dormant licensed users and disabled accounts with licenses link to
+    <strong>Plan offboarding</strong> for that user, which produces a reviewable plan (block
+    sign-in, remove licenses, and so on).</li>
+  <li>Mailboxes without an archive link to the <strong>mailbox archive</strong> known fix,
+    pre-filled with the mailbox.</li>
+  <li>User names link to the person workspace.</li>
+</ul>
+
+<h2 id="multi-tenant">Across tenants</h2>
+<p>
+  The engine runs per tenant, and each run records an optional batch id, so a run across many
+  tenants is the same engine called once per tenant. The estate summary is available now:
+  <code>GET /api/tenant-audits/estate</code> returns the latest audit of every tenant you can see,
+  for example "42 tenants scanned: 31 healthy, 7 attention needed, 3 high risk, 1 insufficient
+  access", plus which tenants have never been audited. Starting one audit across every tenant from
+  the UI is planned.
+</p>
+
+<h2 id="api">API</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Endpoint</th><th>Purpose</th></tr>
+  <tr><td><code>GET /api/tenant-audits/catalog</code></td><td>Every check with its metadata, categories, presets and parameters.</td></tr>
+  <tr><td><code>POST /api/tenants/{tenantId}/audits</code></td><td>Run now. Body: <code>{"categories": ["Identity"], "checkIds": [], "parameters": {"inactiveDays": 180}}</code>; empty selection means everything. Returns the full report.</td></tr>
+  <tr><td><code>GET /api/tenants/{tenantId}/audits</code></td><td>The latest 50 runs (summaries).</td></tr>
+  <tr><td><code>GET /api/tenants/{tenantId}/audits/{runId}</code></td><td>One full report.</td></tr>
+  <tr><td><code>GET /api/tenants/{tenantId}/audits/{runId}/export?format=</code></td><td><code>csv</code> (default), <code>json</code> or <code>markdown</code>.</td></tr>
+  <tr><td><code>GET /api/tenant-audits/estate</code></td><td>Latest run per visible tenant and the rollup.</td></tr>
+</table>
+</div>
+<p>
+  Tenant endpoints require Viewer on the tenant. An unknown check, category or parameter, or a
+  threshold out of range, is rejected with a 400 that says why; PCB never silently clamps a
+  threshold.
+</p>
+
+<h2 id="adding-a-check">Adding a check</h2>
+<p>
+  Checks are plug-ins: adding one is adding a class. There is no controller, UI or export change,
+  and the checks are discovered by type. A check implements <code>ITenantAuditCheck</code> in
+  <code>src/PartnerCenterBridge.Core/TenantAudits/Checks/&lt;Category&gt;/</code>:
+</p>
+<pre><code>public sealed class StaleGuestAccountsCheck(IAuditDirectoryData directory) : ITenantAuditCheck
+{
+    public AuditCheckDescriptor Descriptor { get; } = new()
+    {
+        Id = "stale-guest-accounts",                       // stable forever: exports key on it
+        Name = "Stale guest accounts",
+        Category = AuditCategories.Identity,
+        Description = "Enabled guest accounts with no successful sign-in within the threshold.",
+        BusinessImpact = "Unused guest accounts keep access to shared data with no business reason.",
+        Recommendation = "Remove stale guests, or set up a guest access review.",
+        SeverityRules = ["Warn: ...", "Pass: ..."],
+        Requirements = [AuditRequirement.Graph("User.Read.All"), AuditRequirement.Graph("AuditLog.Read.All")],
+        Parameters = [AuditParameterKeys.InactiveDays]
+    };
+
+    public async Task&lt;AuditCheckOutput&gt; RunAsync(AuditCheckContext ctx)
+    {
+        var threshold = ctx.Parameters.Get(AuditParameterKeys.InactiveDays);
+        var users = await directory.GetUsersAsync(ctx);   // read once per run, shared by all checks
+        users.RequireSignIn();                            // Unavailable, with the reason, if not readable
+        // ... build AuditSubject rows with AuditUserRows / SignInEvaluator ...
+        return new AuditCheckOutput().Add(AuditFindingBuilder.Create(Descriptor, "stale", AuditSeverity.Warn, ...));
+    }
+}</code></pre>
+<ul>
+  <li><strong>Read through the data providers</strong> (<code>IAuditDirectoryData</code>,
+    <code>IAuditDeviceData</code>, <code>IAuditSecurityData</code>, <code>IAuditMailboxData</code>).
+    They fetch each dataset once per tenant per run and translate "cannot read here" into
+    <code>AuditUnavailableException</code>. If you need new data, add a method to a provider. Its
+    Graph implementation gets only a GET-only reader, so a check cannot write to a tenant.</li>
+  <li><strong>Say only what the data proves.</strong> Put uncertain cases in an Unknown finding
+    instead of guessing. For sign-in questions, use <code>SignInEvaluator</code>.</li>
+  <li><strong>Keep text short and ASCII</strong>: one or two sentences of business impact.
+    Non-ASCII in compiled strings has shipped as mojibake before, and a test enforces this.</li>
+  <li><strong>Emit a Pass</strong> when nothing is wrong. The engine adds one if you forget.</li>
+  <li><strong>Test it with the in-memory fakes</strong> in
+    <code>tests/.../TenantAudits/TenantAuditTestSupport.cs</code>. No HTTP is needed. Catalog
+    tests check every check's id format, metadata and ASCII text automatically.</li>
+  <li>A check that needs PCB's own database (like configuration drift) lives in
+    <code>src/PartnerCenterBridge.Api/TenantAudits/</code>. It is discovered the same way.</li>
+</ul>
+
+<h2 id="limitations">Limitations</h2>
+<ul>
+  <li>Audits run while you wait, one tenant at a time. Scheduled and estate-wide runs are planned.</li>
+  <li>Only active directory role assignments are read; PIM-eligible assignments that are not
+    activated are not included.</li>
+  <li>Inbox rules that forward mail are not read, only mailbox forwarding settings. Full Access
+    delegation is read for up to 200 mailboxes or 90 seconds per run; the notes say when it was
+    not read for every mailbox.</li>
+  <li>Mailbox sizes are not read, so a shared mailbox over 50 GB (which does need a license) can
+    appear as a likely unneeded license.</li>
+  <li>Conditional Access grading considers users, apps, grant controls and client app types, not
+    every condition (locations, platforms, risk).</li>
+  <li>Application (app-only) permissions are not reviewed by the app consent check, only delegated
+    consents.</li>
+  <li>Registration is not enforcement: a user with MFA registered is only prompted when policy
+    requires it.</li>
+  <li>The check catalog is an assessment aid. It does not map to, or certify against, any
+    compliance framework.</li>
+</ul>
+
+<nav class="doc-pager" aria-label="Previous and next page">
+  <a class="prev" href="sam-bootstrap.html"><span>&larr; Previous</span>SAM bootstrap</a>
+  <a class="next" href="config-snapshots.html"><span>Next &rarr;</span>Config snapshots</a>
+</nav>
+</article>
+  </main>
+
+  <aside class="docs-toc" aria-label="On this page">
+    <p class="docs-toc-title">On this page</p>
+  </aside>
+</div>
+
+<!-- @footer: shared across every page; keep in sync -->
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-about">
+      <a class="brand" href="index.html">
+        <img class="brand-icon" src="assets/brand/logo-128.png" width="40" height="40" alt="">
+        <span class="brand-name">Partner Center Bridge</span>
+      </a>
+      <p>A free, open-source Microsoft 365 operations workbench for MSP technicians, from Spillers Technology.</p>
+      <p class="footer-release"><a class="btn btn-secondary btn-sm" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download for Windows</a></p>
+    </div>
+    <nav class="footer-col" aria-label="Product">
+      <h2>Product</h2>
+      <ul>
+        <li><a href="index.html#features">Features</a></li>
+        <li><a href="index.html#how-it-works">How it works</a></li>
+        <li><a href="index.html#security">Security</a></li>
+        <li><a href="index.html#status">Maturity</a></li>
+        <li><a href="index.html#screens">Screens</a></li>
+        <li><a href="index.html#faq">FAQ</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Documentation">
+      <h2>Docs</h2>
+      <ul>
+          <li><a href="getting-started.html">Get started</a></li>
+          <li><a href="local-workbench.html">Local Workbench</a></li>
+          <li><a href="operations.html">Operations</a></li>
+          <li><a href="workflows.html">Workflows</a></li>
+          <li><a href="authentication.html">Authentication</a></li>
+          <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html">Tenant audits</a></li>
+          <li><a href="config-snapshots.html">Config snapshots</a></li>
+          <li><a href="mcp-server.html">MCP server</a></li>
+          <li><a href="architecture.html">Architecture</a></li>
+          <li><a href="deployment.html">Run as a server</a></li>
+      </ul>
+    </nav>
+    <nav class="footer-col" aria-label="Project">
+      <h2>Project</h2>
+      <ul>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">Releases</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge" rel="noopener">GitHub repository</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/LICENSE" rel="noopener">MIT license</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/CONTRIBUTING.md" rel="noopener">Contributing</a></li>
+        <li><a href="https://github.com/Spillers-Technology/PartnerCenterBridge/blob/main/SECURITY.md" rel="noopener">Security policy</a></li>
+        <li><a href="https://spillerstech.us/">Spillers Technology</a></li>
+      </ul>
+    </nav>
+  </div>
+  <div class="wrap footer-legal">
+    <p>MIT licensed. Built by <a href="https://spillerstech.us/">Spillers Technology</a>.</p>
+    <p>Partner Center Bridge is an independent open-source project. It is not affiliated with, sponsored by, or endorsed by Microsoft. Microsoft, Microsoft 365, Microsoft Entra, Intune, Exchange Online and Partner Center are trademarks of the Microsoft group of companies.</p>
+  </div>
+</footer>
+<!-- /@footer -->
+<script src="assets/site.js"></script>
+<script src="assets/lightbox.js"></script>
+</body>
+</html>

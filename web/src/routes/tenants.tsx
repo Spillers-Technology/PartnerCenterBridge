@@ -29,6 +29,7 @@ import { useToast } from "../hooks/useToast";
 import { AccessNotice } from "../components/AccessNotice";
 import { ConfigSnapshots } from "../components/ConfigSnapshots";
 import { Deployments } from "../components/Deployments";
+import { TenantAudits } from "../components/TenantAudits";
 import { PageHeader } from "../components/PageHeader";
 import { TenantAccessPanel, Tenants } from "../components/Tenants";
 import { hasTenantRole, tenantRole } from "../permissions";
@@ -44,6 +45,7 @@ const TENANT_TABS = [
   { key: "overview", label: "Overview" },
   { key: "access", label: "Access" },
   { key: "contract", label: "Contract" },
+  { key: "audits", label: "Audits" },
   { key: "snapshots", label: "Snapshots" },
   { key: "history", label: "History" }
 ] as const;
@@ -150,6 +152,7 @@ function OverviewTab({ tenant, contract }: { tenant: Tenant; contract: Contract 
               </Typography>
             )}
             <Stack spacing={1} sx={{ alignItems: "flex-start" }}>
+              <Button component={RouterLink} to={`/tenants/${tenant.id}?tab=audits`} size="small">Run a health check</Button>
               <Button component={RouterLink} to={`/operations/workflows?${q}`} size="small">Run a known fix</Button>
               <Button component={RouterLink} to={`/operations/onboard?${q}`} size="small" disabled={!canOperate}>Onboard a new hire</Button>
               <Button component={RouterLink} to={`/operations/offboard?${q}`} size="small" disabled={!canOperate}>Offboard someone</Button>
@@ -274,7 +277,7 @@ function HistoryTab({ tenant }: { tenant: Tenant }) {
   );
 }
 
-/** /tenants/:tenantId?tab= -- one customer tenant: details, access, contract, snapshots, history. */
+/** /tenants/:tenantId?tab= -- one customer tenant: details, access, contract, audits, snapshots, history. */
 export function TenantWorkspacePage() {
   const { tenantId = "" } = useParams();
   const [params, setParams] = useSearchParams();
@@ -360,6 +363,7 @@ export function TenantWorkspacePage() {
       {tab === "overview" && <OverviewTab tenant={tenant} contract={contract} />}
       {tab === "access" && <AccessTab tenant={tenant} />}
       {tab === "contract" && <ContractTab tenant={tenant} contracts={contracts} onChanged={load} />}
+      {tab === "audits" && <TenantAudits tenant={tenant} />}
       {tab === "snapshots" && <ConfigSnapshots me={me} fixedTenantId={tenant.id} heading="Config snapshots" />}
       {tab === "history" && <HistoryTab tenant={tenant} />}
     </Box>

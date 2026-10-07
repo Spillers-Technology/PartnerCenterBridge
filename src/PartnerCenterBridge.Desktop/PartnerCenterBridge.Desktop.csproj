@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>PartnerCenterBridge</AssemblyName>
-    <Version>0.9.2</Version>
+    <Version>0.10.0</Version>
     <ApplicationIcon>../PartnerCenterBridge.Api/Assets/app.ico</ApplicationIcon>
     <PublishTrimmed>false</PublishTrimmed>
   </PropertyGroup>

@@ -597,6 +597,86 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.ToTable("TenantAccessGrants");
                 });
 
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.TenantAuditRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("AffectedSubjects")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuditName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("ChecksCompleted")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChecksErrored")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChecksRequested")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ChecksUnavailable")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("CompletedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("EngineVersion")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FailCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Health")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("InfoCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PassCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ReportJson")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long>("StartedAt")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UnknownCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("WarnCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("TenantId", "StartedAt");
+
+                    b.ToTable("TenantAuditRuns");
+                });
+
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.WorkflowRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1014,6 +1094,17 @@ namespace PartnerCenterBridge.Data.Sqlite.Migrations
                     b.Navigation("Tenant");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.TenantAuditRun", b =>
+                {
+                    b.HasOne("PartnerCenterBridge.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.WorkflowRun", b =>

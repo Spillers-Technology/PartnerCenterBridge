@@ -63,8 +63,12 @@ Graph; certificate-based Exchange Online workflows have their own
 | **Mirror a colleague's access** | Compare eligible cloud group memberships and add what's missing, with exclusions explained before you apply. |
 | **Run a known fix** | Diagnose and address MFA, password, compromised-account, licensing, and mailbox archive issues, then check the result. |
 | **Deploy apps across tenants** | Use reusable Win32 app templates and contracts to deploy or update Intune packages across selected organizations. |
+| **Check a tenant's health** | Run a read-only tenant audit: dormant licensed users, stale and inactive admin accounts, MFA gaps, guests, mailbox forwarding, Intune hygiene, and sign-in protection. Export to CSV, JSON, or Markdown. |
 | **Keep evidence** | Review changes and verification in Activity, copy ticket notes, and export operation evidence as Markdown or JSON. |
 
+Tenant audits are read-only health checks: each finding shows the evidence behind it, a sentence of
+business impact, and a recommendation, and a check PCB can't run in a tenant says why instead of
+passing silently. They are an assessment aid, not a compliance certification.
 Configuration snapshots let you capture, compare, and export tenant settings. The optional
 [MCP integration](https://spillerstech.us/PartnerCenterBridge/mcp-server.html) exposes operations
 to automation clients with tenant permissions and a human approval queue.
@@ -75,8 +79,8 @@ verification could confirm.
 
 ## Where the project stands
 
-**Current release: v0.9.2.** The desktop workbench, direct tenant sign-in, known fixes, and planned
-operations are beta. Tests cover Microsoft API behavior with mocks; live-tenant validation is
+**Current release: v0.10.0.** The desktop workbench, direct tenant sign-in, known fixes, planned
+operations, and tenant audits are beta. Tests cover Microsoft API behavior with mocks; live-tenant validation is
 still ongoing. Microsoft publisher verification is not yet complete, so organizations that
 restrict unverified apps may require their own admin-consent process.
 
@@ -94,6 +98,7 @@ before choosing a workflow for a customer.
 | [Desktop workbench](https://spillerstech.us/PartnerCenterBridge/local-workbench.html) | Local data, diagnostics, browser/tray mode, CLI, and building the Windows app |
 | [Operations](https://spillerstech.us/PartnerCenterBridge/operations.html) | Person workspace, mirror access, offboarding, and evidence |
 | [Known fixes](https://spillerstech.us/PartnerCenterBridge/workflows.html) | Diagnosis, remediation, and verification |
+| [Tenant audits](https://spillerstech.us/PartnerCenterBridge/tenant-audits.html) | Health checks, permissions, sign-in semantics, exports, and adding a check |
 | [Configuration snapshots](https://spillerstech.us/PartnerCenterBridge/config-snapshots.html) | Capture, diff, export, and optional git sync |
 | [Server deployment](https://spillerstech.us/PartnerCenterBridge/deployment.html) | Docker, Kubernetes, configuration, and upgrades |
 | [Accounts and access](https://spillerstech.us/PartnerCenterBridge/authentication.html) | Local accounts, tenant sharing, roles, and OIDC |

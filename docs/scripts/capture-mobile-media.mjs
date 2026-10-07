@@ -206,6 +206,12 @@ const AUTHENTICATED_VIEWS = {
     await page.getByText("Diff two snapshots", { exact: true }).waitFor({ timeout: 20_000 });
     await page.getByText("jspillers", { exact: false }).first().waitFor({ timeout: 20_000 });
   },
+  audits: async (page) => {
+    // The latest run opens automatically: its widest content is the dormant-users table.
+    await gotoRoute(page, `/tenants/${CONTOSO}?tab=audits`);
+    await page.getByRole("button", { name: "Run audit", exact: true }).waitFor({ timeout: 20_000 });
+    await page.getByRole("table", { name: "Dormant licensed users details" }).waitFor({ timeout: 20_000 });
+  },
   operations: async (page) => {
     await gotoRoute(page, "/operations");
     // Known fixes are fetched; the workflow names only render once the catalog has loaded.

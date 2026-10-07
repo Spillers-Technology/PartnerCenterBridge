@@ -105,3 +105,13 @@ public sealed class ExchangeTenantMismatchException : InvalidOperationException
         : base($"Exchange Online connected to a different organization than {tenantName}; nothing was changed."
                + (string.IsNullOrWhiteSpace(detail) ? "" : " " + detail)) { }
 }
+
+/// <summary>
+/// Read-only Exchange Online data for tenant audits: every mailbox with its forwarding, archive and
+/// hold settings, accepted domains, the outbound forwarding policy and mailbox delegations, from one
+/// EXO session. Kept apart from <see cref="IExchangeOnlineService"/> because it never changes anything.
+/// </summary>
+public interface IExchangeMailboxAuditReader
+{
+    Task<TenantAudits.AuditMailboxReport> GetMailboxAuditReportAsync(Tenant tenant, CancellationToken ct = default);
+}

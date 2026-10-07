@@ -68,6 +68,7 @@
           <li><a href="workflows.html">Workflows</a></li>
           <li><a href="authentication.html">Authentication</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html">Tenant audits</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
         </ul>
@@ -101,8 +102,8 @@
 
 <div class="download-panel">
   <div>
-    <h3>Partner Center Bridge v0.9.2 for Windows</h3>
-    <p>PartnerCenterBridge-v0.9.2-win-x64.zip &middot; about 107 MB &middot; signed by Joseph Spillers &middot; SHA-256 checksum published next to it</p>
+    <h3>Partner Center Bridge v0.10.0 for Windows</h3>
+    <p>PartnerCenterBridge-v0.10.0-win-x64.zip &middot; about 107 MB &middot; signed by Joseph Spillers &middot; SHA-256 checksum published next to it</p>
   </div>
   <a class="btn btn-primary" href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0 5-5m-5 5-5-5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>Download from GitHub Releases</a>
 </div>
@@ -128,11 +129,11 @@
 <span id="local-workbench-quick-start"></span>
 <p>
   From the <a href="https://github.com/Spillers-Technology/PartnerCenterBridge/releases/latest">latest
-  release</a>, download <code>PartnerCenterBridge-v0.9.2-win-x64.zip</code> and the
+  release</a>, download <code>PartnerCenterBridge-v0.10.0-win-x64.zip</code> and the
   <code>.sha256</code> file published next to it. Before you unzip, check that the hash matches. In
   PowerShell, from the download folder:
 </p>
-<pre data-copy><code>$zip = "PartnerCenterBridge-v0.9.2-win-x64.zip"
+<pre data-copy><code>$zip = "PartnerCenterBridge-v0.10.0-win-x64.zip"
 $expected = (Get-Content "$zip.sha256" -Raw).Trim().Split()[0]
 (Get-FileHash $zip -Algorithm SHA256).Hash -eq $expected   # True means the zip is intact</code></pre>
 <p>
@@ -352,6 +353,21 @@ this list with the roles on that customer's GDAP relationship.</p>
     <td><code>DeviceManagementConfiguration.Read.All</code></td>
     <td><a href="config-snapshots.html">Config snapshots</a>: reading Device Compliance Policies.</td>
   </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>AuditLog.Read.All</code> <em>(optional)</em></td>
+    <td><a href="tenant-audits.html">Tenant audits</a>: sign-in activity and MFA registration (dormant, stale and inactive-admin checks).</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>Directory.Read.All</code> <em>(optional)</em></td>
+    <td><a href="tenant-audits.html">Tenant audits</a>: directory roles, app consent grants and Conditional Access exclusion names.</td>
+  </tr>
+  <tr>
+    <td>Microsoft Graph</td>
+    <td><code>DeviceManagementManagedDevices.Read.All</code> <em>(optional)</em></td>
+    <td><a href="tenant-audits.html">Tenant audits</a>: Intune device hygiene, compliance and encryption.</td>
+  </tr>
 </table>
 </div>
 <div class="callout">Treat this as the minimum. Because tokens are requested with
@@ -482,6 +498,7 @@ customer; a partner-side permission change alone does not establish customer acc
           <li><a href="workflows.html">Workflows</a></li>
           <li><a href="authentication.html">Authentication</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html">Tenant audits</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
           <li><a href="architecture.html">Architecture</a></li>

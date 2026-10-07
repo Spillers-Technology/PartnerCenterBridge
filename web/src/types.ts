@@ -442,3 +442,58 @@ export interface TerminateResult extends ProvisioningResult {
   evidence?: OperationEvidence | null;
   policy?: OffboardingPolicy | null;
 }
+
+// --- Tenant audits (read-only health checks) ------------------------------------------------
+export type AuditSeverity = "Pass" | "Info" | "Unknown" | "Warn" | "Fail";
+export type AuditCheckStatus = "Completed" | "Unavailable" | "Error";
+export type AuditHealth = "Healthy" | "AttentionNeeded" | "HighRisk" | "InsufficientAccess";
+
+export interface AuditColumn { key: string; label: string }
+/** A link into an existing planned operation or known fix; the audit itself never changes anything. */
+export interface AuditRemediation { kind: "offboarding" | "workflow" | string; target: string; label: string; identity?: string | null }
+export interface AuditSubject {
+  type: string; id: string; name: string; upn?: string | null; evidence?: string | null;
+  properties: Record<string, string | null>; remediation?: AuditRemediation | null;
+}
+export interface AuditFinding {
+  id: string; checkId: string; severity: AuditSeverity; title: string; summary: string;
+  businessImpact?: string | null; recommendation?: string | null;
+  columns: AuditColumn[]; subjects: AuditSubject[]; subjectCount: number;
+}
+export interface AuditCheckResult {
+  checkId: string; checkName: string; category: string; checkVersion: number; status: AuditCheckStatus;
+  statusReason?: string | null; missingRequirements: string[]; findings: AuditFinding[]; notes: string[]; durationMs: number;
+}
+export interface AuditSummaryCounts {
+  checksRequested: number; checksCompleted: number; checksUnavailable: number; checksErrored: number;
+  pass: number; info: number; unknown: number; warn: number; fail: number; affectedSubjects: number; health: AuditHealth;
+}
+export interface TenantAuditReport {
+  schemaVersion: number; runId: string; batchId?: string | null; auditName: string;
+  tenant: { id: string; displayName: string; tenantId: string };
+  operator: string; startedAt: string; completedAt: string; engineVersion: string;
+  parameters: Record<string, number>; requestedCheckIds: string[]; checks: AuditCheckResult[]; summary: AuditSummaryCounts;
+}
+export interface TenantAuditRunSummary {
+  id: string; tenantId: string; tenantName?: string | null; batchId?: string | null; auditName: string; operator: string;
+  startedAt: string; completedAt: string; schemaVersion: number; engineVersion: string; summary: AuditSummaryCounts;
+}
+export interface AuditRequirement { kind: "GraphPermission" | "License" | "Product" | "Dependency"; name: string; note?: string | null }
+export interface AuditParameterDefinition { key: string; label: string; default: number; min: number; max: number; suggested: number[]; description: string }
+export interface AuditCheckInfo {
+  id: string; name: string; category: string; description: string; businessImpact: string; recommendation: string;
+  severityRules: string[]; requirements: AuditRequirement[]; parameterKeys: string[]; limitations: string[]; version: number;
+}
+export interface AuditCatalog {
+  categories: { id: string; label: string }[];
+  presets: { id: string; name: string; description: string; categories: string[] }[];
+  parameters: AuditParameterDefinition[];
+  checks: AuditCheckInfo[];
+  schemaVersion: number;
+}
+export interface AuditEstate {
+  summary: { tenantsScanned: number; healthy: number; attentionNeeded: number; highRisk: number; insufficientAccess: number; withCoverageGaps: number };
+  tenantsWithoutAudit: number;
+  tenants: { tenantId: string; tenantName: string; latestRun?: TenantAuditRunSummary | null }[];
+}
+export type AuditExportFormat = "csv" | "json" | "markdown";

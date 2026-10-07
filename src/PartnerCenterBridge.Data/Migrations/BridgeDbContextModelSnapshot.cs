@@ -602,6 +602,86 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.ToTable("TenantAccessGrants");
                 });
 
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.TenantAuditRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AffectedSubjects")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AuditName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("BatchId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ChecksCompleted")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ChecksErrored")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ChecksRequested")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ChecksUnavailable")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CompletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EngineVersion")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("FailCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Health")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("InfoCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("PassCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReportJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("SchemaVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("UnknownCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("WarnCount")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BatchId");
+
+                    b.HasIndex("TenantId", "StartedAt");
+
+                    b.ToTable("TenantAuditRuns");
+                });
+
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.WorkflowRun", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1019,6 +1099,17 @@ namespace PartnerCenterBridge.Data.Migrations
                     b.Navigation("Tenant");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("PartnerCenterBridge.Core.Entities.TenantAuditRun", b =>
+                {
+                    b.HasOne("PartnerCenterBridge.Core.Entities.Tenant", "Tenant")
+                        .WithMany()
+                        .HasForeignKey("TenantId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Tenant");
                 });
 
             modelBuilder.Entity("PartnerCenterBridge.Core.Entities.WorkflowRun", b =>

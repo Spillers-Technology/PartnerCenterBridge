@@ -27,9 +27,9 @@ node docs/scripts/capture-product-media.mjs
 
 ## `capture-mobile-media.mjs`
 
-Captures all 39 current views (the Home/People/Tenants/Operations/Activity/Settings navigation, the
+Captures all 40 current views (the Home/People/Tenants/Operations/Activity/Settings navigation, the
 person and tenant workspace tabs, every operation screen including plan/result states, the command
-palette, and the four unauthenticated views) across five touch device profiles (195 captures) and
+palette, and the four unauthenticated views) across five touch device profiles (200 captures) and
 checks each view/device pair for page-level horizontal overflow. Output is written to
 `docs/assets/screenshots/mobile/` by default; set `PCBRIDGE_CAPTURE_OUT` to override it. The
 `AUTHENTICATED_VIEWS` map and `AUTH_VIEW_NAMES` list in the script itself are the source of truth

@@ -157,6 +157,13 @@ async function main() {
     await securedPage.getByRole("button", { name: "View diff", exact: true }).click();
     await securedPage.getByText("Block legacy authentication", { exact: false }).waitFor({ timeout: 20_000 });
     await shoot(securedPage, "pcbridge-config-snapshots.jpg");
+    console.log("Rendering Tenant audits (latest run, scrolled to the report)...");
+    await gotoRoute(securedPage, `/tenants/${CONTOSO}?tab=audits`);
+    await securedPage.getByRole("table", { name: "Dormant licensed users details" }).waitFor({ timeout: 20_000 });
+    // Frame the report: its summary card at the top, the first findings table below it.
+    await securedPage.getByRole("heading", { name: "Full tenant health check", level: 3 })
+      .evaluate((el) => window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 96));
+    await shoot(securedPage, "pcbridge-tenant-audits.jpg");
     await securedPage.close();
 
     console.log(`Captured screenshots in ${path.relative(repoRoot, outDir)}`);

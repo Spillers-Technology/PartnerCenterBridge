@@ -63,6 +63,7 @@ public class BridgeDbContext : DbContext
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
     public DbSet<ConfigSnapshotRun> ConfigSnapshotRuns => Set<ConfigSnapshotRun>();
     public DbSet<ConfigSnapshotSection> ConfigSnapshotSections => Set<ConfigSnapshotSection>();
+    public DbSet<TenantAuditRun> TenantAuditRuns => Set<TenantAuditRun>();
     public DbSet<PendingAction> PendingActions => Set<PendingAction>();
     public DbSet<McpToken> McpTokens => Set<McpToken>();
     public DbSet<InstanceAuthorizationState> InstanceAuthorizationStates => Set<InstanceAuthorizationState>();
@@ -192,6 +193,18 @@ public class BridgeDbContext : DbContext
             e.Property(s => s.ContentJson).HasColumnType("jsonb");
             e.HasOne(s => s.Run).WithMany(r => r.Sections)
                 .HasForeignKey(s => s.RunId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<TenantAuditRun>(e =>
+        {
+            // History per tenant (newest first), the estate rollup's "latest per tenant", and batches.
+            e.HasIndex(r => new { r.TenantId, r.StartedAt });
+            e.HasIndex(r => r.BatchId);
+            e.Property(r => r.AuditName).IsRequired();
+            e.Property(r => r.Health).HasConversion<string>();
+            e.Property(r => r.ReportJson).HasColumnType("jsonb");
+            e.HasOne(r => r.Tenant).WithMany()
+                .HasForeignKey(r => r.TenantId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<PendingAction>(e =>

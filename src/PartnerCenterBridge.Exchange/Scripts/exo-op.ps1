@@ -219,6 +219,97 @@ try {
             Invoke-Step 'Trigger Managed Folder Assistant' { Start-ManagedFolderAssistant -Identity $id; $id }
             try { $data = Get-ArchiveStateData $id } catch { Add-Step 'Refresh state' $false $_.Exception.Message }
         }
+        'auditMailboxes' {
+            # READ-ONLY (tenant audits): Get-* cmdlets only. Each part records its own failure so
+            # one denied read (for example SendAs) does not hide the rest.
+            $maxFullAccess = if ($p.maxFullAccessMailboxes) { [int]$p.maxFullAccessMailboxes } else { 200 }
+            $fullAccessSeconds = if ($p.fullAccessSeconds) { [int]$p.fullAccessSeconds } else { 90 }
+            $partial = [System.Collections.Generic.List[string]]::new()
+
+            $mailboxes = $null
+            try {
+                $mailboxes = @(Get-EXOMailbox -ResultSize Unlimited -PropertySets Minimum, Delivery, Archive, Hold)
+            }
+            catch {
+                # Older module versions or roles without the property sets: fall back to the classic cmdlet.
+                $mailboxes = @(Get-Mailbox -ResultSize Unlimited)
+            }
+
+            $recipientCache = @{}
+            function Resolve-RecipientSmtp($identity) {
+                if (-not $identity) { return $null }
+                $key = "$identity"
+                if (-not $recipientCache.ContainsKey($key)) {
+                    try { $recipientCache[$key] = "$((Get-EXORecipient -Identity $key -ErrorAction Stop).PrimarySmtpAddress)" }
+                    catch { $recipientCache[$key] = $null }
+                }
+                return $recipientCache[$key]
+            }
+
+            $mbxData = @($mailboxes | ForEach-Object {
+                [ordered]@{
+                    objectId                    = "$($_.ExternalDirectoryObjectId)"
+                    userPrincipalName           = $_.UserPrincipalName
+                    displayName                 = $_.DisplayName
+                    primarySmtpAddress          = "$($_.PrimarySmtpAddress)"
+                    recipientTypeDetails        = "$($_.RecipientTypeDetails)"
+                    forwardingSmtpAddress       = if ($_.ForwardingSmtpAddress) { "$($_.ForwardingSmtpAddress)" } else { $null }
+                    forwardingAddress           = if ($_.ForwardingAddress) { "$($_.ForwardingAddress)" } else { $null }
+                    forwardingAddressSmtp       = Resolve-RecipientSmtp $_.ForwardingAddress
+                    deliverToMailboxAndForward  = [bool]$_.DeliverToMailboxAndForward
+                    archiveEnabled              = ("$($_.ArchiveGuid)" -ne '' -and "$($_.ArchiveGuid)" -ne $EmptyGuid) -or ("$($_.ArchiveStatus)" -eq 'Active')
+                    archiveStatus               = "$($_.ArchiveStatus)"
+                    autoExpandingArchiveEnabled = [bool]$_.AutoExpandingArchiveEnabled
+                    litigationHoldEnabled       = [bool]$_.LitigationHoldEnabled
+                    grantSendOnBehalfTo         = @($_.GrantSendOnBehalfTo | ForEach-Object { "$_" })
+                }
+            })
+            Add-Step 'List mailboxes' $true "$($mbxData.Count) mailbox(es)"
+
+            $domains = @()
+            try { $domains = @(Get-AcceptedDomain | ForEach-Object { "$($_.DomainName)" }) }
+            catch { $partial.Add("Accepted domains: $($_.Exception.Message)") }
+
+            $autoForwarding = $null
+            try {
+                $policy = Get-HostedOutboundSpamFilterPolicy | Where-Object { $_.IsDefault } | Select-Object -First 1
+                if ($policy) { $autoForwarding = "$($policy.AutoForwardingMode)" }
+            }
+            catch { $partial.Add("Outbound spam policy: $($_.Exception.Message)") }
+
+            $permissions = [System.Collections.Generic.List[object]]::new()
+            try {
+                Get-EXORecipientPermission -ResultSize Unlimited -ErrorAction Stop |
+                    Where-Object { $_.Trustee -ne 'NT AUTHORITY\SELF' -and -not $_.IsInherited -and "$($_.AccessControlType)" -eq 'Allow' -and $_.AccessRights -contains 'SendAs' } |
+                    ForEach-Object { $permissions.Add([ordered]@{ mailbox = "$($_.Identity)"; trustee = "$($_.Trustee)"; right = 'SendAs' }) }
+            }
+            catch { $partial.Add("Send As permissions: $($_.Exception.Message)") }
+
+            # Full Access is per mailbox: bounded by count and time so a large tenant cannot hang the audit.
+            $evaluated = 0
+            $clock = [System.Diagnostics.Stopwatch]::StartNew()
+            foreach ($m in $mailboxes) {
+                if ($evaluated -ge $maxFullAccess -or $clock.Elapsed.TotalSeconds -ge $fullAccessSeconds) { break }
+                try {
+                    Get-EXOMailboxPermission -Identity $m.UserPrincipalName -ErrorAction Stop |
+                        Where-Object { $_.User -ne 'NT AUTHORITY\SELF' -and -not $_.IsInherited -and -not $_.Deny -and $_.AccessRights -contains 'FullAccess' } |
+                        ForEach-Object { $permissions.Add([ordered]@{ mailbox = "$($m.UserPrincipalName)"; trustee = "$($_.User)"; right = 'FullAccess' }) }
+                }
+                catch { $partial.Add("Full Access for $($m.UserPrincipalName): $($_.Exception.Message)") }
+                $evaluated++
+            }
+
+            $data = [ordered]@{
+                mailboxes           = $mbxData
+                acceptedDomains     = $domains
+                autoForwardingMode  = $autoForwarding
+                permissions         = $permissions
+                fullAccessEvaluated = $evaluated
+                fullAccessComplete  = ($evaluated -ge $mailboxes.Count)
+                partialErrors       = $partial
+            }
+            Add-Step 'Read mailbox audit data' $true "$($permissions.Count) delegation(s)"
+        }
         default { throw "Unknown operation '$($payload.operation)'." }
     }
 }

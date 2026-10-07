@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using PartnerCenterBridge.Core.Abstractions;
 using PartnerCenterBridge.Core.Entities;
+using PartnerCenterBridge.Core.TenantAudits;
 
 namespace PartnerCenterBridge.Exchange;
 
@@ -15,7 +16,7 @@ namespace PartnerCenterBridge.Exchange;
 /// (<see cref="ITenantExchangeOrganizationProvider"/>), never <see cref="Tenant.DefaultDomain"/>, and
 /// the script refuses to run anything unless the connection reports the tenant's own Entra id.
 /// </summary>
-public class ExchangeOnlineService : IExchangeOnlineService
+public class ExchangeOnlineService : IExchangeOnlineService, IExchangeMailboxAuditReader
 {
     private const string EmbeddedScript = "PartnerCenterBridge.Exchange.Scripts.exo-op.ps1";
 
@@ -100,6 +101,48 @@ public class ExchangeOnlineService : IExchangeOnlineService
         {
             Steps = script.Steps,
             State = script.Data is { ValueKind: JsonValueKind.Object } d ? ToArchiveState(d) : null
+        };
+    }
+
+    /// <summary>Mailboxes beyond which Full Access permissions are not read (one EXO call per mailbox).</summary>
+    internal const int MaxFullAccessMailboxes = 200;
+
+    public async Task<AuditMailboxReport> GetMailboxAuditReportAsync(Tenant tenant, CancellationToken ct = default)
+    {
+        var script = await RunAsync(tenant, "auditMailboxes",
+            new { maxFullAccessMailboxes = MaxFullAccessMailboxes, fullAccessSeconds = 90 }, ct);
+        if (script.Data is not { ValueKind: JsonValueKind.Object } d)
+        {
+            var failure = script.Steps.FirstOrDefault(s => !s.Success);
+            throw new InvalidOperationException("Exchange Online mailbox read failed: " +
+                (failure?.Detail ?? "the script returned no data."));
+        }
+        return ToAuditReport(d);
+    }
+
+    internal static AuditMailboxReport ToAuditReport(JsonElement d)
+    {
+        static string? S(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(v.GetString()) ? v.GetString() : null;
+        static bool B(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.True;
+        static IEnumerable<JsonElement> A(JsonElement e, string name) =>
+            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array ? v.EnumerateArray() : [];
+        static List<string> Strings(JsonElement e, string name) =>
+            A(e, name).Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).Where(x => x.Length > 0).ToList();
+
+        return new AuditMailboxReport
+        {
+            Mailboxes = A(d, "mailboxes").Select(m => new AuditMailbox(
+                S(m, "objectId"), S(m, "userPrincipalName") ?? "", S(m, "displayName") ?? "", S(m, "primarySmtpAddress"),
+                S(m, "recipientTypeDetails") ?? "", S(m, "forwardingSmtpAddress"), S(m, "forwardingAddress"), S(m, "forwardingAddressSmtp"),
+                B(m, "deliverToMailboxAndForward"), B(m, "archiveEnabled"), S(m, "archiveStatus"),
+                B(m, "autoExpandingArchiveEnabled"), B(m, "litigationHoldEnabled"), Strings(m, "grantSendOnBehalfTo"))).ToList(),
+            AcceptedDomains = Strings(d, "acceptedDomains"),
+            AutoForwardingMode = S(d, "autoForwardingMode"),
+            Permissions = A(d, "permissions").Select(p => new AuditMailboxPermission(S(p, "mailbox") ?? "", S(p, "trustee") ?? "", S(p, "right") ?? "")).ToList(),
+            FullAccessEvaluated = d.TryGetProperty("fullAccessEvaluated", out var fe) && fe.TryGetInt32(out var n) ? n : 0,
+            FullAccessComplete = B(d, "fullAccessComplete"),
+            PartialErrors = Strings(d, "partialErrors")
         };
     }
 
