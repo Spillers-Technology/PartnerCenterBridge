@@ -1,11 +1,11 @@
 import { getAccessToken } from "./auth";
 import { getLocalToken } from "./session";
 import type {
-  AppTemplate, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
+  AppTemplate, AuditCatalog, AuditEstate, AuditExportFormat, AuthMode, AuthResponse, ConfigSection, ConfigSnapshotRun, Contract, Dashboard,
   Deployment, DiagnosisResult, DirectoryObject, GlobalSearchResult, MeProfile, MfaChallengeResponse,
   InstanceRole, InstanceUser, McpTokenInfo, OffboardingPolicy, OperationEvidence, OperationPlan, PasskeyInfo, PendingAction,
   PersonWorkspace, ProvisioningResult, TerminateResult, ProvisioningTemplate, SamStatus, SectionDiff, Sku, SystemDiagnostics, SystemStatus,
-  Tenant, TenantGrant, TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
+  Tenant, TenantAuditReport, TenantAuditRunSummary, TenantGrant, TenantRole, TotpEnrollResponse, TotpVerifyEnrollResponse, WorkflowRunRecord, WorkflowRunResult,
   WorkflowSummary
 } from "./types";
 
@@ -319,6 +319,20 @@ export const api = {
     revoke: (id: string) => request<void>(`/api/mcp-tokens/${id}`, { method: "DELETE" }),
   },
 
+  /** Tenant audits (read-only health checks). Viewer on the tenant can run and read them. */
+  tenantAudits: {
+    catalog: () => request<AuditCatalog>("/api/tenant-audits/catalog"),
+    list: (tenantId: string) => request<TenantAuditRunSummary[]>(`/api/tenants/${tenantId}/audits`),
+    get: (tenantId: string, runId: string) => request<TenantAuditReport>(`/api/tenants/${tenantId}/audits/${runId}`),
+    run: (tenantId: string, body: { checkIds?: string[]; categories?: string[]; parameters?: Record<string, number> }) =>
+      request<TenantAuditReport>(`/api/tenants/${tenantId}/audits`, { method: "POST", body: JSON.stringify(body) }),
+    /** Saves under the server's file name (tenant, date and run id), falling back to a generic one. */
+    export: (tenantId: string, runId: string, format: AuditExportFormat) =>
+      download(`/api/tenants/${tenantId}/audits/${runId}/export?format=${format}`,
+        `tenant-audit-${runId}.${format === "markdown" ? "md" : format}`, true),
+    estate: () => request<AuditEstate>("/api/tenant-audits/estate")
+  },
+
   configSnapshots: {
     sections: () => request<ConfigSection[]>("/api/config-sections"),
     list: (tenantId: string) => request<ConfigSnapshotRun[]>(`/api/tenants/${tenantId}/config-snapshots`),
@@ -345,7 +359,7 @@ export const api = {
   }
 };
 
-async function download(path: string, filename: string): Promise<void> {
+async function download(path: string, filename: string, preferServerName = false): Promise<void> {
   const headers = await authHeaders();
   const resp = await fetch(`${base}${path}`, { headers });
   if (!resp.ok) {
@@ -356,9 +370,16 @@ async function download(path: string, filename: string): Promise<void> {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filename;
+  a.download = (preferServerName && serverFileName(resp.headers.get("content-disposition"))) || filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/** The plain ASCII filename from a Content-Disposition header, if it carries one we can safely use. */
+export function serverFileName(header: string | null): string | null {
+  // The whole token must be safe (no path separators, no leading dot), or the caller's fallback is used.
+  const m = header?.match(/filename="?([A-Za-z0-9][A-Za-z0-9._-]*)"?\s*(?:;|$)/);
+  return m ? m[1] : null;
 }

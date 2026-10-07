@@ -112,6 +112,8 @@ builder.Services.AddGraphConfigSections();
 builder.Services.Configure<GitSyncOptions>(cfg.GetSection(GitSyncOptions.SectionName));
 builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddScoped<ConfigSnapshotService>();
+// Tenant audits (read-only health checks): data providers, catalog and every check, found by type.
+PartnerCenterBridge.Api.TenantAudits.TenantAuditRegistration.AddTenantAudits(builder.Services);
 builder.Services.AddScoped<PartnerCenterBridge.Api.Services.PendingActionService>();
 builder.Services.AddScoped<PartnerCenterBridge.Api.Services.IPendingActionExecutor, PartnerCenterBridge.Api.Mcp.WorkflowRemediateExecutor>();
 

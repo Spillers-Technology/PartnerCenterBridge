@@ -17,6 +17,7 @@ const PAGES = [
   { file: "workflows.html", nav: "Workflows", group: "Guides", title: "Workflows", og: "pcbridge-workflows.jpg" },
   { file: "authentication.html", nav: "Authentication", group: "Guides", title: "Authentication", og: "pcbridge-login.jpg" },
   { file: "sam-bootstrap.html", nav: "SAM bootstrap", group: "Guides", title: "SAM bootstrap", og: "pcbridge-tenants.jpg" },
+  { file: "tenant-audits.html", nav: "Tenant audits", group: "Guides", title: "Tenant audits", og: "pcbridge-tenant-audits.jpg" },
   { file: "config-snapshots.html", nav: "Config snapshots", group: "Guides", title: "Config snapshots", og: "pcbridge-config-snapshots.jpg" },
   { file: "mcp-server.html", nav: "MCP server", group: "Guides", title: "MCP server", og: "pcbridge-approvals.jpg" },
   { file: "architecture.html", nav: "Architecture", group: "Reference", title: "Architecture", og: "pcbridge-dashboard.jpg" },

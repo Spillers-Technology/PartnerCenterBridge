@@ -19,6 +19,26 @@ Things we want to come back to. Not scheduled, not sequenced -- just tracked so 
   planned change with a diff preview and post-apply verification, the same shape as other planned
   operations -- not a fire-and-forget PATCH.
 
+## Tenant audits: next steps
+
+The engine, 25 checks, history and CSV/JSON/Markdown export shipped (see `docs/tenant-audits.html`).
+Natural follow-ups, roughly in order of value:
+
+- **Estate runs.** Run one selection across every connected tenant (the engine and the
+  `BatchId` column already support it) and surface `GET /api/tenant-audits/estate` in the UI.
+  Needs a background runner that keeps each tenant's delegated token context; today runs are
+  synchronous in the request, one tenant at a time.
+- **Scheduled audits** with a "what changed since last run" diff of findings.
+- **More checks:** forwarding inbox rules (per-mailbox `Get-InboxRule`, bounded like Full
+  Access), mailbox sizes so shared-mailbox license findings can tell when 50 GB requires a
+  license, PIM-eligible role assignments (`roleEligibilitySchedules`, Entra ID P2), app-only
+  permission grants (app role assignments to third-party service principals), apps with expiring
+  or long-lived credentials, Secure Score and Defender recommendations where licensed, SharePoint
+  external sharing settings, and Intune OS version currency.
+- **Remediation hand-off from more findings** into planned operations (bulk "plan offboarding"
+  for selected dormant users; a planned "remove licenses" operation).
+- **MCP tools** for running audits and reading findings, gated by the same tenant grants.
+
 ## Tenant sign-in: later phases
 
 The v0.9.1 Local Workbench now includes a separate system-browser delegated connection per

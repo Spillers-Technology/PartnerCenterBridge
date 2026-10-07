@@ -33,6 +33,17 @@ the API surface you're calling (`Graph` or `Exchange`), register it in that proj
 up automatically — no controller or frontend changes needed. Findings should surface *why*
 something is broken, not just that it is; the operator sees them verbatim.
 
+## Adding a tenant audit check
+
+Implement `ITenantAuditCheck` in `src/PartnerCenterBridge.Core/TenantAudits/Checks/<Category>/`.
+Checks are discovered by type, so there is nothing to register and no controller, UI or export
+change. Read tenant data only through the audit data providers (`IAuditDirectoryData` and
+friends); they fetch each dataset once per run and turn "PCB can't read this here" into an
+Unavailable result. Grade only what the data proves (use an Unknown finding for the rest), keep
+business impact to a sentence or two, and test the check with the in-memory fakes in
+`tests/PartnerCenterBridge.Tests/TenantAudits/TenantAuditTestSupport.cs`. The full guide is
+[Adding a check](https://spillerstech.us/PartnerCenterBridge/tenant-audits.html#adding-a-check).
+
 ## Conventions
 
 - .NET 8, nullable enabled; match the existing comment density and style.

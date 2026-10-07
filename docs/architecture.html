@@ -67,6 +67,7 @@
           <li><a href="workflows.html">Workflows</a></li>
           <li><a href="authentication.html">Authentication</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html">Tenant audits</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
         </ul>
@@ -258,6 +259,35 @@ completely separate:</p>
   catalog.
 </p>
 
+<h2 id="the-tenant-audit-engine">The tenant audit engine</h2>
+<p>
+  <a href="tenant-audits.html">Tenant audits</a> are the read-only counterpart to workflows:
+  many small checks, each producing structured findings, run together against one tenant. A check
+  implements <code>ITenantAuditCheck</code>: a descriptor (stable id, category, business impact,
+  severity rules, requirements, parameters, limitations) and one <code>RunAsync</code>.
+</p>
+<ul>
+  <li><strong>Core holds the logic.</strong> Checks, the catalog, the engine, the summary and the
+    CSV/JSON/Markdown exporters live in <code>PartnerCenterBridge.Core/TenantAudits</code>. Checks
+    read only through data-provider interfaces (<code>IAuditDirectoryData</code>,
+    <code>IAuditDeviceData</code>, <code>IAuditSecurityData</code>, <code>IAuditMailboxData</code>),
+    so they are unit-tested with in-memory fakes.</li>
+  <li><strong>Providers live with their API.</strong> The Graph providers get a GET-only reader,
+    so audits cannot write. The Exchange provider runs one read-only <code>auditMailboxes</code>
+    operation in the existing EXO script. Each dataset is fetched once per tenant per run and
+    cached on the run context, so a full audit reads the user list once.</li>
+  <li><strong>Unavailable is a result, not a crash.</strong> Providers turn 401/403 (permission or
+    license) and Intune's "not applicable" into <code>AuditUnavailableException</code>, and
+    Exchange availability comes from the same <code>IExchangeCapability</code> probe the rest of
+    the app uses. The engine records that check as Unavailable with the reason and runs the rest.</li>
+  <li><strong>Runs are records.</strong> <code>TenantAuditRun</code> stores summary columns plus the
+    full versioned report as JSON (insert-only, like workflow runs), with an optional batch id so
+    estate-wide runs need no schema change.</li>
+  <li><strong>Discovery by type.</strong> Every concrete <code>ITenantAuditCheck</code> in the Core
+    and API assemblies is registered, so adding a check is adding a class. Catalog tests enforce
+    unique ids and complete metadata.</li>
+</ul>
+
 <h2 id="audit-trail">Audit trail</h2>
 <p>
   Every diagnose and remediate run is persisted: workflow, tenant, operator identity, inputs,
@@ -309,6 +339,7 @@ completely separate:</p>
           <li><a href="workflows.html">Workflows</a></li>
           <li><a href="authentication.html">Authentication</a></li>
           <li><a href="sam-bootstrap.html">SAM bootstrap</a></li>
+          <li><a href="tenant-audits.html">Tenant audits</a></li>
           <li><a href="config-snapshots.html">Config snapshots</a></li>
           <li><a href="mcp-server.html">MCP server</a></li>
           <li><a href="architecture.html">Architecture</a></li>

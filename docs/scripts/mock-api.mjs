@@ -503,6 +503,112 @@ export function getUnmatchedRouteCount() {
   return unmatchedRouteCount;
 }
 
+// Tenant audits: a realistic finished run with a wide subject table, an unavailable check and a
+// pass, so the matrix exercises the screen's widest content at phone widths.
+const auditCatalog = {
+  schemaVersion: 1,
+  categories: [
+    { id: "Identity", label: "Identity hygiene" }, { id: "Licensing", label: "Licensing" },
+    { id: "Exchange", label: "Exchange / Mail" }, { id: "Devices", label: "Endpoint / Intune" }, { id: "Security", label: "Tenant security" },
+  ],
+  presets: [{ id: "full", name: "Full tenant health check", description: "Every available check in every category.", categories: ["Identity", "Licensing", "Exchange", "Devices", "Security"] }],
+  parameters: [
+    { key: "deviceStaleDays", label: "Device not synced for (days)", default: 30, min: 7, max: 365, suggested: [14, 30, 60, 90], description: "" },
+    { key: "inactiveDays", label: "Inactive for (days)", default: 90, min: 7, max: 730, suggested: [30, 60, 90, 180], description: "" },
+  ],
+  checks: [
+    ["dormant-licensed-users", "Dormant licensed users", "Licensing", ["inactiveDays"]],
+    ["stale-enabled-accounts", "Stale enabled accounts", "Identity", ["inactiveDays"]],
+    ["mailbox-forwarding", "External mailbox forwarding", "Exchange", []],
+    ["stale-devices", "Stale managed devices", "Devices", ["deviceStaleDays"]],
+    ["conditional-access-baseline", "Sign-in protection baseline", "Security", []],
+  ].map(([id, name, category, parameterKeys]) => ({
+    id, name, category, parameterKeys, description: "", businessImpact: "", recommendation: "", severityRules: [], requirements: [], limitations: [], version: 1,
+  })),
+};
+
+const auditSummary = { checksRequested: 5, checksCompleted: 4, checksUnavailable: 1, checksErrored: 0, pass: 1, info: 0, unknown: 1, warn: 2, fail: 1, affectedSubjects: 6, health: "HighRisk" };
+
+const auditReport = {
+  schemaVersion: 1, runId: "aud-1", auditName: "Full tenant health check",
+  tenant: { id: "11111111-1111-1111-1111-111111111111", displayName: "Contoso Ltd", tenantId: "aaaaaaaa-1111-2222-3333-444444444444" },
+  operator: "jspillers", startedAt: minutesAgo(30), completedAt: minutesAgo(29), engineVersion: "0.10.0",
+  parameters: { deviceStaleDays: 30, inactiveDays: 90 },
+  requestedCheckIds: auditCatalog.checks.map((c) => c.id),
+  summary: auditSummary,
+  checks: [
+    {
+      checkId: "dormant-licensed-users", checkName: "Dormant licensed users", category: "Licensing", checkVersion: 1, status: "Completed",
+      missingRequirements: [], durationMs: 820,
+      notes: ["Evaluated 48 users holding at least one license that may carry cost (of 61 users in the directory); threshold 90 days."],
+      findings: [
+        {
+          id: "dormant-licensed-users:dormant", checkId: "dormant-licensed-users", severity: "Warn", title: "Dormant licensed users",
+          summary: "3 licensed users have no successful sign-in recorded in the last 90 days.",
+          businessImpact: "Potential unnecessary recurring Microsoft 365 spend and possible incomplete offboarding.",
+          recommendation: "Review these users for license removal, downgrade, offboarding, or documented retention.",
+          columns: [
+            { key: "enabled", label: "Enabled" }, { key: "licenses", label: "License / SKU(s)" },
+            { key: "lastSuccessfulSignIn", label: "Last successful sign-in" }, { key: "lastSignInAttempt", label: "Last sign-in attempt" },
+            { key: "daysInactive", label: "Days inactive" }, { key: "basis", label: "Basis" }, { key: "created", label: "Created" },
+            { key: "adminRoles", label: "Admin roles" }, { key: "mailboxType", label: "Mailbox type" },
+          ],
+          subjects: [
+            ["u7", "Bartholomew Featherstonehaugh-Wainwright", "bartholomew.featherstonehaugh-wainwright@contoso.onmicrosoft.com", "214", "SPE_E3; EMSPREMIUM; POWER_BI_PRO"],
+            ["u8", "Priya Raman", "priya.raman@contoso.com", "131", "O365_BUSINESS_PREMIUM"],
+            ["u9", "Sam Okafor", "sam.okafor@contoso.com", "98", "SPE_E3"],
+          ].map(([id, name, upn, days, licenses]) => ({
+            type: "user", id, name, upn, evidence: `Last successful sign-in ${days} days ago.`,
+            properties: { enabled: "Yes", licenses, lastSuccessfulSignIn: "2026-03-02", lastSignInAttempt: "2026-03-04", daysInactive: days,
+              basis: "last successful sign-in", created: "2021-09-14", adminRoles: id === "u7" ? "Global Administrator; Exchange Administrator" : null, mailboxType: "UserMailbox" },
+            remediation: { kind: "offboarding", target: id, label: "Plan offboarding", identity: upn },
+          })),
+          subjectCount: 3,
+        },
+        {
+          id: "dormant-licensed-users:unconfirmed", checkId: "dormant-licensed-users", severity: "Unknown", title: "Sign-in success not confirmed",
+          summary: "1 licensed user had recent sign-in attempts, but no successful sign-in is recorded, so PCB cannot tell whether the account is in use.",
+          businessImpact: "Potential unnecessary recurring Microsoft 365 spend and possible incomplete offboarding.",
+          recommendation: "Check these accounts' sign-in logs: repeated failures can mean a forgotten account, or someone trying to get into it.",
+          columns: [{ key: "lastSignInAttempt", label: "Last sign-in attempt" }],
+          subjects: [{ type: "user", id: "u10", name: "Reception Desk", upn: "reception@contoso.com", properties: { lastSignInAttempt: "2026-09-30" } }],
+          subjectCount: 1,
+        },
+      ],
+    },
+    {
+      checkId: "mailbox-forwarding", checkName: "External mailbox forwarding", category: "Exchange", checkVersion: 1, status: "Completed",
+      missingRequirements: [], durationMs: 14200, notes: ["Default outbound policy AutoForwardingMode: Automatic."],
+      findings: [{
+        id: "mailbox-forwarding:external", checkId: "mailbox-forwarding", severity: "Fail", title: "Mailboxes forwarding externally",
+        summary: "1 mailbox forward sends mail to an address outside the accepted domains.",
+        businessImpact: "Forwarding to an outside address quietly copies company mail out of the tenant; it is a common sign of a compromised account.",
+        recommendation: "Confirm each external forward with the mailbox owner; remove any that are not documented and check the account for compromise.",
+        columns: [{ key: "forwardTo", label: "Forwards to" }, { key: "forwardingType", label: "Forwarding setting" }, { key: "keepsCopy", label: "Keeps a copy" }],
+        subjects: [{ type: "mailbox", id: "m1", name: "Accounts Payable", upn: "ap@contoso.com",
+          properties: { forwardTo: "contoso.ap.invoices.archive.backup@some-very-long-external-domain.example", forwardingType: "ForwardingSmtpAddress", keepsCopy: "No" } }],
+        subjectCount: 1,
+      }],
+    },
+    {
+      checkId: "stale-devices", checkName: "Stale managed devices", category: "Devices", checkVersion: 1, status: "Unavailable",
+      statusReason: "Microsoft Intune is not available in this tenant, so Intune managed devices cannot be read (Request not applicable to target tenant.).",
+      missingRequirements: ["Product: Microsoft Intune"], durationMs: 300, notes: [], findings: [],
+    },
+    {
+      checkId: "conditional-access-baseline", checkName: "Sign-in protection baseline", category: "Security", checkVersion: 1, status: "Completed",
+      missingRequirements: [], durationMs: 400, notes: [],
+      findings: [{ id: "conditional-access-baseline:pass", checkId: "conditional-access-baseline", severity: "Pass", title: "Sign-in protection baseline",
+        summary: "Security defaults are enabled.", columns: [], subjects: [], subjectCount: 0 }],
+    },
+  ],
+};
+
+const auditRuns = [{
+  id: "aud-1", tenantId: auditReport.tenant.id, tenantName: "Contoso Ltd", auditName: "Full tenant health check", operator: "jspillers",
+  startedAt: auditReport.startedAt, completedAt: auditReport.completedAt, schemaVersion: 1, engineVersion: "0.10.0", summary: auditSummary,
+}];
+
 export function installApiMock(page, { authenticated = true, authModeOverride = null, needsFirstUser = false } = {}) {
   async function handleApi(route) {
   const request = route.request();
@@ -653,6 +759,13 @@ export function installApiMock(page, { authenticated = true, authModeOverride = 
       { userId: "u2", email: "maya.chen@example.com", role: "Operator", grantedAt: minutesAgo(20160) },
     ]);
   }
+
+  if (method === "GET" && apiPath === "/tenant-audits/catalog") return json(route, auditCatalog);
+  match = apiPath.match(/^\/tenants\/([^/]+)\/audits$/);
+  if (method === "GET" && match) return json(route, auditRuns);
+  if (method === "POST" && match) return json(route, auditReport);
+  match = apiPath.match(/^\/tenants\/([^/]+)\/audits\/([^/]+)$/);
+  if (method === "GET" && match) return json(route, auditReport);
 
   match = apiPath.match(/^\/tenants\/([^/]+)\/config-snapshots$/);
   if (method === "GET" && match) return json(route, snapshotRuns);

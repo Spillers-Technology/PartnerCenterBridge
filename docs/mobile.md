@@ -56,8 +56,8 @@ output names exactly which.
 
 The Ops Workbench (0.9.0) navigation rework (Home/People/Tenants/Operations/Activity/Settings, the
 person workspace, planned operations and the command palette) replaced the old 15-view tab
-navigation with 39 views: the six top-level areas, the person workspace's seven tabs, the tenant
-workspace's five tabs, every operation screen (onboard, offboard and its plan/result states,
+navigation with 40 views: the six top-level areas, the person workspace's seven tabs, the tenant
+workspace's six tabs (including Audits), every operation screen (onboard, offboard and its plan/result states,
 deploy, the known-fix runner and a prefilled deep link, Access Parity and its plan/result states,
 contracts and its policy editor, app templates), Activity (history, approvals, a run and its
 evidence view), the command palette, all three Settings pages, the not-found page, and the four
@@ -66,9 +66,9 @@ unauthenticated views (login, register, first-run setup, security). The full, cu
 [`capture-mobile-media.mjs`](scripts/capture-mobile-media.mjs) -- that file is the source of truth;
 this doc only summarizes it.
 
-**All 39 views pass cleanly at every device** (`node docs/scripts/capture-mobile-media.mjs`,
+**All 40 views pass cleanly at every device** (`node docs/scripts/capture-mobile-media.mjs`,
 zero-overflow exit code, confirmed directly against all five profiles). The 5-device matrix
-therefore produces 195 captures.
+therefore produces 200 captures.
 
 ## Rules for future views
 
