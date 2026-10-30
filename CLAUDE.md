@@ -73,7 +73,8 @@ Release process is **automated** from a pushed tag. Three workflows exist:
      plus its `.sha256`.
   4. `images` -- builds and pushes both container images to GHCR, tagged `X.Y.Z` (no `v` prefix,
      unlike the git tag) and `latest` (not `latest` for a prerelease tag containing `-`). Skips
-     the push on a dry run.
+     the push on a dry run. Images before 0.9.0 were tagged `vX.Y.Z` (`v0.1.0` to `v0.8.0`) and
+     keep those tags, so pin old versions with the `v`.
   5. `publish` -- creates the GitHub release from `releases/vX.Y.Z.md` (fails if that file is
      missing), attaches the zip and checksum, marks it prerelease if the tag contains `-`, then
      downloads the published assets back and re-checks the checksum. Skipped on a dry run.
